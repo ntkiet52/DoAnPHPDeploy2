@@ -1,0 +1,424 @@
+<?php
+require_once '../Login/connect.php';
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+header('Content-Type: application/json; charset=utf-8');
+
+function respondCart(bool $success, string $message, array $extra = [], int $statusCode = 200): void
+{
+    http_response_code($statusCode);
+    echo json_encode(array_merge([
+        'success' => $success,
+        'message' => $message,
+    ], $extra), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function currentCustomerCode(): string
+{
+    if (isset($_SESSION['ma_khach_hang']) && trim((string) $_SESSION['ma_khach_hang']) !== '') {
+        return trim((string) $_SESSION['ma_khach_hang']);
+    }
+
+    $userId = (int) ($_SESSION['user_id'] ?? 0);
+    if ($userId > 0) {
+        return 'KH' . str_pad((string) $userId, 3, '0', STR_PAD_LEFT);
+    }
+
+    if (!isset($_SESSION['guest_cart_code']) || trim((string) $_SESSION['guest_cart_code']) === '') {
+        $_SESSION['guest_cart_code'] = 'GUEST_' . strtoupper(substr(sha1((string) session_id()), 0, 12));
+    }
+
+    return trim((string) $_SESSION['guest_cart_code']);
+}
+
+function getOrCreateCart(mysqli $conn, string $maKhachHang): int
+{
+    $findStmt = $conn->prepare('SELECT id_gio_hang FROM gio_hang WHERE ma_khach_hang = ? AND trang_thai = ? ORDER BY id_gio_hang DESC LIMIT 1');
+    $active = 'active';
+    $findStmt->bind_param('ss', $maKhachHang, $active);
+    $findStmt->execute();
+    $res = $findStmt->get_result();
+    $row = $res ? $res->fetch_assoc() : null;
+    $findStmt->close();
+
+    if (is_array($row) && isset($row['id_gio_hang'])) {
+        return (int) $row['id_gio_hang'];
+    }
+
+    $insertStmt = $conn->prepare('INSERT INTO gio_hang (ma_khach_hang, trang_thai) VALUES (?, ?)');
+    $insertStmt->bind_param('ss', $maKhachHang, $active);
+    $insertStmt->execute();
+    $newId = (int) $conn->insert_id;
+    $insertStmt->close();
+
+    return $newId;
+}
+
+function getActiveCartId(mysqli $conn, string $maKhachHang): ?int
+{
+    $stmt = $conn->prepare('SELECT id_gio_hang FROM gio_hang WHERE ma_khach_hang = ? AND trang_thai = ? ORDER BY id_gio_hang DESC LIMIT 1');
+    $active = 'active';
+    $stmt->bind_param('ss', $maKhachHang, $active);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $row = $res ? $res->fetch_assoc() : null;
+    $stmt->close();
+
+    if (!is_array($row) || !isset($row['id_gio_hang'])) {
+        return null;
+    }
+
+    return (int) $row['id_gio_hang'];
+}
+
+function formatVoucherDiscount(array $voucher): string
+{
+    $type = strtolower((string) ($voucher['kieu_giam'] ?? 'fixed'));
+    $value = (float) ($voucher['gia_tri_giam'] ?? 0);
+    if ($type === 'percent') {
+        return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') . '%';
+    }
+
+    return number_format((int) round($value), 0, ',', '.') . 'đ';
+}
+
+function currentVoucherUserKey(): string
+{
+    $userId = (int) ($_SESSION['user_id'] ?? 0);
+    if ($userId > 0) {
+        return 'UID_' . $userId;
+    }
+
+    return 'CUST_' . currentCustomerCode();
+}
+
+function ensureVoucherUsageTable(mysqli $conn): void
+{
+    $sql = "CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_dung (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_key VARCHAR(100) NOT NULL,
+                id_voucher INT NOT NULL,
+                ma_voucher VARCHAR(100) NOT NULL,
+                ma_don_hang VARCHAR(100) DEFAULT NULL,
+                thoi_gian_su_dung DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_user_voucher (user_key, id_voucher),
+                INDEX idx_user_key (user_key),
+                INDEX idx_id_voucher (id_voucher)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+    $conn->query($sql);
+}
+
+$action = trim((string) ($_POST['action'] ?? $_GET['action'] ?? ''));
+$maKhachHang = currentCustomerCode();
+$voucherUserKey = currentVoucherUserKey();
+
+if ($action === '') {
+    respondCart(false, 'Thiếu action.', [], 400);
+}
+
+try {
+    switch ($action) {
+        case 'add_to_cart': {
+            $idGioHang = getOrCreateCart($conn, $maKhachHang);
+
+            $maSanPham = trim((string) ($_POST['ma_san_pham'] ?? ''));
+            $tenSanPham = trim((string) ($_POST['ten_san_pham'] ?? ''));
+            $moTa = trim((string) ($_POST['mo_ta'] ?? ''));
+            $giaBan = max(0, (float) ($_POST['gia_ban'] ?? 0));
+            $giaGoc = max($giaBan, (float) ($_POST['gia_goc'] ?? $giaBan));
+            $soLuong = max(1, (int) ($_POST['so_luong'] ?? 1));
+            $hinhAnh = trim((string) ($_POST['hinh_anh'] ?? '../TrangUser/ack.png'));
+            $voucherShop = trim((string) ($_POST['voucher'] ?? ''));
+            $thongTinGiao = trim((string) ($_POST['thong_tin_giao'] ?? 'Giao nhanh trong ngày'));
+
+            if ($maSanPham === '' || $tenSanPham === '') {
+                respondCart(false, 'Thiếu mã hoặc tên sản phẩm.', [], 400);
+            }
+
+            $checkStmt = $conn->prepare('SELECT id_chi_tiet, so_luong FROM gio_hang_chi_tiet WHERE id_gio_hang = ? AND ma_san_pham = ? LIMIT 1');
+            $checkStmt->bind_param('is', $idGioHang, $maSanPham);
+            $checkStmt->execute();
+            $res = $checkStmt->get_result();
+            $existing = $res ? $res->fetch_assoc() : null;
+            $checkStmt->close();
+
+            if (is_array($existing) && isset($existing['id_chi_tiet'])) {
+                $idChiTiet = (int) $existing['id_chi_tiet'];
+                $newQty = (int) ($existing['so_luong'] ?? 0) + $soLuong;
+
+                $updateStmt = $conn->prepare('UPDATE gio_hang_chi_tiet SET so_luong = ?, ten_san_pham = ?, mo_ta = ?, gia_ban = ?, gia_goc = ?, hinh_anh = ?, voucher_cua_shop = ?, thong_tin_giao_hang = ? WHERE id_chi_tiet = ?');
+                $updateStmt->bind_param('issddsssi', $newQty, $tenSanPham, $moTa, $giaBan, $giaGoc, $hinhAnh, $voucherShop, $thongTinGiao, $idChiTiet);
+                $updateStmt->execute();
+                $updateStmt->close();
+
+                respondCart(true, 'Đã cập nhật số lượng trong giỏ.', [
+                    'id_gio_hang' => $idGioHang,
+                    'id_chi_tiet' => $idChiTiet,
+                    'so_luong' => $newQty,
+                ]);
+            }
+
+            $insertStmt = $conn->prepare('INSERT INTO gio_hang_chi_tiet (id_gio_hang, ma_san_pham, ten_san_pham, mo_ta, gia_ban, gia_goc, so_luong, hinh_anh, voucher_cua_shop, thong_tin_giao_hang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $insertStmt->bind_param('isssddisss', $idGioHang, $maSanPham, $tenSanPham, $moTa, $giaBan, $giaGoc, $soLuong, $hinhAnh, $voucherShop, $thongTinGiao);
+            $insertStmt->execute();
+            $newDetailId = (int) $conn->insert_id;
+            $insertStmt->close();
+
+            respondCart(true, 'Đã thêm sản phẩm vào giỏ.', [
+                'id_gio_hang' => $idGioHang,
+                'id_chi_tiet' => $newDetailId,
+                'so_luong' => $soLuong,
+            ]);
+        }
+
+        case 'remove_item': {
+            $idChiTiet = max(0, (int) ($_POST['id_chi_tiet'] ?? 0));
+            if ($idChiTiet <= 0) {
+                respondCart(false, 'Thiếu id_chi_tiet.', [], 400);
+            }
+
+            $stmt = $conn->prepare('DELETE gct FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+            $active = 'active';
+            $stmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+            $stmt->execute();
+            $affected = $stmt->affected_rows;
+            $stmt->close();
+
+            respondCart($affected > 0, $affected > 0 ? 'Xóa sản phẩm thành công.' : 'Không tìm thấy sản phẩm trong giỏ.');
+        }
+
+        case 'update_quantity': {
+            $idChiTiet = max(0, (int) ($_POST['id_chi_tiet'] ?? 0));
+            $soLuong = (int) ($_POST['so_luong'] ?? 0);
+            if ($idChiTiet <= 0) {
+                respondCart(false, 'Thiếu id_chi_tiet.', [], 400);
+            }
+
+            if ($soLuong <= 0) {
+                $_POST['id_chi_tiet'] = (string) $idChiTiet;
+                $_POST['action'] = 'remove_item';
+                $action = 'remove_item';
+                // Continue with remove action logic by recursion-like handling
+                $stmt = $conn->prepare('DELETE gct FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+                $active = 'active';
+                $stmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+                $stmt->execute();
+                $affected = $stmt->affected_rows;
+                $stmt->close();
+                respondCart($affected > 0, $affected > 0 ? 'Đã xóa sản phẩm.' : 'Không tìm thấy sản phẩm.');
+            }
+
+            $stmt = $conn->prepare('UPDATE gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang SET gct.so_luong = ? WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+            $active = 'active';
+            $stmt->bind_param('iiss', $soLuong, $idChiTiet, $maKhachHang, $active);
+            $stmt->execute();
+            $affected = $stmt->affected_rows;
+            $stmt->close();
+
+            respondCart($affected >= 0, 'Cập nhật số lượng thành công.', [
+                'id_chi_tiet' => $idChiTiet,
+                'so_luong' => $soLuong,
+            ]);
+        }
+
+        case 'remove_selected': {
+            $rawIds = $_POST['ids'] ?? [];
+            if (is_string($rawIds)) {
+                $rawIds = explode(',', $rawIds);
+            }
+
+            if (!is_array($rawIds) || count($rawIds) === 0) {
+                respondCart(false, 'Không có sản phẩm được chọn.', [], 400);
+            }
+
+            $ids = array_values(array_filter(array_map(static fn($v) => (int) $v, $rawIds), static fn($v) => $v > 0));
+            if (count($ids) === 0) {
+                respondCart(false, 'Danh sách sản phẩm không hợp lệ.', [], 400);
+            }
+
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $types = str_repeat('i', count($ids)) . 'ss';
+            $active = 'active';
+            $params = array_merge($ids, [$maKhachHang, $active]);
+
+            $query = "DELETE gct FROM gio_hang_chi_tiet gct
+                      INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang
+                      WHERE gct.id_chi_tiet IN ({$placeholders})
+                      AND gh.ma_khach_hang = ?
+                      AND gh.trang_thai = ?";
+
+            $stmt = $conn->prepare($query);
+            $stmt->bind_param($types, ...$params);
+            $stmt->execute();
+            $affected = $stmt->affected_rows;
+            $stmt->close();
+
+            respondCart(true, 'Đã xóa sản phẩm đã chọn.', [
+                'deleted_count' => $affected,
+            ]);
+        }
+
+        case 'clear_cart': {
+            $activeCartId = getActiveCartId($conn, $maKhachHang);
+            if ($activeCartId === null) {
+                respondCart(true, 'Giỏ hàng đã trống.', [
+                    'id_gio_hang' => null,
+                    'deleted_count' => 0,
+                ]);
+            }
+
+            $deleteStmt = $conn->prepare('DELETE FROM gio_hang_chi_tiet WHERE id_gio_hang = ?');
+            $deleteStmt->bind_param('i', $activeCartId);
+            $deleteStmt->execute();
+            $affected = $deleteStmt->affected_rows;
+            $deleteStmt->close();
+
+            respondCart(true, 'Đã xóa toàn bộ giỏ hàng.', [
+                'id_gio_hang' => $activeCartId,
+                'deleted_count' => $affected,
+            ]);
+        }
+
+        case 'apply_voucher': {
+            ensureVoucherUsageTable($conn);
+
+            $maVoucher = strtoupper(trim((string) ($_POST['ma_voucher'] ?? '')));
+            if ($maVoucher === '') {
+                respondCart(false, 'Vui lòng nhập mã voucher.', [], 400);
+            }
+
+            $query = 'SELECT id_voucher, ma_voucher, ten_voucher, mo_ta, kieu_giam, gia_tri_giam, so_luong_toi_da, so_luong_da_su_dung, tien_toi_thieu, ngay_bat_dau, ngay_ket_thuc, trang_thai
+                      FROM voucher
+                      WHERE UPPER(ma_voucher) = ?
+                      AND trang_thai = ?
+                      AND NOW() BETWEEN ngay_bat_dau AND ngay_ket_thuc
+                      LIMIT 1';
+
+            $stmt = $conn->prepare($query);
+            $active = 'active';
+            $stmt->bind_param('ss', $maVoucher, $active);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $voucher = $res ? $res->fetch_assoc() : null;
+            $stmt->close();
+
+            if (!is_array($voucher)) {
+                respondCart(false, 'Mã voucher không hợp lệ hoặc đã hết hạn.', [], 404);
+            }
+
+            $maxQty = (int) ($voucher['so_luong_toi_da'] ?? 0);
+            $usedQty = (int) ($voucher['so_luong_da_su_dung'] ?? 0);
+            if ($maxQty > 0 && $usedQty >= $maxQty) {
+                respondCart(false, 'Voucher đã hết lượt sử dụng.', [], 400);
+            }
+
+            $voucherId = (int) ($voucher['id_voucher'] ?? 0);
+            if ($voucherId > 0) {
+                $usedStmt = $conn->prepare('SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = ? AND id_voucher = ? LIMIT 1');
+                $usedStmt->bind_param('si', $voucherUserKey, $voucherId);
+                $usedStmt->execute();
+                $usedRes = $usedStmt->get_result();
+                $alreadyUsed = $usedRes && $usedRes->num_rows > 0;
+                $usedStmt->close();
+
+                if ($alreadyUsed) {
+                    respondCart(false, 'Voucher này bạn đã sử dụng rồi.', [], 400);
+                }
+            }
+
+            respondCart(true, 'Áp dụng voucher thành công.', [
+                'voucher' => [
+                    'id' => (int) $voucher['id_voucher'],
+                    'code' => (string) $voucher['ma_voucher'],
+                    'name' => (string) ($voucher['ten_voucher'] ?? ''),
+                    'description' => (string) ($voucher['mo_ta'] ?? ''),
+                    'discount_type' => (string) ($voucher['kieu_giam'] ?? 'fixed'),
+                    'discount_value' => (float) ($voucher['gia_tri_giam'] ?? 0),
+                    'discount_text' => formatVoucherDiscount($voucher),
+                    'min_order_value' => (float) ($voucher['tien_toi_thieu'] ?? 0),
+                    'start_at' => (string) ($voucher['ngay_bat_dau'] ?? ''),
+                    'end_at' => (string) ($voucher['ngay_ket_thuc'] ?? ''),
+                ],
+            ]);
+        }
+
+        case 'get_available_vouchers': {
+            ensureVoucherUsageTable($conn);
+
+            $query = 'SELECT id_voucher, ma_voucher, ten_voucher, mo_ta, kieu_giam, gia_tri_giam, so_luong_toi_da, so_luong_da_su_dung, tien_toi_thieu, ngay_bat_dau, ngay_ket_thuc
+                      FROM voucher
+                      WHERE trang_thai = ?
+                      AND NOW() BETWEEN ngay_bat_dau AND ngay_ket_thuc
+                      ORDER BY ngay_ket_thuc ASC, id_voucher DESC
+                      LIMIT 20';
+
+            $stmt = $conn->prepare($query);
+            $active = 'active';
+            $stmt->bind_param('s', $active);
+            $stmt->execute();
+            $res = $stmt->get_result();
+
+            $vouchers = [];
+            while ($row = $res ? $res->fetch_assoc() : null) {
+                if (!is_array($row)) {
+                    break;
+                }
+
+                $maxQty = (int) ($row['so_luong_toi_da'] ?? 0);
+                $usedQty = (int) ($row['so_luong_da_su_dung'] ?? 0);
+                if ($maxQty > 0 && $usedQty >= $maxQty) {
+                    continue;
+                }
+
+                $voucherId = (int) ($row['id_voucher'] ?? 0);
+                if ($voucherId > 0) {
+                    $usedStmt = $conn->prepare('SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = ? AND id_voucher = ? LIMIT 1');
+                    $usedStmt->bind_param('si', $voucherUserKey, $voucherId);
+                    $usedStmt->execute();
+                    $usedRes = $usedStmt->get_result();
+                    $alreadyUsed = $usedRes && $usedRes->num_rows > 0;
+                    $usedStmt->close();
+
+                    if ($alreadyUsed) {
+                        continue;
+                    }
+                }
+
+                $discountText = formatVoucherDiscount($row);
+                $minOrder = (float) ($row['tien_toi_thieu'] ?? 0);
+
+                $vouchers[] = [
+                    'id' => (int) $row['id_voucher'],
+                    'ma_voucher' => (string) $row['ma_voucher'],
+                    'ten_voucher' => (string) ($row['ten_voucher'] ?? ''),
+                    'mo_ta' => (string) ($row['mo_ta'] ?? ''),
+                    'kieu_giam' => (string) ($row['kieu_giam'] ?? 'fixed'),
+                    'gia_tri_giam' => (float) ($row['gia_tri_giam'] ?? 0),
+                    'discount_text' => $discountText,
+                    'tien_toi_thieu' => $minOrder,
+                    'label' => (string) $row['ma_voucher'] . ' - ' . $discountText . ' (Tối thiểu ' . number_format((int) round($minOrder), 0, ',', '.') . 'đ)',
+                    'ngay_ket_thuc' => (string) ($row['ngay_ket_thuc'] ?? ''),
+                ];
+            }
+
+            $stmt->close();
+
+            respondCart(true, 'Lấy danh sách voucher thành công.', [
+                'vouchers' => $vouchers,
+            ]);
+        }
+
+        default:
+            respondCart(false, 'Action không hợp lệ.', [], 400);
+    }
+} catch (Throwable $e) {
+    respondCart(false, 'Lỗi xử lý giỏ hàng: ' . $e->getMessage(), [], 500);
+} finally {
+    $conn->close();
+}
+?>
