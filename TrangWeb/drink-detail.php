@@ -284,6 +284,8 @@ $products = [
     ],
 ];
 
+$products = [];
+
 $productId = trim((string)($_GET['id'] ?? ''));
 $sku = trim((string)($_GET['sku'] ?? 'trasua'));
 

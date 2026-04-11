@@ -1,52 +1,10 @@
 <?php
 session_start();
-require_once __DIR__ . '/../Login/connect.php';
+require_once __DIR__ . '/catalog_data.php';
 
-// Danh mục sản phẩm để hiển thị thanh trượt
-$categories = [
-    ['name' => 'Đồ uống', 'img' => '../TrangSale/douong.png','link' => 'Trangdouong.php'],
-    ['name' => 'Đồ ăn vặt', 'img' => '../TrangSale/doanvat.png','link' => 'Tranganvat.php'],
-    ['name' => 'Bánh ngọt', 'img' => '../TrangSale/banhngot.png','link' => 'Trangbanhngot.php'],
-    ['name' => 'Trái cây', 'img' => '../TrangSale/traicay.png','link' => 'Trangtraicay.php'],
-    ['name' => 'Sữa', 'img' => '../TrangSale/sua.png','link' => 'Trangsua.php'],
-    ['name' => 'Mì ăn liền', 'img' => '../TrangSale/mianlien.png','link' => 'Trangmianlien.php'],
-    ['name' => 'Nước ngọt', 'img' => '../TrangSale/nuocngot.png','link' => 'Trangnuocngot.php'],
-    ['name' => 'Tươi sống', 'img' => '../TrangSale/thitsong.png','link' => 'Trangtuoisong.php'],
-    ['name' => 'Gia dụng', 'img' => '../TrangSale/Giadung.png','link' => 'Tranggiadung.php'],
-    ['name' => 'Mỹ phẩm', 'img' => '../TrangSale/MyPham.png','link' => 'Trangmypham.php'],
-    ['name' => 'Kem', 'img' => '../TrangSale/Kem.png','link' => 'Trangkem.php'],
-    ['name' => 'Rau củ', 'img' => '../TrangSale/raucu.png','link' => 'Trangraucu.php'],
-    ['name' => 'Đồ hộp', 'img' => '../TrangSale/dohop.png','link' => 'Trangdohop.php'],
-    ['name' => 'Thức ăn nhanh', 'img' => '../TrangSale/thucannhanh.png','link' => 'Trangthucannhanh.php'],
-    ['name' => 'Gia vị', 'img' => '../TrangSale/giavi.png','link' => 'Tranggiavi.php'],
-    ['name' => 'Bia', 'img' => '../TrangSale/bia.png','link' => 'Trangbia.php'],
-];
-
-// Lấy dữ liệu sản phẩm từ database
-$products = [];
-$sql = "SELECT MaHang as id, TenHang as name, DonGia as price, SoTienCoThue as old_price, HinhAnh as img FROM hanghoa LIMIT 20";
-$result = $conn->query($sql);
-
-if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $products[] = [
-            'id' => $row['id'],
-            'name' => $row['name'],
-            'price' => (int)$row['price'],
-            'old_price' => (int)$row['old_price'],
-            'img' => $row['img'],
-            'discount' => ''
-        ];
-    }
-}
-
-// Nếu không có dữ liệu, dùng dữ liệu demo
-if (empty($products)) {
-    $products = [
-        ['id' => 'HH001', 'name' => 'Snack khoai tây vị bò', 'price' => 6000, 'old_price' => 6600, 'img' => '../SPanvat/Snackbo.png', 'discount' => ''],
-        ['id' => 'HH071', 'name' => 'Nước suối Aquafina', 'price' => 5000, 'old_price' => 5500, 'img' => '../SPdouong/Aquafina.png', 'discount' => ''],
-    ];
-}
+$__catalogData = loadCatalogDataForPage(basename(__FILE__));
+$categories = $__catalogData['categories'];
+$products = $__catalogData['all_products'];
 ?>
 
 <!DOCTYPE html>
@@ -560,22 +518,152 @@ if (empty($products)) {
         padding: 20px 0;
         color: #98a2b3;
     }
+
     /* === Unified full-width newsletter + footer (global override) === */
-    .bg-light.py-4, .feedback-section, .newsletter-section, footer { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; }
-    .newsletter-section { min-height: 340px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px 16px; background: linear-gradient(135deg, #5865f8 0%, #3844c7 100%); color: #fff; }
-    .newsletter-section > .container { width: 100%; max-width: none !important; padding-left: 16px !important; padding-right: 16px !important; }
-    .newsletter-section .row { width: 100%; justify-content: center; }
-    .newsletter-section .col-md-8, .newsletter-section .col-lg-8 { width: 100%; max-width: 900px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-    .newsletter-section .d-flex { width: 100%; max-width: 760px; display: flex; align-items: center; justify-content: center; gap: 14px; }
-    .newsletter-input, .newsletter-section input[type="email"] { width: 100% !important; flex: 1 1 auto; min-height: 56px; border: none; border-radius: 999px !important; padding: 0 22px; font-size: 1.06rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12); }
-    .newsletter-btn, .newsletter-section button { min-height: 56px; border: none; border-radius: 999px !important; padding: 0 28px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b74e5 0%, #1f55ff 100%); box-shadow: 0 10px 25px rgba(15, 87, 209, 0.35); }
-    footer { background-color: #1e2743; color: #eaecf0; padding: 56px 16px 22px !important; margin-top: 0 !important; }
-    footer > .container { width: 100%; max-width: none !important; padding-left: 16px !important; padding-right: 16px !important; }
-    footer > .container > .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 30px; margin: 0 !important; }
-    footer > .container > .row > [class*="col"] { max-width: none !important; width: auto !important; padding-left: 0 !important; padding-right: 0 !important; margin-bottom: 0 !important; }
-    .copyright-border { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-    @media (min-width: 992px) { .bg-light.py-4, .feedback-section, .newsletter-section, footer { padding-left: 80px; padding-right: 80px; } .newsletter-section { min-height: 380px; } }
-    @media (max-width: 768px) { .newsletter-section .d-flex { flex-direction: column; max-width: 460px; gap: 12px; } .newsletter-input, .newsletter-btn, .newsletter-section button { width: 100% !important; } }
+    .bg-light.py-4,
+    .feedback-section,
+    .newsletter-section,
+    footer {
+        width: 100%;
+        position: relative;
+        left: 0;
+        right: 0;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .newsletter-section {
+        min-height: 340px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px 16px;
+        background: linear-gradient(135deg, #5865f8 0%, #3844c7 100%);
+        color: #fff;
+    }
+
+    .newsletter-section>.container {
+        width: 100%;
+        max-width: none !important;
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    .newsletter-section .row {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .newsletter-section .col-md-8,
+    .newsletter-section .col-lg-8 {
+        width: 100%;
+        max-width: 900px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .newsletter-section .d-flex {
+        width: 100%;
+        max-width: 760px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+    }
+
+    .newsletter-input,
+    .newsletter-section input[type="email"] {
+        width: 100% !important;
+        flex: 1 1 auto;
+        min-height: 56px;
+        border: none;
+        border-radius: 999px !important;
+        padding: 0 22px;
+        font-size: 1.06rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .newsletter-btn,
+    .newsletter-section button {
+        min-height: 56px;
+        border: none;
+        border-radius: 999px !important;
+        padding: 0 28px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, #0b74e5 0%, #1f55ff 100%);
+        box-shadow: 0 10px 25px rgba(15, 87, 209, 0.35);
+    }
+
+    footer {
+        background-color: #1e2743;
+        color: #eaecf0;
+        padding: 56px 16px 22px !important;
+        margin-top: 0 !important;
+    }
+
+    footer>.container {
+        width: 100%;
+        max-width: none !important;
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    footer>.container>.row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 30px;
+        margin: 0 !important;
+    }
+
+    footer>.container>.row>[class*="col"] {
+        max-width: none !important;
+        width: auto !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-bottom: 0 !important;
+    }
+
+    .copyright-border {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    @media (min-width: 992px) {
+
+        .bg-light.py-4,
+        .feedback-section,
+        .newsletter-section,
+        footer {
+            padding-left: 80px;
+            padding-right: 80px;
+        }
+
+        .newsletter-section {
+            min-height: 380px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .newsletter-section .d-flex {
+            flex-direction: column;
+            max-width: 460px;
+            gap: 12px;
+        }
+
+        .newsletter-input,
+        .newsletter-btn,
+        .newsletter-section button {
+            width: 100% !important;
+        }
+    }
+
     footer .text-muted,
     footer .text-muted *,
     footer p,
@@ -699,7 +787,7 @@ if (empty($products)) {
                 <div class="category-scroll-wrapper">
                     <div class="category-scroll-inner">
                         <?php foreach($categories as $cat): ?>
-                        <a href="#" class="cat-scroll-item" draggable="false">
+                        <a href="<?php echo $cat['link'] ?? '#'; ?>" class="cat-scroll-item" draggable="false">
                             <img src="<?php echo $cat['img']; ?>" class="cat-scroll-img"
                                 alt="<?php echo $cat['name']; ?>">
                             <span class="cat-scroll-name"><?php echo $cat['name']; ?></span>
@@ -711,29 +799,34 @@ if (empty($products)) {
                 <div class="row g-3 mb-3">
                     <?php foreach($products as $prod): ?>
                     <div class="col-6 col-md-3">
-                        <div class="product-card" 
-                             data-product-id="<?php echo htmlspecialchars($prod['id']); ?>"
-                             data-product-name="<?php echo htmlspecialchars($prod['name']); ?>"
-                             data-product-price="<?php echo $prod['price']; ?>"
-                             data-product-img="<?php echo htmlspecialchars($prod['img']); ?>">
+                        <div class="product-card" data-product-id="<?php echo htmlspecialchars($prod['id']); ?>"
+                            data-product-name="<?php echo htmlspecialchars($prod['name']); ?>"
+                            data-product-price="<?php echo (int)($prod['price_raw'] ?? 0); ?>"
+                            data-product-img="<?php echo htmlspecialchars($prod['img']); ?>">
 
                             <?php if(!empty($prod['discount'])): ?>
                             <span class="badge-sale"><?php echo $prod['discount']; ?></span>
                             <?php endif; ?>
 
                             <div class="card-img-wrapper">
-                                <img src="<?php echo $prod['img']; ?>" class="product-img" alt="<?php echo htmlspecialchars($prod['name']); ?>" onerror="this.src='https://via.placeholder.com/150'">
+                                <img src="<?php echo $prod['img']; ?>" class="product-img"
+                                    alt="<?php echo htmlspecialchars($prod['name']); ?>"
+                                    onerror="this.src='../TrangUser/ack.png'">
                             </div>
 
                             <div class="product-title"><?php echo htmlspecialchars($prod['name']); ?></div>
 
                             <div class="d-flex align-items-center">
-                                <span class="price-current"><?php echo number_format($prod['price'], 0, ',', '.'); ?>₫</span>
+                                <span
+                                    class="price-current"><?php echo htmlspecialchars((string)($prod['price'] ?? '0 ₫')); ?></span>
                             </div>
 
                             <div class="d-flex align-items-center justify-content-between">
-                                <span class="price-old"><?php echo ($prod['old_price'] > 0 && $prod['old_price'] != $prod['price']) ? number_format($prod['old_price'], 0, ',', '.') . '₫' : ''; ?></span>
-                                <button class="btn-add btn-add-cart" type="button" data-product-id="<?php echo htmlspecialchars($prod['id']); ?>" title="Thêm vào giỏ hàng">
+                                <span
+                                    class="price-old"><?php echo htmlspecialchars((string)($prod['old'] ?? '')); ?></span>
+                                <button class="btn-add btn-add-cart" type="button"
+                                    data-product-id="<?php echo htmlspecialchars($prod['id']); ?>"
+                                    title="Thêm vào giỏ hàng">
                                     <i class="fas fa-plus"></i>
                                 </button>
                             </div>
@@ -742,16 +835,10 @@ if (empty($products)) {
                     <?php endforeach; ?>
                 </div>
 
-                <div class="pagination-container">
-                    <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-left"></i></a>
-                    <a href="#" class="page-link-custom active">1</a>
-                    <a href="#" class="page-link-custom">2</a>
-                    <a href="#" class="page-link-custom">3</a>
-                    <a href="#" class="page-link-custom">4</a>
-                    <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-right"></i></a>
-                </div>
+                <?php echo catalogRenderPagination($__catalogData['pagination'] ?? []); ?>
 
             </div>
+        </div>
         </div>
 
         <div class="bg-light py-4">
@@ -853,7 +940,7 @@ if (empty($products)) {
                 <div class="row">
                     <div class="col-md-4 mb-4">
                         <div class="d-flex align-items-center mb-3">
-                            <img src="ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
+                            <img src="../TrangUser/ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
                             <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
                         </div>
                         <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và
@@ -951,17 +1038,17 @@ if (empty($products)) {
         // === ADD TO CART HANDLER ===
         document.addEventListener('DOMContentLoaded', function() {
             const addToCartButtons = document.querySelectorAll('.btn-add-cart');
-            
+
             addToCartButtons.forEach(button => {
                 button.addEventListener('click', async function(e) {
                     e.preventDefault();
-                    
+
                     const productId = this.dataset.productId;
                     const productCard = this.closest('.product-card');
                     const productName = productCard.dataset.productName;
                     const productPrice = productCard.dataset.productPrice;
                     const productImg = productCard.dataset.productImg;
-                    
+
                     try {
                         const formData = new FormData();
                         formData.append('action', 'add_to_cart');
@@ -974,24 +1061,24 @@ if (empty($products)) {
                         formData.append('hinh_anh', productImg);
                         formData.append('voucher', '');
                         formData.append('thong_tin_giao', '');
-                        
+
                         const response = await fetch('cart-handler.php', {
                             method: 'POST',
                             body: formData
                         });
-                        
+
                         const data = await response.json();
-                        
+
                         if (data.success) {
                             // Hiệu ứng thêm vào giỏ thành công
                             this.style.background = '#28a745';
                             this.innerHTML = '<i class="fas fa-check"></i>';
-                            
+
                             setTimeout(() => {
                                 this.style.background = '#007bff';
                                 this.innerHTML = '<i class="fas fa-plus"></i>';
                             }, 2000);
-                            
+
                             alert('✓ Thêm vào giỏ hàng thành công!');
                         } else {
                             alert('❌ Lỗi: ' + data.message);

@@ -145,6 +145,7 @@ try {
                 $dvtCol = pickExistingColumn($columns, ['dvt', 'donvitinh', 'don_vi_tinh']);
                 $donGiaCol = pickExistingColumn($columns, ['dongia', 'don_gia', 'giaban', 'gia']);
                 $vatCol = pickExistingColumn($columns, ['vat', 'thuevat', 'thue_vat']);
+                $giaCoThueCol = pickExistingColumn($columns, ['sotiencothue', 'so_tien_co_thue', 'giacothue', 'gia_co_thue']);
 
                 if ($maHang === '') {
                     $maHang = generateNextCode($pdo, 'hanghoa', ['mahang', 'ma_hang', 'idhanghoa', 'id'], 'HH', 2);
@@ -191,6 +192,12 @@ try {
                         $params[':vat'] = $vat;
                     }
 
+                    if ($giaCoThueCol !== null) {
+                        $insertColumns[] = $giaCoThueCol;
+                        $insertPlaceholders[] = ':giacothue';
+                        $params[':giacothue'] = $donGia > 0 ? ($donGia * (1 + ($vat / 100))) : 0;
+                    }
+
                     if ($imageColumnForHangHoa !== null) {
                         $insertColumns[] = $imageColumnForHangHoa;
                         $insertPlaceholders[] = ':hinhanh';
@@ -228,6 +235,7 @@ try {
                     $dvtCol = pickExistingColumn($columns, ['dvt', 'donvitinh', 'don_vi_tinh']);
                     $donGiaCol = pickExistingColumn($columns, ['dongia', 'don_gia', 'giaban', 'gia']);
                     $vatCol = pickExistingColumn($columns, ['vat', 'thuevat', 'thue_vat']);
+                    $giaCoThueCol = pickExistingColumn($columns, ['sotiencothue', 'so_tien_co_thue', 'giacothue', 'gia_co_thue']);
 
                     if ($maHangCol === null || $tenHangCol === null) {
                         $crudError = 'Không tìm thấy cột bắt buộc để cập nhật sản phẩm.';
@@ -256,6 +264,11 @@ try {
                         if ($vatCol !== null) {
                             $setParts[] = "{$vatCol} = :vat";
                             $params[':vat'] = $vat;
+                        }
+
+                        if ($giaCoThueCol !== null) {
+                            $setParts[] = "{$giaCoThueCol} = :giacothue";
+                            $params[':giacothue'] = $donGia > 0 ? ($donGia * (1 + ($vat / 100))) : 0;
                         }
 
                         if ($imageColumnForHangHoa !== null) {
@@ -379,7 +392,7 @@ try {
     $stockColumns = getExistingColumns($pdo, 'hanghoa');
     $stockColumn = pickExistingColumn($stockColumns, ['soluongton', 'so_luong_ton', 'soluong', 'tonkho']);
 
-    $importStockByProduct = [];
+    $stockBalanceByProduct = [];
     try {
         $stockRows = $pdo->query("SELECT MaHang, COALESCE(SUM(SoLuongNhap), 0) AS TongNhap FROM chitietnhaphang GROUP BY MaHang")->fetchAll();
         foreach ($stockRows as $stockRow) {
@@ -387,7 +400,22 @@ try {
             if ($maHangStock === '') {
                 continue;
             }
-            $importStockByProduct[$maHangStock] = (int) ($stockRow['TongNhap'] ?? 0);
+            if (!isset($stockBalanceByProduct[$maHangStock])) {
+                $stockBalanceByProduct[$maHangStock] = 0;
+            }
+            $stockBalanceByProduct[$maHangStock] += (int) ($stockRow['TongNhap'] ?? 0);
+        }
+
+        $exportRows = $pdo->query("SELECT MaHang, COALESCE(SUM(SoLuongPX), 0) AS TongXuat FROM chitietphieuxuat GROUP BY MaHang")->fetchAll();
+        foreach ($exportRows as $exportRow) {
+            $maHangStock = (string) ($exportRow['MaHang'] ?? '');
+            if ($maHangStock === '') {
+                continue;
+            }
+            if (!isset($stockBalanceByProduct[$maHangStock])) {
+                $stockBalanceByProduct[$maHangStock] = 0;
+            }
+            $stockBalanceByProduct[$maHangStock] -= (int) ($exportRow['TongXuat'] ?? 0);
         }
     } catch (Throwable $ignored) {
     }
@@ -409,7 +437,7 @@ try {
         if ($stockColumn !== null) {
             $soLuongTon = (int) pickValue($row, ['soluongton', 'so_luong_ton', 'soluong', 'tonkho'], 0);
         } else {
-            $soLuongTon = (int) ($importStockByProduct[$maHang] ?? 0);
+            $soLuongTon = max(0, (int) ($stockBalanceByProduct[$maHang] ?? 0));
         }
 
         $giaCoThue = $donGia * (1 + ($vat / 100));

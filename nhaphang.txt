@@ -1,0 +1,137 @@
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Máy chủ: 127.0.0.1
+-- Thời gian đã tạo: Th4 11, 2026 lúc 02:46 PM
+-- Phiên bản máy phục vụ: 10.4.32-MariaDB
+-- Phiên bản PHP: 8.2.12
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Cơ sở dữ liệu: `qlhethongbanhangmini`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `chitietnhaphang`
+--
+
+CREATE TABLE `chitietnhaphang` (
+  `IdPhieuNhap` varchar(10) NOT NULL,
+  `MaHang` varchar(10) NOT NULL,
+  `GiaNhap` decimal(15,2) DEFAULT NULL,
+  `SoLuongNhap` int(11) DEFAULT NULL,
+  `ThanhTien` decimal(15,2) DEFAULT NULL,
+  `ChietKhau` decimal(15,2) DEFAULT NULL,
+  `TongTienNhap` decimal(15,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `chitietnhaphang`
+--
+
+INSERT INTO `chitietnhaphang` (`IdPhieuNhap`, `MaHang`, `GiaNhap`, `SoLuongNhap`, `ThanhTien`, `ChietKhau`, `TongTienNhap`) VALUES
+('PN01', 'HH003', 5500.00, 1, 5500.00, 0.00, 5500.00),
+('PN01', 'HH011', 40700.00, 1000, 40700000.00, 0.00, 40700000.00),
+('PN01', 'HH050', 1375000.00, 1, 1375000.00, 0.00, 1375000.00),
+('PN01', 'HH052', 385000.00, 1, 385000.00, 0.00, 385000.00),
+('PN01', 'HH059', 104500.00, 1, 104500.00, 0.00, 104500.00),
+('PN01', 'HH275', 97900.00, 100, 9790000.00, 0.00, 9790000.00),
+('PN02', 'HH061', 22000.00, 1, 22000.00, 0.00, 22000.00),
+('PN02', 'HH062', 22000.00, 1, 22000.00, 0.00, 22000.00),
+('PN02', 'HH063', 27500.00, 1, 27500.00, 0.00, 27500.00),
+('PN02', 'HH064', 22000.00, 1, 22000.00, 0.00, 22000.00),
+('PN02', 'HH065', 8800.00, 1, 8800.00, 0.00, 8800.00),
+('PN02', 'HH066', 5500.00, 1, 5500.00, 0.00, 5500.00),
+('PN02', 'HH207', 11000.00, 1, 11000.00, 0.00, 11000.00),
+('PN02', 'HH224', 53900.00, 199, 10726100.00, 0.00, 10726100.00);
+
+-- --------------------------------------------------------
+-- Đồng bộ số lượng nhập: mọi sản phẩm trong hanghoa phải có tổng SoLuongNhap >= 1
+-- Chạy block này sau khi đã có dữ liệu hanghoa và ít nhất 1 dòng trong chitietnhaphang.
+
+SET @id_phieu_nhap_mac_dinh = (
+  SELECT IdPhieuNhap
+  FROM chitietnhaphang
+  ORDER BY IdPhieuNhap DESC
+  LIMIT 1
+);
+
+-- 1) Chuẩn hóa các dòng đã có nhưng SoLuongNhap <= 0 hoặc NULL => đưa về 1
+UPDATE chitietnhaphang
+SET
+  SoLuongNhap = 1,
+  ChietKhau = COALESCE(ChietKhau, 0),
+  ThanhTien = COALESCE(GiaNhap, 0) * 1,
+  TongTienNhap = (COALESCE(GiaNhap, 0) * 1) - COALESCE(ChietKhau, 0)
+WHERE COALESCE(SoLuongNhap, 0) < 1;
+
+-- 2) Bổ sung các sản phẩm còn thiếu trong chitietnhaphang để mỗi MaHang có ít nhất 1
+INSERT INTO chitietnhaphang (
+  IdPhieuNhap,
+  MaHang,
+  GiaNhap,
+  SoLuongNhap,
+  ThanhTien,
+  ChietKhau,
+  TongTienNhap
+)
+SELECT
+  @id_phieu_nhap_mac_dinh AS IdPhieuNhap,
+  h.MaHang,
+  COALESCE(h.SoTienCoThue, h.DonGia, 0) AS GiaNhap,
+  1 AS SoLuongNhap,
+  COALESCE(h.SoTienCoThue, h.DonGia, 0) * 1 AS ThanhTien,
+  0 AS ChietKhau,
+  COALESCE(h.SoTienCoThue, h.DonGia, 0) * 1 AS TongTienNhap
+FROM hanghoa h
+LEFT JOIN (
+  SELECT MaHang, SUM(CASE WHEN COALESCE(SoLuongNhap, 0) > 0 THEN SoLuongNhap ELSE 0 END) AS TongSoLuongNhap
+  FROM chitietnhaphang
+  GROUP BY MaHang
+) n ON n.MaHang = h.MaHang
+WHERE COALESCE(n.TongSoLuongNhap, 0) < 1
+ON DUPLICATE KEY UPDATE
+  SoLuongNhap = GREATEST(COALESCE(chitietnhaphang.SoLuongNhap, 0), 1),
+  GiaNhap = COALESCE(chitietnhaphang.GiaNhap, VALUES(GiaNhap)),
+  ChietKhau = COALESCE(chitietnhaphang.ChietKhau, 0),
+  ThanhTien = COALESCE(chitietnhaphang.GiaNhap, VALUES(GiaNhap)) * GREATEST(COALESCE(chitietnhaphang.SoLuongNhap, 0), 1),
+  TongTienNhap = (COALESCE(chitietnhaphang.GiaNhap, VALUES(GiaNhap)) * GREATEST(COALESCE(chitietnhaphang.SoLuongNhap, 0), 1)) - COALESCE(chitietnhaphang.ChietKhau, 0);
+
+--
+-- Chỉ mục cho các bảng đã đổ
+--
+
+--
+-- Chỉ mục cho bảng `chitietnhaphang`
+--
+ALTER TABLE `chitietnhaphang`
+  ADD PRIMARY KEY (`IdPhieuNhap`,`MaHang`),
+  ADD KEY `chitietnhaphang_ibfk_2` (`MaHang`);
+
+--
+-- Các ràng buộc cho các bảng đã đổ
+--
+
+--
+-- Các ràng buộc cho bảng `chitietnhaphang`
+--
+ALTER TABLE `chitietnhaphang`
+  ADD CONSTRAINT `chitietnhaphang_ibfk_1` FOREIGN KEY (`IdPhieuNhap`) REFERENCES `phieunhap` (`IdPhieuNhap`),
+  ADD CONSTRAINT `chitietnhaphang_ibfk_2` FOREIGN KEY (`MaHang`) REFERENCES `hanghoa` (`MaHang`);
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

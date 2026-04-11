@@ -1,66 +1,5 @@
 <?php
 require_once __DIR__ . '/catalog_data.php';
-// DỮ LIỆU GIẢ LẬP (Mô phỏng Database)
-
-// 1. Nước ngọt
-$soft_drinks = [
-    ['name' => 'Thùng nước ngọt Coca Cola 24 lon', 'price' => '180.000 ₫', 'old' => '200.000 ₫', 'img' => '../anhtrangchu/coca.png'],
-    ['name' => 'Thùng nước ngọt Pepsi 24 lon', 'price' => '175.000 ₫', 'old' => '195.000 ₫', 'img' => '../anhtrangchu/pepsi.png'],
-    ['name' => 'Thùng nước ngọt Mirinda 24 lon', 'price' => '170.000 ₫', 'old' => '190.000 ₫', 'img' => '../anhtrangchu/sting.png'],
-    ['name' => 'Thùng nước ngọt 7Up 24 lon', 'price' => '170.000 ₫', 'old' => '190.000 ₫', 'img' => '../anhtrangchu/7up.png'],
-];
-
-// 2. Bia
-$beers = [
-    ['name' => 'Thùng bia Saigon 24 lon', 'price' => '235.000 ₫', 'old' => '250.000 ₫', 'img' => '../anhtrangchu/biasg.png'],
-    ['name' => 'Thùng bia Heineken 24 lon', 'price' => '405.000 ₫', 'old' => '420.000 ₫', 'img' => '../anhtrangchu/heniken.png'],
-    ['name' => 'Thùng bia 333 24 lon', 'price' => '230.000 ₫', 'old' => '245.000 ₫', 'img' => '../anhtrangchu/333.png'],
-    ['name' => 'Thùng bia Tiger 24 lon', 'price' => '350.000 ₫', 'old' => '370.000 ₫', 'img' => '../anhtrangchu/tiger.png'],
-];
-
-// 3. Đồ biếu
-$gifts = [
-    ['name' => 'Hạt điều rang muối', 'price' => '250.000 ₫', 'old' => '300.000 ₫', 'img' => '../anhtrangchu/mutdua.png'],
-    ['name' => 'Hộp bánh Cosy Kinh Đô', 'price' => '150.000 ₫', 'old' => '180.000 ₫', 'img' => '../anhtrangchu/chocopie.png'],
-    ['name' => 'Hộp bánh Danisa', 'price' => '220.000 ₫', 'old' => '250.000 ₫', 'img' => '../anhtrangchu/danissa.png'],
-    ['name' => 'Trà Oolong cao cấp', 'price' => '180.000 ₫', 'old' => '210.000 ₫', 'img' => '../anhtrangchu/huongduong.png'],
-];
-
-// 4. Tươi sống
-$fresh_foods = [
-    ['name' => 'Thịt heo ba chỉ (500g)', 'price' => '85.000 ₫', 'old' => '100.000 ₫', 'img' => '../anhtrangchu/thitheo.png'],
-    ['name' => 'Trứng gà ta (10 quả)', 'price' => '35.000 ₫', 'old' => '45.000 ₫', 'img' => '../anhtrangchu/trungvit.png'],
-    ['name' => 'Rau muống sạch', 'price' => '10.000 ₫', 'old' => '15.000 ₫', 'img' => '../anhtrangchu/raumuong.png'],
-    ['name' => 'Cà rốt Đà Lạt (1kg)', 'price' => '20.000 ₫', 'old' => '30.000 ₫', 'img' => '../anhtrangchu/carot.png'],
-];
-
-// 5. Hàng gia dụng
-$household = [
-    ['name' => 'Chảo chống dính Sunhouse', 'price' => '120.000 ₫', 'old' => '150.000 ₫', 'img' => '../TrangSale/Giadung.png'], 
-    ['name' => 'Nồi cơm điện Sharp', 'price' => '550.000 ₫', 'old' => '700.000 ₫', 'img' => '../TrangSale/Giadung.png'],
-    ['name' => 'Bộ lau nhà 360 độ', 'price' => '199.000 ₫', 'old' => '250.000 ₫', 'img' => '../TrangSale/Giadung.png'],
-    ['name' => 'Bình giữ nhiệt Lock&Lock', 'price' => '250.000 ₫', 'old' => '320.000 ₫', 'img' => '../TrangSale/Giadung.png'],
-];
-
-// Danh mục Thanh trượt
-$categories = [
-    ['name' => 'Đồ uống', 'img' => '../TrangSale/douong.png','link' => 'Trangdouong.php'],
-    ['name' => 'Đồ ăn vặt', 'img' => '../TrangSale/doanvat.png','link' => 'Tranganvat.php'],
-    ['name' => 'Bánh ngọt', 'img' => '../TrangSale/banhngot.png','link' => 'Trangbanhngot.php'],
-    ['name' => 'Trái cây', 'img' => '../TrangSale/traicay.png','link' => 'Trangtraicay.php'],
-    ['name' => 'Sữa', 'img' => '../TrangSale/sua.png','link' => 'Trangsua.php'],
-    ['name' => 'Mì ăn liền', 'img' => '../TrangSale/mianlien.png','link' => 'Trangmianlien.php'],
-    ['name' => 'Nước ngọt', 'img' => '../TrangSale/nuocngot.png','link' => 'Trangnuocngot.php'],
-    ['name' => 'Tươi sống', 'img' => '../TrangSale/thitsong.png','link' => 'Trangtuoisong.php'],
-    ['name' => 'Gia dụng', 'img' => '../TrangSale/Giadung.png','link' => 'Tranggiadung.php'],
-    ['name' => 'Mỹ phẩm', 'img' => '../TrangSale/MyPham.png','link' => 'Trangmypham.php'],
-    ['name' => 'Kem', 'img' => '../TrangSale/Kem.png','link' => 'Trangkem.php'],
-    ['name' => 'Rau củ', 'img' => '../TrangSale/raucu.png','link' => 'Trangraucu.php'],
-    ['name' => 'Đồ hộp', 'img' => '../TrangSale/dohop.png','link' => 'Trangdohop.php'],
-    ['name' => 'Thức ăn nhanh', 'img' => '../TrangSale/thucannhanh.png','link' => 'Trangthucannhanh.php'],
-    ['name' => 'Gia vị', 'img' => '../TrangSale/giavi.png','link' => 'Tranggiavi.php'],
-    ['name' => 'Bia', 'img' => '../TrangSale/bia.png','link' => 'Trangbia.php'],
-];
 
 $__catalogData = loadCatalogDataForPage(basename(__FILE__));
 $soft_drinks = $__catalogData['soft_drinks'];
@@ -682,7 +621,7 @@ $categories = $__catalogData['categories'];
                 <div class="category-scroll-wrapper">
                     <div class="category-scroll-inner">
                         <?php foreach($categories as $cat): ?>
-                        <a href="#" class="cat-scroll-item" draggable="false">
+                        <a href="<?php echo $cat['link'] ?? '#'; ?>" class="cat-scroll-item" draggable="false">
                             <img src="<?php echo $cat['img']; ?>" class="cat-scroll-img"
                                 alt="<?php echo $cat['name']; ?>">
                             <span class="cat-scroll-name"><?php echo $cat['name']; ?></span>
@@ -785,16 +724,10 @@ $categories = $__catalogData['categories'];
                     <?php endforeach; ?>
                 </div>
 
-                <div class="pagination-container">
-                    <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-left"></i></a>
-                    <a href="#" class="page-link-custom active">1</a>
-                    <a href="#" class="page-link-custom">2</a>
-                    <a href="#" class="page-link-custom">3</a>
-                    <a href="#" class="page-link-custom">4</a>
-                    <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-right"></i></a>
-                </div>
+                <?php echo catalogRenderPagination($__catalogData['pagination'] ?? []); ?>
 
             </div>
+        </div>
         </div>
 
         <div class="bg-light py-4">
@@ -896,7 +829,7 @@ $categories = $__catalogData['categories'];
                 <div class="row">
                     <div class="col-md-4 mb-4">
                         <div class="d-flex align-items-center mb-3">
-                            <img src="ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
+                            <img src="../TrangUser/ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
                             <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
                         </div>
                         <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và

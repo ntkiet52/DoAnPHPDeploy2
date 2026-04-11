@@ -16,6 +16,168 @@
     return `${Number(amount || 0).toLocaleString("vi-VN")} ₫`;
   }
 
+  function injectGlobalFooterLayoutStyles() {
+    if (document.getElementById("ack-global-footer-layout-style")) {
+      return;
+    }
+
+    const style = document.createElement("style");
+    style.id = "ack-global-footer-layout-style";
+    style.textContent = `
+      .newsletter-section,
+      footer,
+      .site-footer,
+      .bg-light.py-4,
+      .feedback-section {
+        width: 100%;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+      }
+
+      .newsletter-section > .container,
+      .feedback-section > .container,
+      .bg-light.py-4 > .container,
+      footer > .container {
+        width: 100%;
+        max-width: 1320px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        padding-left: 60px !important;
+        padding-right: 60px !important;
+      }
+
+      footer,
+      .site-footer {
+        background-color: #1e2743;
+      }
+
+      footer > .container {
+        padding-top: 40px !important;
+        padding-bottom: 24px !important;
+      }
+
+      footer > .container > .row {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 48px;
+        align-items: flex-start;
+        margin: 0 !important;
+      }
+
+      footer > .container > .row > [class*="col"] {
+        width: auto !important;
+        max-width: none !important;
+        flex: 0 0 auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      .site-footer {
+        padding: 0 !important;
+      }
+
+      .site-footer .footer-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 48px;
+        align-items: flex-start;
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 40px 60px 0;
+      }
+
+      footer .copyright-border,
+      .site-footer .copyright-border {
+        border-top: 1px solid rgba(255, 255, 255, 0.14) !important;
+        margin-top: 20px !important;
+        padding-top: 20px !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .site-footer .copyright-border {
+        max-width: 1320px;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        padding-left: 60px !important;
+        padding-right: 60px !important;
+        padding-bottom: 24px !important;
+      }
+
+      @media (max-width: 991.98px) {
+        .newsletter-section > .container,
+        .feedback-section > .container,
+        .bg-light.py-4 > .container,
+        footer > .container {
+          padding-left: 28px !important;
+          padding-right: 28px !important;
+        }
+
+        footer > .container > .row,
+        .site-footer .footer-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 32px;
+        }
+
+        .site-footer .footer-grid,
+        .site-footer .copyright-border {
+          padding-left: 28px !important;
+          padding-right: 28px !important;
+        }
+      }
+
+      @media (max-width: 575.98px) {
+        footer > .container > .row,
+        .site-footer .footer-grid {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+
+        footer .copyright-border,
+        .site-footer .copyright-border {
+          flex-direction: column;
+          align-items: flex-start !important;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  function injectStockUiStyles() {
+    if (document.getElementById("ack-stock-ui-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "ack-stock-ui-style";
+    style.textContent = `
+      .ack-stock-badge {
+        margin-top: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #dc2626;
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+
+      .ack-out-of-stock-btn {
+        opacity: 0.65 !important;
+        cursor: not-allowed !important;
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
   function slugify(text) {
     return String(text || "")
       .toLowerCase()
@@ -462,6 +624,14 @@
       slugify(title) ||
       String(Date.now());
 
+    const stockRaw =
+      card.getAttribute("data-product-stock") ||
+      card
+        .querySelector("[data-product-stock]")
+        ?.getAttribute("data-product-stock") ||
+      "";
+    const stock = Number.parseInt(String(stockRaw || ""), 10);
+
     return {
       id,
       name: String(title).trim(),
@@ -472,13 +642,119 @@
           "0",
       ),
       img: image,
+      stock: Number.isFinite(stock) ? Math.max(0, stock) : null,
       qty: 1,
       desc: "",
     };
   }
 
+  async function fetchStockMapByIds(productIds) {
+    const ids = Array.from(
+      new Set(
+        (Array.isArray(productIds) ? productIds : [])
+          .map((id) => String(id || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (!ids.length) return {};
+
+    const form = new URLSearchParams();
+    form.set("action", "get_stock_map");
+    ids.forEach((id) => form.append("ids[]", id));
+
+    try {
+      const res = await fetch(CART_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: form.toString(),
+        cache: "no-store",
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success !== true) return {};
+      return data?.stock_map && typeof data.stock_map === "object"
+        ? data.stock_map
+        : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function markOutOfStock(card, stock) {
+    if (!card) return;
+
+    card.setAttribute(
+      "data-product-stock",
+      String(Math.max(0, Number(stock || 0))),
+    );
+
+    const actionButtons = card.querySelectorAll(
+      ".btn-add, .btn-add-cart, [data-add-cart], .btn-buy-now",
+    );
+
+    actionButtons.forEach((btn) => {
+      btn.disabled = true;
+      btn.classList.add("ack-out-of-stock-btn");
+      btn.setAttribute("title", "Sản phẩm đã hết hàng");
+    });
+
+    if (!card.querySelector(".ack-stock-badge")) {
+      const badge = document.createElement("div");
+      badge.className = "ack-stock-badge";
+      badge.textContent = "Hết hàng - vui lòng chờ admin nhập thêm";
+      const host = card.querySelector(".card-body") || card;
+      host.appendChild(badge);
+    }
+  }
+
+  async function syncProductStockStates() {
+    injectStockUiStyles();
+
+    const productCards = Array.from(
+      document.querySelectorAll(".product-card[data-product-id]"),
+    );
+    const productContainers = Array.from(
+      document.querySelectorAll(".product-container[data-product-id]"),
+    );
+    const allNodes = [...productCards, ...productContainers];
+
+    if (!allNodes.length) return;
+
+    const ids = allNodes
+      .map((node) => String(node.getAttribute("data-product-id") || "").trim())
+      .filter(Boolean);
+
+    const stockMap = await fetchStockMapByIds(ids);
+    allNodes.forEach((node) => {
+      const productId = String(
+        node.getAttribute("data-product-id") || "",
+      ).trim();
+      if (!productId) return;
+
+      if (Object.prototype.hasOwnProperty.call(stockMap, productId)) {
+        const stock = Math.max(
+          0,
+          Number.parseInt(String(stockMap[productId]), 10) || 0,
+        );
+        node.setAttribute("data-product-stock", String(stock));
+        if (stock <= 0) {
+          markOutOfStock(node, 0);
+        }
+      }
+    });
+  }
+
   function addItemToCart(item) {
     if (!item || !item.id) return Promise.resolve(false);
+
+    if (Number.isFinite(item.stock) && Number(item.stock) <= 0) {
+      toast("Sản phẩm đã hết hàng. Vui lòng chờ admin nhập thêm.");
+      return Promise.resolve(false);
+    }
 
     const form = new URLSearchParams();
     form.set("action", "add_to_cart");
@@ -600,7 +876,63 @@
     });
   }
 
+  function normalizeFooterPaymentLogos() {
+    const replacements = [
+      {
+        match: /upload\.wikimedia\.org\/wikipedia\/commons\/0\/04\/Visa\.svg/i,
+        src: "https://cdn.simpleicons.org/visa/1A1F71",
+        alt: "Visa",
+      },
+      {
+        match:
+          /upload\.wikimedia\.org\/wikipedia\/commons\/2\/2a\/Mastercard-logo\.svg/i,
+        src: "https://cdn.simpleicons.org/mastercard/EB001B",
+        alt: "Mastercard",
+      },
+      {
+        match:
+          /upload\.wikimedia\.org\/wikipedia\/commons\/b\/b5\/PayPal\.svg/i,
+        src: "https://cdn.simpleicons.org/paypal/00457C",
+        alt: "Paypal",
+      },
+    ];
+
+    const paymentImages = document.querySelectorAll(
+      "footer img, .site-footer img",
+    );
+
+    paymentImages.forEach((img) => {
+      const currentSrc = String(img.getAttribute("src") || "");
+      const currentAlt = String(img.getAttribute("alt") || "");
+
+      const replacement = replacements.find(
+        (item) =>
+          item.match.test(currentSrc) ||
+          currentAlt.toLowerCase().includes(item.alt.toLowerCase()),
+      );
+
+      if (!replacement) return;
+
+      img.setAttribute("src", replacement.src);
+      img.setAttribute("alt", replacement.alt);
+
+      img.addEventListener(
+        "error",
+        () => {
+          img.setAttribute(
+            "src",
+            `https://img.shields.io/badge/${encodeURIComponent(replacement.alt)}-1f2937?style=flat-square&logoColor=white`,
+          );
+        },
+        { once: true },
+      );
+    });
+  }
+
   function init() {
+    injectGlobalFooterLayoutStyles();
+    normalizeFooterPaymentLogos();
+    syncProductStockStates();
     bindAddToCartButtons();
     bindSearchFilter();
     updateCartBadge();

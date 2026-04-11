@@ -19,10 +19,10 @@ function pickCategoryValue(array $row, array $keys, $default = '') {
     return $default;
 }
 
-function getExistingColumns(PDO $pdo, string $table): array {
+function getExistingColumns(PDO $pdo, string $table, bool $forceRefresh = false): array {
     static $cache = [];
 
-    if (isset($cache[$table])) {
+    if (!$forceRefresh && isset($cache[$table])) {
         return $cache[$table];
     }
 
@@ -45,6 +45,21 @@ function pickExistingColumn(array $existingColumns, array $candidates): ?string 
     return null;
 }
 
+function getCategoryImageColumnCandidates(): array {
+    return [
+        'img',
+        'hinh',
+        'logo',
+        'image',
+        'hinhanh',
+        'hinh_anh',
+        'duongdananh',
+        'duong_dan_anh',
+        'anh',
+        'avatar',
+    ];
+}
+
 function generateNextCategoryId(PDO $pdo): string {
     $rows = $pdo->query("SELECT MaNhomHang FROM nhomhang")->fetchAll(PDO::FETCH_COLUMN);
     $usedNumbers = [];
@@ -64,6 +79,25 @@ function generateNextCategoryId(PDO $pdo): string {
     }
 
     return 'NH' . str_pad((string) $nextNumber, 2, '0', STR_PAD_LEFT);
+}
+
+function ensureCategoryImageColumn(PDO $pdo): string {
+    $columns = getExistingColumns($pdo, 'nhomhang', true);
+    $imgCol = pickExistingColumn($columns, getCategoryImageColumnCandidates());
+
+    if ($imgCol !== null) {
+        return $imgCol;
+    }
+
+    $pdo->exec("ALTER TABLE nhomhang ADD COLUMN HinhAnh VARCHAR(255) NULL");
+    $columns = getExistingColumns($pdo, 'nhomhang', true);
+
+    $imgCol = pickExistingColumn($columns, getCategoryImageColumnCandidates());
+    if ($imgCol === null) {
+        throw new RuntimeException('Không thể tạo cột ảnh cho bảng nhomhang.');
+    }
+
+    return $imgCol;
 }
 
 $categories = [];
@@ -126,6 +160,8 @@ try {
         ]
     );
 
+    $categoryImageColumn = ensureCategoryImageColumn($pdo);
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = isset($_POST['crud_action']) ? trim((string) $_POST['crud_action']) : '';
 
@@ -145,7 +181,7 @@ try {
                     $columns = getExistingColumns($pdo, 'nhomhang');
                     $idCol = pickExistingColumn($columns, ['manhomhang', 'ma_nhom_hang', 'manhom', 'id']);
                     $nameCol = pickExistingColumn($columns, ['tennhomhang', 'ten_nhom_hang', 'tennhom', 'name']);
-                    $imgCol = pickExistingColumn($columns, ['img', 'hinh', 'logo', 'image']);
+                    $imgCol = pickExistingColumn($columns, getCategoryImageColumnCandidates()) ?? $categoryImageColumn;
 
                     if ($idCol === null || $nameCol === null) {
                         $crudError = 'Không tìm thấy cột bắt buộc để thêm nhóm hàng (mã nhóm/tên nhóm).';
@@ -187,7 +223,7 @@ try {
                     $columns = getExistingColumns($pdo, 'nhomhang');
                     $idCol = pickExistingColumn($columns, ['manhomhang', 'ma_nhom_hang', 'manhom', 'id']);
                     $nameCol = pickExistingColumn($columns, ['tennhomhang', 'ten_nhom_hang', 'tennhom', 'name']);
-                    $imgCol = pickExistingColumn($columns, ['img', 'hinh', 'logo', 'image']);
+                    $imgCol = pickExistingColumn($columns, getCategoryImageColumnCandidates()) ?? $categoryImageColumn;
 
                     if ($idCol === null || $nameCol === null) {
                         $crudError = 'Không tìm thấy cột bắt buộc để cập nhật nhóm hàng.';
@@ -243,9 +279,7 @@ try {
                                 $crudMessage = 'Đã xóa nhóm hàng.';
                             }
                         } else {
-                            $stmt = $pdo->prepare("DELETE FROM nhomhang WHERE {$idCol} = :id");
-                            $stmt->execute([':id' => $id]);
-                            $crudMessage = 'Đã xóa nhóm hàng.';
+                            $crudError = 'Không thể xác định cột mã nhóm hàng trong bảng sản phẩm để kiểm tra ràng buộc xóa.';
                         }
                     }
                 } catch (Throwable $deleteError) {
@@ -264,7 +298,7 @@ try {
     foreach ($rows as $row) {
         $id = (string) pickCategoryValue($row, ['manhomhang', 'ma_nhom_hang', 'manhom', 'id']);
         $name = (string) pickCategoryValue($row, ['tennhomhang', 'ten_nhom_hang', 'tennhom', 'name']);
-        $img = (string) pickCategoryValue($row, ['img', 'hinh', 'hinh', 'image', 'logo'], '');
+        $img = (string) pickCategoryValue($row, getCategoryImageColumnCandidates(), '');
 
         if ($img === '') {
             if (isset($categoryImageById[$id])) {
@@ -1014,17 +1048,102 @@ $totalCategories = count($categories);
         document.body.appendChild(detailPanelEl);
     }
 
-    // Handle row selection
-    document.querySelectorAll('.category-row').forEach(row => {
-        row.addEventListener('click', function() {
-            document.querySelectorAll('.category-row').forEach(r => r.classList.remove('selected'));
-            this.classList.add('selected');
-            selectedCategoryId = this.getAttribute('data-id');
-            document.getElementById('btnEditCategory').disabled = false;
-            document.getElementById('btnViewCategory').disabled = false;
-            document.getElementById('btnDeleteCategory').disabled = false;
+    const btnEditCategory = document.getElementById('btnEditCategory');
+    const btnViewCategory = document.getElementById('btnViewCategory');
+    const btnDeleteCategory = document.getElementById('btnDeleteCategory');
+
+    function updateCategoryActionButtons(enabled) {
+        if (btnEditCategory) btnEditCategory.disabled = !enabled;
+        if (btnViewCategory) btnViewCategory.disabled = !enabled;
+        if (btnDeleteCategory) btnDeleteCategory.disabled = !enabled;
+    }
+
+    function selectCategoryRow(row) {
+        if (!row) {
+            selectedCategoryId = null;
+            updateCategoryActionButtons(false);
+            return;
+        }
+
+        document.querySelectorAll('.category-row').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+        selectedCategoryId = row.getAttribute('data-id');
+        updateCategoryActionButtons(!!selectedCategoryId);
+    }
+
+    function getSelectedCategoryRow() {
+        if (selectedCategoryId) {
+            const byId = Array.from(document.querySelectorAll('.category-row')).find(r =>
+                r.getAttribute('data-id') === selectedCategoryId
+            );
+            if (byId) {
+                return byId;
+            }
+        }
+
+        const byClass = document.querySelector('.category-row.selected');
+        if (byClass) {
+            selectedCategoryId = byClass.getAttribute('data-id');
+            return byClass;
+        }
+
+        return null;
+    }
+
+    const categoryTableBody = document.getElementById('categoryTableBody');
+    if (categoryTableBody) {
+        categoryTableBody.addEventListener('click', function(e) {
+            const row = e.target.closest('.category-row');
+            if (!row) {
+                return;
+            }
+            selectCategoryRow(row);
         });
-    });
+    }
+
+    const categorySearchInput = document.querySelector('.search-top');
+
+    function normalizeSearchText(value) {
+        return (value || '')
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+    }
+
+    function filterCategoryRows() {
+        const keyword = normalizeSearchText(categorySearchInput ? categorySearchInput.value : '');
+        const rows = document.querySelectorAll('.category-row');
+        let hasVisibleSelection = false;
+
+        rows.forEach((row) => {
+            const id = normalizeSearchText(row.getAttribute('data-id') || '');
+            const name = normalizeSearchText(row.getAttribute('data-name') || '');
+            const visible = keyword === '' || id.includes(keyword) || name.includes(keyword);
+
+            row.style.display = visible ? '' : 'none';
+
+            if (visible && selectedCategoryId && row.getAttribute('data-id') === selectedCategoryId) {
+                hasVisibleSelection = true;
+                row.classList.add('selected');
+            } else if (!visible) {
+                row.classList.remove('selected');
+            }
+        });
+
+        if (!hasVisibleSelection) {
+            selectedCategoryId = null;
+            document.querySelectorAll('.category-row').forEach(r => r.classList.remove('selected'));
+            updateCategoryActionButtons(false);
+        }
+    }
+
+    if (categorySearchInput) {
+        categorySearchInput.addEventListener('input', filterCategoryRows);
+    }
+
+    updateCategoryActionButtons(false);
 
     function setCategoryDetailReadOnly(readOnly) {
         isCategoryDetailReadOnly = !!readOnly;
@@ -1065,7 +1184,7 @@ $totalCategories = count($categories);
 
     // Edit button click
     document.getElementById('btnEditCategory').addEventListener('click', function() {
-        const selectedRow = document.querySelector('.category-row.selected');
+        const selectedRow = getSelectedCategoryRow();
         if (!selectedRow) {
             alert('Vui lòng chọn nhóm hàng để sửa');
             return;
@@ -1080,7 +1199,7 @@ $totalCategories = count($categories);
     });
 
     document.getElementById('btnViewCategory').addEventListener('click', function() {
-        const selectedRow = document.querySelector('.category-row.selected');
+        const selectedRow = getSelectedCategoryRow();
         if (!selectedRow) {
             alert('Vui lòng chọn nhóm hàng để xem chi tiết');
             return;
@@ -1117,7 +1236,7 @@ $totalCategories = count($categories);
 
     // Delete button click
     document.getElementById('btnDeleteCategory').addEventListener('click', function() {
-        const selectedRow = document.querySelector('.category-row.selected');
+        const selectedRow = getSelectedCategoryRow();
         if (!selectedRow) {
             alert('Vui lòng chọn nhóm hàng để xóa');
             return;

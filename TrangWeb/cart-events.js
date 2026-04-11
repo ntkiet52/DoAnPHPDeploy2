@@ -133,6 +133,58 @@
     return `${Number(amount || 0).toLocaleString("vi-VN")}₫`;
   }
 
+  function parseMoneyText(value) {
+    const cleaned = String(value || "").replace(/[^\d]/g, "");
+    return Math.max(0, Number(cleaned || 0));
+  }
+
+  function getSelectedPaymentMethod() {
+    const selected = document.querySelector(
+      'input[name="payment_method"]:checked',
+    );
+    const method = String(selected?.value || "cod").toLowerCase();
+    return method === "qr" ? "qr" : "cod";
+  }
+
+  function buildQrUrl(amount, transferNote) {
+    const qrData = [
+      "BANK:MB",
+      "ACC:123456789",
+      "NAME:ACK MART",
+      `AMOUNT:${Math.max(0, Number(amount || 0))}`,
+      `NOTE:${String(transferNote || "ACKMART THANH TOAN")}`,
+    ].join("|");
+
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`;
+  }
+
+  function updateQrPaymentPreview() {
+    const panel = document.getElementById("qrPaymentPanel");
+    if (!panel) return;
+
+    const qrImage = document.getElementById("qrPaymentImage");
+    const qrAmountText = document.getElementById("qrAmountText");
+    const qrTransferNote = document.getElementById("qrTransferNote");
+    const qrConfirm = document.getElementById("qrPaidConfirm");
+
+    const method = getSelectedPaymentMethod();
+    const finalPriceText =
+      document.getElementById("final-price")?.textContent || "0₫";
+    const amount = parseMoneyText(finalPriceText);
+    const transferNote = `ACKMART-${new Date().toISOString().slice(0, 10)}`;
+
+    if (method === "qr") {
+      panel.classList.add("active");
+      if (qrAmountText) qrAmountText.textContent = formatMoney(amount);
+      if (qrTransferNote) qrTransferNote.textContent = transferNote;
+      if (qrImage) qrImage.src = buildQrUrl(amount, transferNote);
+      return;
+    }
+
+    panel.classList.remove("active");
+    if (qrConfirm) qrConfirm.checked = false;
+  }
+
   function setVoucherFeedback(message, type = "info") {
     const feedback = document.getElementById("voucherFeedback");
     if (!feedback) return;
@@ -378,7 +430,22 @@
     if (subTotalEl) subTotalEl.textContent = formatMoney(subtotal);
     if (discountEl) discountEl.textContent = `-${formatMoney(discount.amount)}`;
     if (finalPriceEl) finalPriceEl.textContent = formatMoney(finalTotal);
+
+    updateQrPaymentPreview();
   };
+
+  function bindPaymentMethodActions() {
+    const paymentRadios = document.querySelectorAll(
+      'input[name="payment_method"]',
+    );
+    if (!paymentRadios.length) return;
+
+    paymentRadios.forEach((radio) => {
+      radio.addEventListener("change", updateQrPaymentPreview);
+    });
+
+    updateQrPaymentPreview();
+  }
 
   function renderVoucherQuickList(items) {
     const wrap = document.getElementById("voucherQuickList");
@@ -578,6 +645,18 @@
         return;
       }
 
+      const paymentMethod = getSelectedPaymentMethod();
+      const qrConfirmed =
+        paymentMethod === "qr" &&
+        !!document.getElementById("qrPaidConfirm")?.checked;
+      if (paymentMethod === "qr" && !qrConfirmed) {
+        await showAlertCenter(
+          "Bạn vui lòng xác nhận đã quét QR và hoàn tất chuyển khoản trước khi đặt hàng.",
+          "Thiếu xác nhận thanh toán QR",
+        );
+        return;
+      }
+
       const originalText = checkoutButton.textContent;
       checkoutButton.disabled = true;
       checkoutButton.textContent = "Đang gửi đơn...";
@@ -597,6 +676,8 @@
           },
           body: JSON.stringify({
             items: selectedItems,
+            payment_method: paymentMethod,
+            qr_paid_confirmed: qrConfirmed,
             voucher: appliedVoucher
               ? {
                   code: appliedVoucher.code,
@@ -624,7 +705,7 @@
             : "";
 
         const askOpenOrderPage = await showConfirmCenter(
-          `Đặt hàng thành công. Mã đơn: ${orderId}.\nTrạng thái hiện tại: Chờ duyệt.${voucherHint}\n\nBạn có muốn mở trang "Đơn hàng của tôi" để theo dõi ngay không?`,
+          `Đặt hàng thành công. Mã đơn: ${orderId}.\nTrạng thái hiện tại: Chờ duyệt.\nThanh toán: ${paymentMethod === "qr" ? "QR chuyển khoản" : "COD"}.${voucherHint}\n\nBạn có muốn mở trang "Đơn hàng của tôi" để theo dõi ngay không?`,
           "Đặt hàng thành công",
         );
 
@@ -648,6 +729,7 @@
   function init() {
     bindDeleteSelectedActions();
     bindVoucherActions();
+    bindPaymentMethodActions();
     loadVoucherQuickList();
     bindCheckoutButton();
     calculateTotal();

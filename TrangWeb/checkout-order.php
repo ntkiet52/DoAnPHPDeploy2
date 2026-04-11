@@ -226,6 +226,65 @@ function ensureVoucherUsageTablePdo(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureOrderPaymentMetaTablePdo(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS phieuxuat_thanhtoan_map (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ma_don_hang VARCHAR(100) NOT NULL,
+        phuong_thuc_thanh_toan VARCHAR(120) NOT NULL,
+        trang_thai_thanh_toan VARCHAR(120) NOT NULL,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_ma_don_hang (ma_don_hang)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $importProductCol, string $importQtyCol, string $exportProductCol, string $exportQtyCol): int
+{
+    $productId = trim($productId);
+    if ($productId === '') {
+        return 0;
+    }
+
+    $hangColumns = getExistingColumns($pdo, 'hanghoa');
+    $hangIdCol = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $hangStockCol = pickExistingColumn($hangColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho']);
+
+    if ($hangIdCol !== null) {
+        $selectStockSql = $hangStockCol !== null ? "hh.`{$hangStockCol}` AS so_luong_ton," : '';
+        $stockStmt = $pdo->prepare(
+            "SELECT
+                {$selectStockSql}
+                COALESCE((SELECT SUM(`{$importQtyCol}`) FROM chitietnhaphang WHERE `{$importProductCol}` = :product_id), 0) AS tong_nhap,
+                COALESCE((SELECT SUM(`{$exportQtyCol}`) FROM chitietphieuxuat WHERE `{$exportProductCol}` = :product_id), 0) AS tong_xuat
+             FROM hanghoa hh
+             WHERE hh.`{$hangIdCol}` = :product_id
+             LIMIT 1"
+        );
+    } else {
+        $stockStmt = $pdo->prepare(
+            "SELECT
+                COALESCE((SELECT SUM(`{$importQtyCol}`) FROM chitietnhaphang WHERE `{$importProductCol}` = :product_id), 0) AS tong_nhap,
+                COALESCE((SELECT SUM(`{$exportQtyCol}`) FROM chitietphieuxuat WHERE `{$exportProductCol}` = :product_id), 0) AS tong_xuat"
+        );
+    }
+    $stockStmt->execute([':product_id' => $productId]);
+    $stockRow = $stockStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    $lowerStockRow = array_change_key_case($stockRow, CASE_LOWER);
+    $stockCandidates = ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho'];
+    foreach ($stockCandidates as $candidate) {
+        if (array_key_exists($candidate, $lowerStockRow)) {
+            return max(0, (int) $lowerStockRow[$candidate]);
+        }
+    }
+
+    $tongNhap = (int) ($stockRow['tong_nhap'] ?? 0);
+    $tongXuat = (int) ($stockRow['tong_xuat'] ?? 0);
+
+    return max(0, $tongNhap - $tongXuat);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respondCheckout(false, 'Phương thức không hợp lệ.', [], 405);
 }
@@ -246,6 +305,19 @@ if (!is_array($payload)) {
 }
 
 $voucherPayload = is_array($payload['voucher'] ?? null) ? $payload['voucher'] : null;
+
+$paymentMethodRaw = strtolower(trim((string) ($payload['payment_method'] ?? $_POST['payment_method'] ?? 'cod')));
+$paymentMethod = $paymentMethodRaw === 'qr' ? 'qr' : 'cod';
+$paymentMethodLabel = $paymentMethod === 'qr' ? 'QR chuyển khoản' : 'Thanh toán khi nhận hàng';
+$paymentStatusLabel = $paymentMethod === 'qr' ? 'Chờ khách chuyển khoản' : 'Thanh toán khi nhận hàng';
+$orderStatusLabel = $paymentMethod === 'qr' ? 'Chờ thanh toán QR' : 'Chờ duyệt';
+$qrPaidConfirmedRaw = $payload['qr_paid_confirmed'] ?? $_POST['qr_paid_confirmed'] ?? false;
+$qrPaidConfirmed = filter_var($qrPaidConfirmedRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+$qrPaidConfirmed = $qrPaidConfirmed === null ? false : $qrPaidConfirmed;
+
+if ($paymentMethod === 'qr' && $qrPaidConfirmed !== true) {
+    respondCheckout(false, 'Bạn cần xác nhận đã chuyển khoản QR trước khi đặt hàng.', [], 400);
+}
 
 $rawItems = $payload['items'] ?? [];
 if (!is_array($rawItems)) {
@@ -297,6 +369,8 @@ try {
 
     $pxColumns = getExistingColumns($pdo, 'phieuxuat');
     $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
+    $ctnhColumns = getExistingColumns($pdo, 'chitietnhaphang');
+    $hhColumns = getExistingColumns($pdo, 'hanghoa');
 
     $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']);
     $orderCustomerCol = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'idkhachhang']);
@@ -305,6 +379,8 @@ try {
     $orderSignCol = pickExistingColumn($pxColumns, ['kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']);
     $orderStatusCol = pickExistingColumn($pxColumns, ['trangthai', 'trang_thai', 'status']);
     $orderTotalCol = pickExistingColumn($pxColumns, ['tongtien', 'tong_tien', 'thanhtien', 'thanh_tien', 'total']);
+    $orderPaymentMethodCol = pickExistingColumn($pxColumns, ['hinhthucthanhtoan', 'hinh_thuc_thanh_toan', 'phuongthucthanhtoan', 'phuong_thuc_thanh_toan', 'ptthanhtoan', 'payment_method', 'thanhtoan']);
+    $orderPaymentStatusCol = pickExistingColumn($pxColumns, ['trangthaithanhtoan', 'trang_thai_thanh_toan', 'ttthanhtoan', 'payment_status']);
 
     if ($orderIdCol === null) {
         respondCheckout(false, 'Không tìm thấy cột mã đơn trong bảng phiếu xuất.');
@@ -315,9 +391,17 @@ try {
     $detailPriceCol = pickExistingColumn($ctpxColumns, ['giaban', 'gia_ban', 'giaxuat', 'gia_xuat', 'dongia', 'don_gia', 'gia']);
     $detailQtyCol = pickExistingColumn($ctpxColumns, ['soluongpx', 'so_luong_px', 'soluong', 'so_luong']);
     $detailTotalCol = pickExistingColumn($ctpxColumns, ['thanhtienpx', 'thanh_tien_px', 'thanhtien', 'thanh_tien', 'tongtien', 'tong_tien']);
+    $importProductCol = pickExistingColumn($ctnhColumns, ['mahang', 'ma_hang', 'idhanghoa']);
+    $importQtyCol = pickExistingColumn($ctnhColumns, ['soluongnhap', 'so_luong_nhap', 'soluong', 'so_luong']);
+    $hangIdCol = pickExistingColumn($hhColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $hangStockCol = pickExistingColumn($hhColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho', 'soluong', 'so_luong']);
 
     if ($detailOrderIdCol === null || $detailProductCol === null) {
         respondCheckout(false, 'Không tìm thấy cột bắt buộc để lưu chi tiết đơn hàng.');
+    }
+
+    if ($detailQtyCol === null || $importProductCol === null || $importQtyCol === null) {
+        respondCheckout(false, 'Không đủ cấu hình cột kho để kiểm tra tồn hàng trước khi đặt đơn.');
     }
 
     $userName = trim((string) ($_SESSION['user_name'] ?? 'Khách hàng'));
@@ -375,12 +459,54 @@ try {
         ]);
     }
 
+    $requestedQtyByProduct = [];
+    foreach ($resolvedItems as $resolvedItem) {
+        $productKey = (string) ($resolvedItem['product_id'] ?? '');
+        $qtyValue = (int) ($resolvedItem['qty'] ?? 0);
+        if ($productKey === '' || $qtyValue <= 0) {
+            continue;
+        }
+
+        if (!isset($requestedQtyByProduct[$productKey])) {
+            $requestedQtyByProduct[$productKey] = 0;
+        }
+        $requestedQtyByProduct[$productKey] += $qtyValue;
+    }
+
+    $insufficientItems = [];
+    foreach ($resolvedItems as $resolvedItem) {
+        $availableStock = fetchAvailableStockForProduct(
+            $pdo,
+            (string) ($resolvedItem['product_id'] ?? ''),
+            $importProductCol,
+            $importQtyCol,
+            $detailProductCol,
+            $detailQtyCol
+        );
+
+        if ((int) ($resolvedItem['qty'] ?? 0) > $availableStock) {
+            $insufficientItems[] = [
+                'product_id' => (string) ($resolvedItem['product_id'] ?? ''),
+                'requested_qty' => (int) ($resolvedItem['qty'] ?? 0),
+                'available_stock' => $availableStock,
+            ];
+        }
+    }
+
+    if (count($insufficientItems) > 0) {
+        $first = $insufficientItems[0];
+        respondCheckout(false, 'Một số sản phẩm đã hết hoặc không đủ tồn kho. Sản phẩm ' . ($first['product_id'] ?? '') . ' chỉ còn ' . ($first['available_stock'] ?? 0) . '.', [
+            'insufficient_items' => $insufficientItems,
+        ], 400);
+    }
+
     $orderTotal = 0.0;
     foreach ($resolvedItems as $resolvedItem) {
         $orderTotal += (float) $resolvedItem['line_total'];
     }
 
     ensureVoucherUsageTablePdo($pdo);
+    ensureOrderPaymentMetaTablePdo($pdo);
     $voucherUserKey = currentVoucherUserKeyCheckout();
     $voucherUsed = null;
     $discountAmount = 0.0;
@@ -450,6 +576,26 @@ try {
     $pdo->beginTransaction();
 
     try {
+        if ($hangIdCol !== null && $hangStockCol !== null && count($requestedQtyByProduct) > 0) {
+            $decreaseStockStmt = $pdo->prepare(
+                "UPDATE hanghoa
+                 SET `{$hangStockCol}` = `{$hangStockCol}` - :qty
+                 WHERE `{$hangIdCol}` = :product_id
+                 AND `{$hangStockCol}` >= :qty"
+            );
+
+            foreach ($requestedQtyByProduct as $productId => $buyQty) {
+                $decreaseStockStmt->execute([
+                    ':qty' => (int) $buyQty,
+                    ':product_id' => (string) $productId,
+                ]);
+
+                if ($decreaseStockStmt->rowCount() <= 0) {
+                    throw new RuntimeException('Tồn kho sản phẩm ' . $productId . ' không đủ để trừ sau khi chốt đơn.');
+                }
+            }
+        }
+
         $newOrderId = generateNextCode($pdo, 'phieuxuat', $orderIdCol, 'PX', 2);
         $orderDateTime = date('Y-m-d H:i:s');
 
@@ -478,19 +624,33 @@ try {
         if ($orderStatusCol !== null) {
             $insertColumns[] = $orderStatusCol;
             $insertPlaceholders[] = ':order_status';
-            $insertParams[':order_status'] = 'Chờ duyệt';
+            $insertParams[':order_status'] = $orderStatusLabel;
         }
 
         if ($orderSignCol !== null) {
             $insertColumns[] = $orderSignCol;
             $insertPlaceholders[] = ':order_sign';
-            $insertParams[':order_sign'] = $orderStatusCol !== null ? 'PX' : 'CHO_DUYET';
+            $insertParams[':order_sign'] = $orderStatusCol !== null
+                ? ($paymentMethod === 'qr' ? 'CHO_THANH_TOAN_QR' : 'PX')
+                : 'CHO_DUYET';
         }
 
         if ($orderTotalCol !== null) {
             $insertColumns[] = $orderTotalCol;
             $insertPlaceholders[] = ':order_total';
             $insertParams[':order_total'] = $finalOrderTotal;
+        }
+
+        if ($orderPaymentMethodCol !== null) {
+            $insertColumns[] = $orderPaymentMethodCol;
+            $insertPlaceholders[] = ':payment_method';
+            $insertParams[':payment_method'] = $paymentMethodLabel;
+        }
+
+        if ($orderPaymentStatusCol !== null) {
+            $insertColumns[] = $orderPaymentStatusCol;
+            $insertPlaceholders[] = ':payment_status';
+            $insertParams[':payment_status'] = $paymentStatusLabel;
         }
 
         $insertOrderStmt = $pdo->prepare(
@@ -547,6 +707,19 @@ try {
             ]);
         }
 
+        $upsertPaymentMetaStmt = $pdo->prepare(
+            "INSERT INTO phieuxuat_thanhtoan_map (ma_don_hang, phuong_thuc_thanh_toan, trang_thai_thanh_toan)
+             VALUES (:ma_don_hang, :phuong_thuc_thanh_toan, :trang_thai_thanh_toan)
+             ON DUPLICATE KEY UPDATE
+                phuong_thuc_thanh_toan = VALUES(phuong_thuc_thanh_toan),
+                trang_thai_thanh_toan = VALUES(trang_thai_thanh_toan)"
+        );
+        $upsertPaymentMetaStmt->execute([
+            ':ma_don_hang' => $newOrderId,
+            ':phuong_thuc_thanh_toan' => $paymentMethodLabel,
+            ':trang_thai_thanh_toan' => $paymentStatusLabel,
+        ]);
+
         $pdo->commit();
 
         // Xóa toàn bộ giỏ hàng active sau khi đặt đơn thành công
@@ -569,6 +742,8 @@ try {
             'discount_amount' => $discountAmount,
             'final_total' => $finalOrderTotal,
             'voucher_used' => $voucherUsed,
+            'payment_method' => $paymentMethod,
+            'payment_method_label' => $paymentMethodLabel,
             'invalid_items' => $invalidItems,
         ]);
     } catch (Throwable $txError) {

@@ -75,6 +75,220 @@ function getActiveCartId(mysqli $conn, string $maKhachHang): ?int
     return (int) $row['id_gio_hang'];
 }
 
+function getExistingColumnsCached(mysqli $conn, string $table): array
+{
+    static $cache = [];
+    if (isset($cache[$table])) {
+        return $cache[$table];
+    }
+
+    $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+    if ($safeTable === '') {
+        return [];
+    }
+
+    $rows = [];
+    $res = $conn->query("SHOW COLUMNS FROM `{$safeTable}`");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            if (is_array($row) && isset($row['Field'])) {
+                $rows[] = strtolower((string) $row['Field']);
+            }
+        }
+        $res->free();
+    }
+
+    $cache[$table] = $rows;
+    return $rows;
+}
+
+function pickExistingColumnName(array $existingColumns, array $candidates): ?string
+{
+    foreach ($candidates as $candidate) {
+        if (in_array(strtolower($candidate), $existingColumns, true)) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function pickStockValueFromRow(array $row): ?int
+{
+    $lowerRow = array_change_key_case($row, CASE_LOWER);
+    $stockCandidates = ['soluongton', 'so_luong_ton', 'tonkho', 'so_luong_ton_kho'];
+
+    foreach ($stockCandidates as $candidate) {
+        if (array_key_exists($candidate, $lowerRow)) {
+            return max(0, (int) $lowerRow[$candidate]);
+        }
+    }
+
+    return null;
+}
+
+function resolveProductCodeForCart(mysqli $conn, string $maSanPham, string $tenSanPham): ?string
+{
+    $hangColumns = getExistingColumnsCached($conn, 'hanghoa');
+    $idCol = pickExistingColumnName($hangColumns, ['MaHang', 'ma_hang', 'idhanghoa', 'id']);
+    $nameCol = pickExistingColumnName($hangColumns, ['TenHang', 'ten_hang', 'tensp', 'tensanpham', 'name']);
+
+    if ($idCol === null) {
+        return null;
+    }
+
+    $maSanPham = trim($maSanPham);
+    if ($maSanPham !== '') {
+        $findByIdStmt = $conn->prepare("SELECT `{$idCol}` AS ma_hang FROM hanghoa WHERE `{$idCol}` = ? LIMIT 1");
+        $findByIdStmt->bind_param('s', $maSanPham);
+        $findByIdStmt->execute();
+        $res = $findByIdStmt->get_result();
+        $row = $res ? $res->fetch_assoc() : null;
+        $findByIdStmt->close();
+
+        if (is_array($row) && trim((string) ($row['ma_hang'] ?? '')) !== '') {
+            return trim((string) $row['ma_hang']);
+        }
+    }
+
+    if ($nameCol === null) {
+        return null;
+    }
+
+    $tenSanPham = trim($tenSanPham);
+    if ($tenSanPham === '') {
+        return null;
+    }
+
+    $findByNameStmt = $conn->prepare("SELECT `{$idCol}` AS ma_hang FROM hanghoa WHERE LOWER(`{$nameCol}`) = LOWER(?) LIMIT 1");
+    $findByNameStmt->bind_param('s', $tenSanPham);
+    $findByNameStmt->execute();
+    $nameRes = $findByNameStmt->get_result();
+    $nameRow = $nameRes ? $nameRes->fetch_assoc() : null;
+    $findByNameStmt->close();
+
+    if (is_array($nameRow) && trim((string) ($nameRow['ma_hang'] ?? '')) !== '') {
+        return trim((string) $nameRow['ma_hang']);
+    }
+
+    $likeKeyword = '%' . $tenSanPham . '%';
+    $findByLikeStmt = $conn->prepare("SELECT `{$idCol}` AS ma_hang FROM hanghoa WHERE LOWER(`{$nameCol}`) LIKE LOWER(?) LIMIT 1");
+    $findByLikeStmt->bind_param('s', $likeKeyword);
+    $findByLikeStmt->execute();
+    $likeRes = $findByLikeStmt->get_result();
+    $likeRow = $likeRes ? $likeRes->fetch_assoc() : null;
+    $findByLikeStmt->close();
+
+    if (is_array($likeRow) && trim((string) ($likeRow['ma_hang'] ?? '')) !== '') {
+        return trim((string) $likeRow['ma_hang']);
+    }
+
+    return null;
+}
+
+function getAvailableStockByProduct(mysqli $conn, string $maSanPham): int
+{
+    $maSanPham = trim($maSanPham);
+    if ($maSanPham === '') {
+        return 0;
+    }
+
+    $hhColumns = getExistingColumnsCached($conn, 'hanghoa');
+    $stockCol = pickExistingColumnName($hhColumns, ['SoLuongTon', 'so_luong_ton', 'TonKho', 'ton_kho']);
+
+    $selectStockSql = $stockCol !== null ? "hh.`{$stockCol}` AS so_luong_ton, " : '';
+    $sql = "SELECT {$selectStockSql}
+                   COALESCE((SELECT SUM(SoLuongNhap) FROM chitietnhaphang WHERE MaHang = ?), 0) AS tong_nhap,
+                   COALESCE((SELECT SUM(SoLuongPX) FROM chitietphieuxuat WHERE MaHang = ?), 0) AS tong_xuat
+            FROM hanghoa hh
+            WHERE hh.MaHang = ?
+            LIMIT 1";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('sss', $maSanPham, $maSanPham, $maSanPham);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $row = $res ? $res->fetch_assoc() : null;
+    $stmt->close();
+
+    if (is_array($row)) {
+        $stockFromTable = pickStockValueFromRow($row);
+        if ($stockFromTable !== null) {
+            return $stockFromTable;
+        }
+    }
+
+    $tongNhap = (int) ($row['tong_nhap'] ?? 0);
+    $tongXuat = (int) ($row['tong_xuat'] ?? 0);
+
+    return max(0, $tongNhap - $tongXuat);
+}
+
+function getStockMapByProducts(mysqli $conn, array $productIds): array
+{
+    $ids = array_values(array_filter(array_map(static function ($value): string {
+        return trim((string) $value);
+    }, $productIds), static function (string $value): bool {
+        return $value !== '';
+    }));
+
+    if (count($ids) === 0) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $hhColumns = getExistingColumnsCached($conn, 'hanghoa');
+    $stockCol = pickExistingColumnName($hhColumns, ['SoLuongTon', 'so_luong_ton', 'TonKho', 'ton_kho']);
+
+    $selectStockSql = $stockCol !== null ? ", hh.`{$stockCol}` AS so_luong_ton" : '';
+    $sql = "SELECT hh.MaHang AS ma_hang,
+                   COALESCE(nhap.TongNhap, 0) AS tong_nhap,
+                   COALESCE(xuat.TongXuat, 0) AS tong_xuat
+                   {$selectStockSql}
+            FROM hanghoa hh
+            LEFT JOIN (
+                SELECT MaHang, COALESCE(SUM(SoLuongNhap), 0) AS TongNhap
+                FROM chitietnhaphang
+                GROUP BY MaHang
+            ) nhap ON nhap.MaHang = hh.MaHang
+            LEFT JOIN (
+                SELECT MaHang, COALESCE(SUM(SoLuongPX), 0) AS TongXuat
+                FROM chitietphieuxuat
+                GROUP BY MaHang
+            ) xuat ON xuat.MaHang = hh.MaHang
+            WHERE hh.MaHang IN ({$placeholders})";
+
+    $stmt = $conn->prepare($sql);
+    $types = str_repeat('s', count($ids));
+    $stmt->bind_param($types, ...$ids);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $map = [];
+    while ($row = $res ? $res->fetch_assoc() : null) {
+        if (!is_array($row)) {
+            break;
+        }
+
+        $key = trim((string) ($row['ma_hang'] ?? ''));
+        if ($key === '') {
+            continue;
+        }
+
+        $stockFromTable = pickStockValueFromRow($row);
+        if ($stockFromTable !== null) {
+            $map[$key] = $stockFromTable;
+            continue;
+        }
+
+        $map[$key] = max(0, (int) ($row['tong_nhap'] ?? 0) - (int) ($row['tong_xuat'] ?? 0));
+    }
+
+    $stmt->close();
+
+    return $map;
+}
+
 function formatVoucherDiscount(array $voucher): string
 {
     $type = strtolower((string) ($voucher['kieu_giam'] ?? 'fixed'));
@@ -140,6 +354,20 @@ try {
                 respondCart(false, 'Thiếu mã hoặc tên sản phẩm.', [], 400);
             }
 
+            $resolvedProductCode = resolveProductCodeForCart($conn, $maSanPham, $tenSanPham);
+            if ($resolvedProductCode === null || $resolvedProductCode === '') {
+                respondCart(false, 'Không tìm thấy sản phẩm trong kho để thêm vào giỏ hàng.', [], 404);
+            }
+            $maSanPham = $resolvedProductCode;
+
+            $availableStock = getAvailableStockByProduct($conn, $maSanPham);
+            if ($availableStock <= 0) {
+                respondCart(false, 'Sản phẩm đã hết hàng. Vui lòng quay lại sau hoặc chờ admin nhập thêm.', [
+                    'ma_san_pham' => $maSanPham,
+                    'available_stock' => 0,
+                ], 400);
+            }
+
             $checkStmt = $conn->prepare('SELECT id_chi_tiet, so_luong FROM gio_hang_chi_tiet WHERE id_gio_hang = ? AND ma_san_pham = ? LIMIT 1');
             $checkStmt->bind_param('is', $idGioHang, $maSanPham);
             $checkStmt->execute();
@@ -151,6 +379,13 @@ try {
                 $idChiTiet = (int) $existing['id_chi_tiet'];
                 $newQty = (int) ($existing['so_luong'] ?? 0) + $soLuong;
 
+                if ($newQty > $availableStock) {
+                    respondCart(false, 'Số lượng vượt quá tồn kho. Hiện chỉ còn ' . $availableStock . ' sản phẩm.', [
+                        'ma_san_pham' => $maSanPham,
+                        'available_stock' => $availableStock,
+                    ], 400);
+                }
+
                 $updateStmt = $conn->prepare('UPDATE gio_hang_chi_tiet SET so_luong = ?, ten_san_pham = ?, mo_ta = ?, gia_ban = ?, gia_goc = ?, hinh_anh = ?, voucher_cua_shop = ?, thong_tin_giao_hang = ? WHERE id_chi_tiet = ?');
                 $updateStmt->bind_param('issddsssi', $newQty, $tenSanPham, $moTa, $giaBan, $giaGoc, $hinhAnh, $voucherShop, $thongTinGiao, $idChiTiet);
                 $updateStmt->execute();
@@ -160,7 +395,15 @@ try {
                     'id_gio_hang' => $idGioHang,
                     'id_chi_tiet' => $idChiTiet,
                     'so_luong' => $newQty,
+                    'available_stock' => $availableStock,
                 ]);
+            }
+
+            if ($soLuong > $availableStock) {
+                respondCart(false, 'Số lượng vượt quá tồn kho. Hiện chỉ còn ' . $availableStock . ' sản phẩm.', [
+                    'ma_san_pham' => $maSanPham,
+                    'available_stock' => $availableStock,
+                ], 400);
             }
 
             $insertStmt = $conn->prepare('INSERT INTO gio_hang_chi_tiet (id_gio_hang, ma_san_pham, ten_san_pham, mo_ta, gia_ban, gia_goc, so_luong, hinh_anh, voucher_cua_shop, thong_tin_giao_hang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -173,6 +416,7 @@ try {
                 'id_gio_hang' => $idGioHang,
                 'id_chi_tiet' => $newDetailId,
                 'so_luong' => $soLuong,
+                'available_stock' => $availableStock,
             ]);
         }
 
@@ -213,8 +457,28 @@ try {
                 respondCart($affected > 0, $affected > 0 ? 'Đã xóa sản phẩm.' : 'Không tìm thấy sản phẩm.');
             }
 
-            $stmt = $conn->prepare('UPDATE gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang SET gct.so_luong = ? WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+            $detailStmt = $conn->prepare('SELECT gct.ma_san_pham FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ? LIMIT 1');
             $active = 'active';
+            $detailStmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+            $detailStmt->execute();
+            $detailRes = $detailStmt->get_result();
+            $detailRow = $detailRes ? $detailRes->fetch_assoc() : null;
+            $detailStmt->close();
+
+            if (!is_array($detailRow) || trim((string) ($detailRow['ma_san_pham'] ?? '')) === '') {
+                respondCart(false, 'Không tìm thấy sản phẩm trong giỏ.', [], 404);
+            }
+
+            $maSanPham = trim((string) $detailRow['ma_san_pham']);
+            $availableStock = getAvailableStockByProduct($conn, $maSanPham);
+            if ($soLuong > $availableStock) {
+                respondCart(false, 'Số lượng vượt quá tồn kho. Hiện chỉ còn ' . $availableStock . ' sản phẩm.', [
+                    'ma_san_pham' => $maSanPham,
+                    'available_stock' => $availableStock,
+                ], 400);
+            }
+
+            $stmt = $conn->prepare('UPDATE gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang SET gct.so_luong = ? WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
             $stmt->bind_param('iiss', $soLuong, $idChiTiet, $maKhachHang, $active);
             $stmt->execute();
             $affected = $stmt->affected_rows;
@@ -223,6 +487,23 @@ try {
             respondCart($affected >= 0, 'Cập nhật số lượng thành công.', [
                 'id_chi_tiet' => $idChiTiet,
                 'so_luong' => $soLuong,
+                'available_stock' => $availableStock,
+            ]);
+        }
+
+        case 'get_stock_map': {
+            $rawIds = $_POST['ids'] ?? [];
+            if (is_string($rawIds)) {
+                $rawIds = explode(',', $rawIds);
+            }
+
+            if (!is_array($rawIds)) {
+                $rawIds = [];
+            }
+
+            $stockMap = getStockMapByProducts($conn, $rawIds);
+            respondCart(true, 'Lấy tồn kho thành công.', [
+                'stock_map' => $stockMap,
             ]);
         }
 

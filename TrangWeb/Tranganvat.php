@@ -1,66 +1,5 @@
 <?php
 require_once __DIR__ . '/catalog_data.php';
-// DỮ LIỆU GIẢ LẬP (Mô phỏng Database)
-
-// 1. Nước ngọt
-$soft_drinks = [
-    ['name'=>'Snack khoai tây vị bò','price'=>'6.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Snackbo.png'],
-    ['name'=>'Snack cà chua','price'=>'5.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Tomat.png'],
-    ['name'=>'Snack bắp ngọt','price'=>'5.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Bap.png'],
-    ['name'=>'Snack khoai tây Layy','price'=>'6.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Lay.png'],
-];
-
-// 2. Bia
-$beers = [
-    ['name'=>'Bánh Oreo','price'=>'17.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/oreo.png'],
-    ['name'=>'Bánh nabati','price'=>'5.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/nabati.png'],
-    ['name'=>'Bánh Pillows','price'=>'7.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Pillows.png'],
-    ['name'=>'Bánh Cosyy','price'=>'10.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Cosy.png'],
-];
-
-// 3. Đồ biếu
-$gifts = [
-    ['name'=>'Bánh que Dorkbua','price'=>'17.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Dorkbua.png'],
-    ['name'=>'Bentoo','price'=>'15.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/Bento.png'],
-    ['name'=>'Bánh quy AFC','price'=>'37.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/AFC.png'],
-    ['name'=>'Mít sấy','price'=>'22.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/mitsay.png'],
-];
-
-// 4. Tươi sống
-$fresh_foods = [
-    ['name'=>'Que cayy','price'=>'23.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/quecay.png'],
-    ['name'=>'Snack đậu phộng','price'=>'10.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/dauphong.png'],
-    ['name'=>'Bánh tráng sa tế tôm','price'=>'7.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/banhtrang.png'],
-    ['name'=>'Kẹo CoolAir','price'=>'23.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/keo.png'],
-];
-
-// 5. Hàng gia dụng
-$household = [
-    ['name'=>'Thạch rau câu','price'=>'25.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/thach.png'],
-    ['name'=>'Bánh gạo Ichi','price'=>'26.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/banhgao.png'],
-    ['name'=>'Bánh Marine Boy','price'=>'17.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/marine.png'],
-    ['name'=>'Chân gà','price'=>'10.000 ₫','old'=>'','discount'=>'','img'=>'../SPanvat/changa.png'],
-];
-
-// Danh mục Thanh trượt
-$categories = [
-    ['name' => 'Đồ uống', 'img' => '../TrangSale/douong.png','link' => 'Trangdouong.php'],
-    ['name' => 'Đồ ăn vặt', 'img' => '../TrangSale/doanvat.png','link' => 'Tranganvat.php'],
-    ['name' => 'Bánh ngọt', 'img' => '../TrangSale/banhngot.png','link' => 'Trangbanhngot.php'],
-    ['name' => 'Trái cây', 'img' => '../TrangSale/traicay.png','link' => 'Trangtraicay.php'],
-    ['name' => 'Sữa', 'img' => '../TrangSale/sua.png','link' => 'Trangsua.php'],
-    ['name' => 'Mì ăn liền', 'img' => '../TrangSale/mianlien.png','link' => 'Trangmianlien.php'],
-    ['name' => 'Nước ngọt', 'img' => '../TrangSale/nuocngot.png','link' => 'Trangnuocngot.php'],
-    ['name' => 'Tươi sống', 'img' => '../TrangSale/thitsong.png','link' => 'Trangtuoisong.php'],
-    ['name' => 'Gia dụng', 'img' => '../TrangSale/Giadung.png','link' => 'Tranggiadung.php'],
-    ['name' => 'Mỹ phẩm', 'img' => '../TrangSale/MyPham.png','link' => 'Trangmypham.php'],
-    ['name' => 'Kem', 'img' => '../TrangSale/Kem.png','link' => 'Trangkem.php'],
-    ['name' => 'Rau củ', 'img' => '../TrangSale/raucu.png','link' => 'Trangraucu.php'],
-    ['name' => 'Đồ hộp', 'img' => '../TrangSale/dohop.png','link' => 'Trangdohop.php'],
-    ['name' => 'Thức ăn nhanh', 'img' => '../TrangSale/thucannhanh.png','link' => 'Trangthucannhanh.php'],
-    ['name' => 'Gia vị', 'img' => '../TrangSale/giavi.png','link' => 'Tranggiavi.php'],
-    ['name' => 'Bia', 'img' => '../TrangSale/bia.png','link' => 'Trangbia.php'],
-];
 
 $__catalogData = loadCatalogDataForPage(basename(__FILE__));
 $soft_drinks = $__catalogData['soft_drinks'];
@@ -226,7 +165,7 @@ $categories = $__catalogData['categories'];
         footer .social-icons a:hover { background: var(--primary-blue); }
         .copyright-border { border-top: 1px solid #344054; margin-top: 40px; padding: 20px 0; color: #98a2b3; }
     /* === Unified full-width newsletter + footer (global override) === */
-    .bg-light.py-4, .feedback-section, .newsletter-section, footer { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; }
+    .bg-light.py-4, .feedback-section, .newsletter-section, footer { width: 100%; position: relative; left: 0; right: 0; margin-left: 0; margin-right: 0; }
     .newsletter-section { min-height: 340px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px 16px; background: linear-gradient(135deg, #5865f8 0%, #3844c7 100%); color: #fff; }
     .newsletter-section > .container { width: 100%; max-width: none !important; padding-left: 16px !important; padding-right: 16px !important; }
     .newsletter-section .row { width: 100%; justify-content: center; }
@@ -359,7 +298,7 @@ $categories = $__catalogData['categories'];
             <div class="category-scroll-wrapper">
                 <div class="category-scroll-inner">
                     <?php foreach($categories as $cat): ?>
-                    <a href="#" class="cat-scroll-item" draggable="false">
+                    <a href="<?php echo $cat['link'] ?? '#'; ?>" class="cat-scroll-item" draggable="false">
                         <img src="<?php echo $cat['img']; ?>" class="cat-scroll-img" alt="<?php echo $cat['name']; ?>">
                         <span class="cat-scroll-name"><?php echo $cat['name']; ?></span>
                     </a>
@@ -458,16 +397,10 @@ $categories = $__catalogData['categories'];
                 <?php endforeach; ?>
             </div>
 
-            <div class="pagination-container">
-                <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-left"></i></a>
-                <a href="#" class="page-link-custom active">1</a>
-                <a href="#" class="page-link-custom">2</a>
-                <a href="#" class="page-link-custom">3</a>
-                <a href="#" class="page-link-custom">4</a>
-                <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-right"></i></a>
-            </div>
+            <?php echo catalogRenderPagination($__catalogData['pagination'] ?? []); ?>
 
         </div>
+    </div>
     </div>
 
     <div class="bg-light py-4">
@@ -559,7 +492,7 @@ $categories = $__catalogData['categories'];
             <div class="row">
                 <div class="col-md-4 mb-4">
                     <div class="d-flex align-items-center mb-3">
-                        <img src="ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);"> <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
+                        <img src="../TrangUser/ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);"> <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
                     </div>
                     <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và dịch vụ tận tâm.</p>
                     <div class="social-icons mt-3">

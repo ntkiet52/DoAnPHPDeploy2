@@ -1,18 +1,13 @@
 <?php
-session_start();
-require_once __DIR__ . '/../Login/connect.php';
-require_once __DIR__ . '/product-helper.php';
+require_once __DIR__ . '/catalog_data.php';
 
-// Lấy dữ liệu từ database
-$products = getProducts(20);
-$categories = getCategories();
-
-// Fallback nếu DB lỗi
-if (empty($products)) {
-    $products = [
-        ['id' => 'HH071', 'name' => 'Nước suối Aquafina', 'price' => 5000, 'old_price' => 5500, 'img' => '../SPdouong/Aquafina.png', 'discount' => ''],
-    ];
-}
+$__catalogData = loadCatalogDataForPage(basename(__FILE__));
+$soft_drinks = $__catalogData['soft_drinks'];
+$beers = $__catalogData['beers'];
+$gifts = $__catalogData['gifts'];
+$fresh_foods = $__catalogData['fresh_foods'];
+$household = $__catalogData['household'];
+$categories = $__catalogData['categories'];
 ?>
 
 <!DOCTYPE html>
@@ -527,7 +522,7 @@ if (empty($products)) {
         color: #98a2b3;
     }
     /* === Unified full-width newsletter + footer (global override) === */
-    .bg-light.py-4, .feedback-section, .newsletter-section, footer { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; }
+    .bg-light.py-4, .feedback-section, .newsletter-section, footer { width: 100%; position: relative; left: 0; right: 0; margin-left: 0; margin-right: 0; }
     .newsletter-section { min-height: 340px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px 16px; background: linear-gradient(135deg, #5865f8 0%, #3844c7 100%); color: #fff; }
     .newsletter-section > .container { width: 100%; max-width: none !important; padding-left: 16px !important; padding-right: 16px !important; }
     .newsletter-section .row { width: 100%; justify-content: center; }
@@ -665,7 +660,7 @@ if (empty($products)) {
                 <div class="category-scroll-wrapper">
                     <div class="category-scroll-inner">
                         <?php foreach($categories as $cat): ?>
-                        <a href="#" class="cat-scroll-item" draggable="false">
+                        <a href="<?php echo $cat['link'] ?? '#'; ?>" class="cat-scroll-item" draggable="false">
                             <img src="<?php echo $cat['img']; ?>" class="cat-scroll-img"
                                 alt="<?php echo $cat['name']; ?>">
                             <span class="cat-scroll-name"><?php echo $cat['name']; ?></span>
@@ -782,16 +777,10 @@ if (empty($products)) {
                     <?php endforeach; ?>
                 </div>
 
-                <div class="pagination-container">
-                    <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-left"></i></a>
-                    <a href="#" class="page-link-custom active">1</a>
-                    <a href="#" class="page-link-custom">2</a>
-                    <a href="#" class="page-link-custom">3</a>
-                    <a href="#" class="page-link-custom">4</a>
-                    <a href="#" class="page-link-custom page-arrow"><i class="fas fa-chevron-right"></i></a>
-                </div>
+                <?php echo catalogRenderPagination($__catalogData['pagination'] ?? []); ?>
 
             </div>
+        </div>
         </div>
 
         <div class="bg-light py-4">
@@ -893,7 +882,7 @@ if (empty($products)) {
                 <div class="row">
                     <div class="col-md-4 mb-4">
                         <div class="d-flex align-items-center mb-3">
-                            <img src="ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
+                            <img src="../TrangUser/ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
                             <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
                         </div>
                         <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và

@@ -55,6 +55,108 @@ function catalogCategoryItems(): array
     ];
 }
 
+function catalogCategoryNameSlugMap(): array
+{
+    $map = [];
+
+    foreach (catalogCategoryItems() as $item) {
+        $name = (string) ($item['name'] ?? '');
+        $slug = (string) ($item['slug'] ?? '');
+
+        if ($name === '' || $slug === '') {
+            continue;
+        }
+
+        $map[catalogNormalizeText($name)] = $slug;
+    }
+
+    return $map;
+}
+
+function catalogCategoryAliasSlugMap(): array
+{
+    return [
+        // Đồ uống
+        'douong' => 'douong',
+        'thucuong' => 'douong',
+        'douuong' => 'douong',
+
+        // Đồ ăn vặt
+        'anvat' => 'anvat',
+        'doanvat' => 'anvat',
+        'snackanvat' => 'anvat',
+        'snack' => 'anvat',
+
+        // Bánh ngọt
+        'banhngot' => 'banhngot',
+
+        // Trái cây
+        'traicay' => 'traicay',
+
+        // Sữa
+        'sua' => 'sua',
+
+        // Mì ăn liền
+        'mianlien' => 'mianlien',
+        'mienlien' => 'mianlien',
+        'migoi' => 'mianlien',
+
+        // Nước ngọt
+        'nuocngot' => 'nuocngot',
+
+        // Tươi sống
+        'tuoisong' => 'tuoisong',
+        'thitca' => 'tuoisong',
+        'thithai' => 'tuoisong',
+
+        // Gia dụng
+        'giadung' => 'giadung',
+
+        // Mỹ phẩm
+        'mypham' => 'mypham',
+
+        // Kem
+        'kem' => 'kem',
+
+        // Rau củ
+        'raucu' => 'raucu',
+
+        // Đồ hộp
+        'dohop' => 'dohop',
+
+        // Thức ăn nhanh
+        'thucannhanh' => 'thucannhanh',
+        'doannhanh' => 'thucannhanh',
+
+        // Gia vị
+        'giavi' => 'giavi',
+
+        // Bia
+        'bia' => 'bia',
+        'douongcocon' => 'bia',
+    ];
+}
+
+function catalogCategoryCodeSlugMap(): array
+{
+    return [
+        'NH01' => 'douong',
+        'NH02' => 'anvat',
+        'NH03' => 'banhngot',
+        'NH04' => 'traicay',
+        'NH05' => 'sua',
+        'NH06' => 'mianlien',
+        'NH07' => 'nuocngot',
+        'NH08' => 'giadung',
+        'NH09' => 'raucu',
+        'NH10' => 'tuoisong',
+        'NH11' => 'kem',
+        'NH14' => 'thucannhanh',
+        'NH15' => 'mypham',
+        'NH16' => 'bia',
+    ];
+}
+
 function catalogPageSlugMap(): array
 {
     return [
@@ -92,65 +194,39 @@ function catalogInferSlug(string $groupName, string $groupCode = ''): string
     $name = catalogNormalizeText($groupName);
     $code = strtoupper(trim($groupCode));
 
-    $codeMap = [
-        'NH01' => 'douong',
-        'NH02' => 'anvat',
-        'NH03' => 'banhngot',
-        'NH04' => 'giadung',
-        'NH05' => 'mypham',
-    ];
-
-    if ($code !== '' && isset($codeMap[$code])) {
-        return $codeMap[$code];
+    $nameMap = catalogCategoryNameSlugMap();
+    if ($name !== '' && isset($nameMap[$name])) {
+        return $nameMap[$name];
     }
 
-    $keywordMap = [
-        'douong' => ['douong', 'nuoc', 'trasua', 'caf', 'coffee', 'tra'],
-        'anvat' => ['anvat', 'snack', 'banhkeo'],
-        'banhngot' => ['banhngot', 'banh', 'ngot'],
-        'bia' => ['bia', 'beer'],
-        'dohop' => ['dohop', 'hop'],
-        'giadung' => ['giadung', 'dungcu', 'vpp'],
-        'giavi' => ['giavi', 'gia', 'vi'],
-        'kem' => ['kem', 'icecream'],
-        'mianlien' => ['mianlien', 'mi', 'migoi'],
-        'mypham' => ['mypham', 'cosmetic', 'skincare'],
-        'nuocngot' => ['nuocngot', 'ngot'],
-        'raucu' => ['raucu', 'rau', 'cu'],
-        'sua' => ['sua', 'milk'],
-        'thucannhanh' => ['thucannhanh', 'fastfood'],
-        'traicay' => ['traicay', 'fruit'],
-        'tuoisong' => ['tuoisong', 'haisan', 'thit', 'ca', 'tom'],
-    ];
+    $aliasMap = catalogCategoryAliasSlugMap();
+    if ($name !== '' && isset($aliasMap[$name])) {
+        return $aliasMap[$name];
+    }
 
-    foreach ($keywordMap as $slug => $keywords) {
-        foreach ($keywords as $keyword) {
-            if ($keyword !== '' && str_contains($name, $keyword)) {
-                return $slug;
-            }
-        }
+    $codeMap = catalogCategoryCodeSlugMap();
+    if ($code !== '' && isset($codeMap[$code])) {
+        return $codeMap[$code];
     }
 
     return 'other';
 }
 
-function catalogGuessImage(string $slug, string $name): string
+function catalogNormalizeImagePath(string $path): string
 {
-    $normalizedName = catalogNormalizeText($name);
-
-    if ($slug === 'mypham' || str_contains($normalizedName, 'cerave')) {
-        return 'cerave.png';
+    $path = trim($path);
+    if ($path === '') {
+        return '../TrangUser/ack.png';
     }
 
-    if ($slug === 'tuoisong' || str_contains($normalizedName, 'tom') || str_contains($normalizedName, 'shrimp')) {
-        return 'tom.png';
+    $path = str_replace('\\', '/', $path);
+    $path = preg_replace('#/+#', '/', $path) ?? $path;
+
+    if (preg_match('#^(https?:)?//#i', $path) === 1) {
+        return $path;
     }
 
-    if (in_array($slug, ['douong', 'nuocngot', 'bia'], true)) {
-        return '../SPdouong/trasua.png';
-    }
-
-    return '../TrangUser/ack.png';
+    return $path;
 }
 
 function catalogResolveStock(array $row): int
@@ -219,13 +295,13 @@ function catalogFetchProducts(): array
             $groupName = (string) catalogPickValue($row, ['tennhomhang', 'ten_nhom_hang', 'nhomhangten', 'NhomHangTen'], '');
             $groupCode = (string) catalogPickValue($row, ['manhomhang', 'ma_nhom_hang', 'nhomhangma', 'NhomHangMa'], '');
             $unit = (string) catalogPickValue($row, ['dvt', 'donvitinh', 'don_vi_tinh'], '');
-            $price = (float) catalogPickValue($row, ['sotiencothue', 'so_tien_co_thue', 'giacothue', 'gia_co_thue'], 0);
-            if ($price <= 0) {
-                $donGia = (float) catalogPickValue($row, ['dongia', 'don_gia', 'giaban', 'gia'], 0);
-                $vatRaw = (string) catalogPickValue($row, ['vat', 'thuevat', 'thue_vat'], '0');
-                $vatPercent = (float) str_replace('%', '', str_replace(',', '.', $vatRaw));
-                $price = $donGia > 0 ? $donGia * (1 + ($vatPercent / 100)) : 0;
-            }
+            $image = (string) catalogPickValue($row, ['hinhanh', 'hinh_anh', 'image', 'img'], '');
+            $donGia = (float) catalogPickValue($row, ['dongia', 'don_gia', 'giaban', 'gia'], 0);
+            $vatRaw = (string) catalogPickValue($row, ['vat', 'thuevat', 'thue_vat'], '0');
+            $vatPercent = (float) str_replace('%', '', str_replace(',', '.', $vatRaw));
+            $computedPrice = $donGia > 0 ? $donGia * (1 + ($vatPercent / 100)) : 0;
+            $storedTaxedPrice = (float) catalogPickValue($row, ['sotiencothue', 'so_tien_co_thue', 'giacothue', 'gia_co_thue'], 0);
+            $price = $computedPrice > 0 ? $computedPrice : $storedTaxedPrice;
             $vat = (float) str_replace('%', '', (string) catalogPickValue($row, ['vat', 'thuevat', 'thue_vat'], 0));
             $stock = catalogResolveStock($row);
 
@@ -234,7 +310,7 @@ function catalogFetchProducts(): array
             }
 
             if ($price <= 0) {
-                $price = 10000;
+                continue;
             }
 
             $slug = catalogInferSlug($groupName, $groupCode);
@@ -254,7 +330,7 @@ function catalogFetchProducts(): array
                 'discount' => '-10%',
                 'vat' => $vat,
                 'stock' => $stock,
-                'img' => catalogGuessImage($slug, $name),
+                'img' => catalogNormalizeImagePath($image),
                 'link' => 'drink-detail.php?id=' . urlencode($id),
             ];
         }
@@ -276,49 +352,95 @@ function catalogSplitRows(array $products): array
     ];
 }
 
-function catalogFallbackProducts(): array
+function catalogResolveCurrentPage(): int
 {
-    return [
-        [
-            'id' => 'SPF01',
-            'slug' => 'douong',
-            'name' => 'Trà sữa truyền thống',
-            'price_raw' => 20000,
-            'old_price_raw' => 25000,
-            'price' => '20.000 ₫',
-            'old' => '25.000 ₫',
-            'discount' => '-10%',
-            'stock' => 10,
-            'img' => '../SPdouong/trasua.png',
-            'link' => 'drink-detail.php?sku=trasua',
-        ],
-        [
-            'id' => 'SPF02',
-            'slug' => 'mypham',
-            'name' => 'Sữa rửa mặt CeraVe',
-            'price_raw' => 390000,
-            'old_price_raw' => 450000,
-            'price' => '390.000 ₫',
-            'old' => '450.000 ₫',
-            'discount' => '-10%',
-            'stock' => 8,
-            'img' => 'cerave.png',
-            'link' => 'drink-detail.php?sku=trasua',
-        ],
-        [
-            'id' => 'SPF03',
-            'slug' => 'tuoisong',
-            'name' => 'Tôm thẻ tươi sống',
-            'price_raw' => 180000,
-            'old_price_raw' => 220000,
-            'price' => '180.000 ₫',
-            'old' => '220.000 ₫',
-            'discount' => '-10%',
-            'stock' => 12,
-            'img' => 'tom.png',
-            'link' => 'drink-detail.php?sku=trasua',
-        ],
-    ];
+    $raw = $_GET['page'] ?? 1;
+    $page = (int) $raw;
+
+    return $page > 0 ? $page : 1;
+}
+
+function catalogBuildPageUrl(int $targetPage): string
+{
+    $targetPage = max(1, $targetPage);
+    $query = $_GET;
+    $query['page'] = $targetPage;
+
+    return '?' . http_build_query($query);
+}
+
+function catalogRenderPagination(array $pagination): string
+{
+    $totalPages = max(1, (int) ($pagination['total_pages'] ?? 1));
+    $currentPage = max(1, min((int) ($pagination['current_page'] ?? 1), $totalPages));
+
+    if ($totalPages <= 1) {
+        return '';
+    }
+
+    $html = '<div class="pagination-container">';
+
+    if ($currentPage > 1) {
+        $html .= '<a href="' . htmlspecialchars(catalogBuildPageUrl($currentPage - 1), ENT_QUOTES, 'UTF-8') . '" class="page-link-custom page-arrow"><i class="fas fa-chevron-left"></i></a>';
+    } else {
+        $html .= '<span class="page-link-custom page-arrow" style="opacity:.45;pointer-events:none;"><i class="fas fa-chevron-left"></i></span>';
+    }
+
+    $pagesToRender = [];
+
+    if ($totalPages <= 7) {
+        for ($page = 1; $page <= $totalPages; $page++) {
+            $pagesToRender[] = $page;
+        }
+    } else {
+        if ($currentPage <= 3) {
+            $pagesToRender = [1, 2, 3, 4, '...', $totalPages];
+        } elseif ($currentPage >= $totalPages - 2) {
+            $pagesToRender = [1, '...', $totalPages - 3, $totalPages - 2, $totalPages - 1, $totalPages];
+        } else {
+            $pagesToRender = [1, '...', $currentPage - 1, $currentPage, $currentPage + 1, '...', $totalPages];
+        }
+
+        $pagesToRender = array_values(array_filter($pagesToRender, static function ($token) use ($totalPages) {
+            if ($token === '...') {
+                return true;
+            }
+
+            return is_int($token) && $token >= 1 && $token <= $totalPages;
+        }));
+
+        $deduped = [];
+        $lastToken = null;
+        foreach ($pagesToRender as $token) {
+            if ($token === '...' && $lastToken === '...') {
+                continue;
+            }
+            $deduped[] = $token;
+            $lastToken = $token;
+        }
+        $pagesToRender = $deduped;
+    }
+
+    foreach ($pagesToRender as $token) {
+        if ($token === '...') {
+            $html .= '<span class="page-link-custom" style="pointer-events:none;opacity:.7;">...</span>';
+            continue;
+        }
+
+        $page = (int) $token;
+        $activeClass = $page === $currentPage ? ' active' : '';
+        $html .= '<a href="' . htmlspecialchars(catalogBuildPageUrl($page), ENT_QUOTES, 'UTF-8') . '" class="page-link-custom' . $activeClass . '">' . $page . '</a>';
+    }
+
+    if ($currentPage < $totalPages) {
+        $html .= '<a href="' . htmlspecialchars(catalogBuildPageUrl($currentPage + 1), ENT_QUOTES, 'UTF-8') . '" class="page-link-custom page-arrow"><i class="fas fa-chevron-right"></i></a>';
+    } else {
+        $html .= '<span class="page-link-custom page-arrow" style="opacity:.45;pointer-events:none;"><i class="fas fa-chevron-right"></i></span>';
+    }
+
+    $html .= '</div>';
+
+    return $html;
 }
 
 function loadCatalogDataForPage(string $fileName): array
@@ -327,26 +449,32 @@ function loadCatalogDataForPage(string $fileName): array
     $categories = catalogCategoryItems();
     $products = catalogFetchProducts();
 
-    if (count($products) === 0) {
-        $products = catalogFallbackProducts();
-    }
-
-    $availableProducts = array_values(array_filter($products, static function (array $item): bool {
-        return (int) ($item['stock'] ?? 0) > 0;
-    }));
-
-    $filtered = $availableProducts;
+    $filtered = array_values($products);
     if ($pageSlug !== 'home') {
-        $filtered = array_values(array_filter($availableProducts, static function (array $item) use ($pageSlug): bool {
+        $filtered = array_values(array_filter($products, static function (array $item) use ($pageSlug): bool {
             return ($item['slug'] ?? '') === $pageSlug;
         }));
     }
 
-    $split = catalogSplitRows($filtered);
+    $perPage = 20;
+    $totalItems = count($filtered);
+    $totalPages = max(1, (int) ceil($totalItems / $perPage));
+    $currentPage = min(catalogResolveCurrentPage(), $totalPages);
+    $offset = ($currentPage - 1) * $perPage;
+    $pagedProducts = array_slice($filtered, $offset, $perPage);
+
+    $split = catalogSplitRows($pagedProducts);
 
     return array_merge($split, [
         'categories' => $categories,
-        'all_products' => $filtered,
+        'all_products' => $pagedProducts,
+        'all_products_total' => $totalItems,
+        'pagination' => [
+            'current_page' => $currentPage,
+            'total_pages' => $totalPages,
+            'total_items' => $totalItems,
+            'per_page' => $perPage,
+        ],
         'page_slug' => $pageSlug,
     ]);
 }
@@ -354,9 +482,6 @@ function loadCatalogDataForPage(string $fileName): array
 function loadFeaturedProductsFromDb(int $limit = 8): array
 {
     $products = catalogFetchProducts();
-    if (count($products) === 0) {
-        $products = catalogFallbackProducts();
-    }
 
     $products = array_values(array_filter($products, static function (array $item): bool {
         return (int) ($item['stock'] ?? 0) > 0;
