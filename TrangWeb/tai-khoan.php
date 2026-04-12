@@ -108,6 +108,16 @@ $userId = (int) ($_SESSION['user_id'] ?? 0);
 $userName = trim((string) ($_SESSION['user_name'] ?? 'Người dùng'));
 $userEmail = trim((string) ($_SESSION['user_email'] ?? ''));
 $userRole = strtolower(trim((string) ($_SESSION['user_role'] ?? 'user')));
+$userLanguage = strtolower(trim((string) ($_SESSION['user_language'] ?? 'vi')));
+$userTheme = strtolower(trim((string) ($_SESSION['user_theme'] ?? 'light')));
+
+if (!in_array($userLanguage, ['vi', 'en'], true)) {
+    $userLanguage = 'vi';
+}
+
+if (!in_array($userTheme, ['light', 'dark', 'system'], true)) {
+    $userTheme = 'light';
+}
 
 $roleLabelMap = [
     'admin' => 'Quản trị viên',
@@ -170,6 +180,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $flashMessage = 'Đã cập nhật tên hiển thị trong phiên làm việc.';
             $flashType = 'warning';
         }
+    }
+
+    $tab = 'settings';
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_system_settings') {
+    $newLanguage = strtolower(trim((string) ($_POST['language'] ?? 'vi')));
+    $newTheme = strtolower(trim((string) ($_POST['theme'] ?? 'light')));
+
+    if (!in_array($newLanguage, ['vi', 'en'], true) || !in_array($newTheme, ['light', 'dark', 'system'], true)) {
+        $flashMessage = 'Thiết lập hệ thống không hợp lệ.';
+        $flashType = 'danger';
+    } else {
+        $_SESSION['user_language'] = $newLanguage;
+        $_SESSION['user_theme'] = $newTheme;
+        $userLanguage = $newLanguage;
+        $userTheme = $newTheme;
+        $flashMessage = 'Đã lưu cài đặt hệ thống.';
+        $flashType = 'success';
     }
 
     $tab = 'settings';
@@ -492,10 +521,8 @@ if (isset($conn) && $conn instanceof mysqli) {
 
 <body>
     <div class="container py-4 py-md-5">
-        <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="d-flex align-items-center mb-3">
             <h4 class="mb-0 fw-bold">Tài khoản người dùng</h4>
-            <a href="trangchu.php" class="btn btn-outline-primary btn-sm"><i class="fas fa-arrow-left me-1"></i>Về trang
-                chủ</a>
         </div>
 
         <?php if ($flashMessage !== ''): ?>
@@ -671,6 +698,29 @@ if (isset($conn) && $conn instanceof mysqli) {
                         </div>
                         <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-1"></i>Lưu thay
                             đổi</button>
+                    </form>
+
+                    <hr class="my-4">
+
+                    <h6 class="fw-bold mb-3">Cài đặt hệ thống</h6>
+                    <form method="post">
+                        <input type="hidden" name="action" value="save_system_settings">
+                        <div class="mb-3">
+                            <label class="form-label">Ngôn ngữ</label>
+                            <select class="form-select" name="language">
+                                <option value="vi" <?php echo $userLanguage === 'vi' ? 'selected' : ''; ?>>Tiếng Việt</option>
+                                <option value="en" <?php echo $userLanguage === 'en' ? 'selected' : ''; ?>>English</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Theme</label>
+                            <select class="form-select" name="theme">
+                                <option value="light" <?php echo $userTheme === 'light' ? 'selected' : ''; ?>>Light</option>
+                                <option value="dark" <?php echo $userTheme === 'dark' ? 'selected' : ''; ?>>Dark</option>
+                                <option value="system" <?php echo $userTheme === 'system' ? 'selected' : ''; ?>>Theo hệ thống</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-outline-primary"><i class="fas fa-sliders me-1"></i>Lưu cài đặt hệ thống</button>
                     </form>
                 </div>
                 <?php endif; ?>

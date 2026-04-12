@@ -576,168 +576,173 @@ $totalDepartments = count($departments);
 
         <div class="department-top-sticky">
 
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
-            <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
-        </div>
-
-        <div class="top-header">
-            <h2 class="page-title">Quản lý bộ phận</h2>
-            <input type="text" class="search-top" placeholder="Tìm kiếm">
-        </div>
-
-        <?php if ($dbError !== ''): ?>
-        <div class="alert alert-warning" role="alert">
-            Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
-        </div>
-        <?php endif; ?>
-
-        <?php if ($crudMessage !== ''): ?>
-        <div class="alert alert-success" role="alert">
-            <?php echo htmlspecialchars($crudMessage); ?>
-        </div>
-        <?php endif; ?>
-
-        <?php if ($crudError !== ''): ?>
-        <div class="alert alert-danger" role="alert">
-            <?php echo htmlspecialchars($crudError); ?>
-        </div>
-        <?php endif; ?>
-
-        <div class="summary-cards">
-            <div class="card-box">
-                <span class="card-title-text">Tổng bộ phận</span>
-                <p class="card-number"><?php echo $totalDepartments; ?></p>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
+                <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
             </div>
-            <div class="card-box">
-                <span class="card-title-text">Đang sử dụng</span>
-                <p class="card-number"><?php echo $totalDepartments; ?></p>
-            </div>
-            <div class="card-box">
-                <span class="card-title-text">Chưa có dữ liệu</span>
-                <p class="card-number"><?php echo ($totalDepartments === 0) ? 1 : 0; ?></p>
-            </div>
-        </div>
 
-        <div class="d-flex gap-2 mb-4">
-            <button class="btn btn-add-department mb-0" data-bs-toggle="modal" data-bs-target="#addDepartmentModal">
-                <i class="fas fa-plus me-1"></i> Thêm bộ phận
-            </button>
-            <button class="btn btn-warning fw-semibold" id="btnEditDepartment" disabled>
-                <i class="fas fa-pen me-1"></i> Sửa
-            </button>
-            <button class="btn btn-info fw-semibold text-white" id="btnViewDepartment" disabled>
-                <i class="fas fa-eye me-1"></i> Xem chi tiết
-            </button>
-            <button class="btn btn-danger fw-semibold" id="btnDeleteDepartment" disabled>
-                <i class="fas fa-trash me-1"></i> Xóa
-            </button>
-        </div>
+            <div class="top-header">
+                <h2 class="page-title">Quản lý bộ phận</h2>
+                <input type="text" class="search-top" placeholder="Tìm kiếm">
+            </div>
+
+            <?php if ($dbError !== ''): ?>
+            <div class="alert alert-warning" role="alert">
+                Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($crudMessage !== ''): ?>
+            <div class="alert alert-success" role="alert">
+                <?php echo htmlspecialchars($crudMessage); ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($crudError !== ''): ?>
+            <div class="alert alert-danger" role="alert">
+                <?php echo htmlspecialchars($crudError); ?>
+            </div>
+            <?php endif; ?>
+
+            <div class="summary-cards">
+                <div class="card-box">
+                    <span class="card-title-text">Tổng bộ phận</span>
+                    <p class="card-number"><?php echo $totalDepartments; ?></p>
+                </div>
+                <div class="card-box">
+                    <span class="card-title-text">Đang sử dụng</span>
+                    <p class="card-number"><?php echo $totalDepartments; ?></p>
+                </div>
+                <div class="card-box">
+                    <span class="card-title-text">Chưa có dữ liệu</span>
+                    <p class="card-number"><?php echo ($totalDepartments === 0) ? 1 : 0; ?></p>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mb-4">
+                <button class="btn btn-add-department mb-0" data-bs-toggle="modal" data-bs-target="#addDepartmentModal">
+                    <i class="fas fa-plus me-1"></i> Thêm bộ phận
+                </button>
+                <button class="btn btn-warning fw-semibold" id="btnEditDepartment" disabled>
+                    <i class="fas fa-pen me-1"></i> Sửa bộ phận
+                </button>
+                <button class="btn btn-info fw-semibold text-white" id="btnViewDepartment" disabled>
+                    <i class="fas fa-eye me-1"></i> Xem chi tiết
+                </button>
+                <button class="btn btn-danger fw-semibold" id="btnDeleteDepartment" disabled>
+                    <i class="fas fa-trash me-1"></i> Xóa
+                </button>
+            </div>
         </div>
 
         <div id="departmentContentOffset" class="department-content-offset">
 
-        <div class="modal fade" id="addDepartmentModal" tabindex="-1" aria-labelledby="addDepartmentModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title fw-bold" id="addDepartmentModalLabel">Thêm bộ phận</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <form method="post">
-                        <input type="hidden" name="crud_action" value="add_department">
-                        <div class="modal-body">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label for="departmentId" class="form-label">Mã bộ phận</label>
-                                    <input type="text" class="form-control" id="departmentId" name="department_id" value="<?php echo htmlspecialchars($nextDepartmentId); ?>" readonly>
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="departmentName" class="form-label">Tên bộ phận</label>
-                                    <input type="text" class="form-control" id="departmentName" name="department_name" placeholder="Nhập tên bộ phận" required>
+            <div class="modal fade" id="addDepartmentModal" tabindex="-1" aria-labelledby="addDepartmentModalLabel"
+                aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title fw-bold" id="addDepartmentModalLabel">Thêm bộ phận</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form method="post">
+                            <input type="hidden" name="crud_action" value="add_department">
+                            <div class="modal-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="departmentId" class="form-label">Mã bộ phận</label>
+                                        <input type="text" class="form-control" id="departmentId" name="department_id"
+                                            value="<?php echo htmlspecialchars($nextDepartmentId); ?>" readonly>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="departmentName" class="form-label">Tên bộ phận</label>
+                                        <input type="text" class="form-control" id="departmentName"
+                                            name="department_name" placeholder="Nhập tên bộ phận" required>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                                <button type="submit" class="btn btn-primary">Lưu bộ phận</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="detailOverlay" class="detail-overlay" onclick="closeDetailPanel()"></div>
+
+            <div id="detailPanel" class="detail-panel">
+                <div class="detail-header">
+                    <h5>Chi tiết bộ phận</h5>
+                    <button type="button" class="btn-close" onclick="closeDetailPanel()"></button>
+                </div>
+                <div class="detail-content">
+                    <div class="detail-field">
+                        <label>Mã bộ phận</label>
+                        <input type="text" id="detailId" readonly>
+                    </div>
+                    <div class="detail-field">
+                        <label>Tên bộ phận</label>
+                        <input type="text" id="detailName">
+                    </div>
+                </div>
+                <div class="detail-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeDetailPanel()">Đóng</button>
+                    <button type="button" class="btn btn-primary" id="btnDetailSave">Lưu thay đổi</button>
+                </div>
+            </div>
+
+            <div class="modal fade" id="deleteDepartmentModal" tabindex="-1"
+                aria-labelledby="deleteDepartmentModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="deleteDepartmentModalLabel">Xác nhận xóa</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            Bạn có chắc chắn muốn xóa bộ phận <strong id="deleteDepartmentName"></strong> không?
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                            <button type="submit" class="btn btn-primary">Lưu bộ phận</button>
+                            <button type="button" class="btn btn-danger" id="btnConfirmDeleteDepartment">Xóa</button>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div id="detailOverlay" class="detail-overlay" onclick="closeDetailPanel()"></div>
-
-        <div id="detailPanel" class="detail-panel">
-            <div class="detail-header">
-                <h5>Chi tiết bộ phận</h5>
-                <button type="button" class="btn-close" onclick="closeDetailPanel()"></button>
-            </div>
-            <div class="detail-content">
-                <div class="detail-field">
-                    <label>Mã bộ phận</label>
-                    <input type="text" id="detailId" readonly>
-                </div>
-                <div class="detail-field">
-                    <label>Tên bộ phận</label>
-                    <input type="text" id="detailName">
-                </div>
-            </div>
-            <div class="detail-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeDetailPanel()">Đóng</button>
-                <button type="button" class="btn btn-primary" id="btnDetailSave">Lưu thay đổi</button>
-            </div>
-        </div>
-
-        <div class="modal fade" id="deleteDepartmentModal" tabindex="-1" aria-labelledby="deleteDepartmentModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="deleteDepartmentModalLabel">Xác nhận xóa</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        Bạn có chắc chắn muốn xóa bộ phận <strong id="deleteDepartmentName"></strong> không?
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                        <button type="button" class="btn btn-danger" id="btnConfirmDeleteDepartment">Xóa</button>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="table-container">
-            <div class="table-header">
-                <h5>Danh sách bộ phận</h5>
-                <a href="#" class="text-dark"><i class="fas fa-download"></i></a>
+            <div class="table-container">
+                <div class="table-header">
+                    <h5>Danh sách bộ phận</h5>
+                    <a href="#" class="text-dark"><i class="fas fa-download"></i></a>
+                </div>
+                <div class="department-table-scroll">
+                    <table class="table text-center">
+                        <thead>
+                            <tr>
+                                <th class="text-center" width="35%">Mã bộ phận</th>
+                                <th class="text-center" width="65%">Tên bộ phận</th>
+                            </tr>
+                        </thead>
+                        <tbody id="departmentTableBody">
+                            <?php foreach($departments as $d): ?>
+                            <tr class="department-row" data-id="<?php echo htmlspecialchars($d['id']); ?>"
+                                data-name="<?php echo htmlspecialchars($d['name']); ?>">
+                                <td class="text-center"><?php echo htmlspecialchars($d['id']); ?></td>
+                                <td class="text-center"><?php echo htmlspecialchars($d['name']); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div class="department-table-scroll">
-                <table class="table text-center">
-                    <thead>
-                        <tr>
-                            <th class="text-center" width="35%">Mã bộ phận</th>
-                            <th class="text-center" width="65%">Tên bộ phận</th>
-                        </tr>
-                    </thead>
-                    <tbody id="departmentTableBody">
-                        <?php foreach($departments as $d): ?>
-                        <tr class="department-row" data-id="<?php echo htmlspecialchars($d['id']); ?>" data-name="<?php echo htmlspecialchars($d['name']); ?>">
-                            <td class="text-center"><?php echo htmlspecialchars($d['id']); ?></td>
-                            <td class="text-center"><?php echo htmlspecialchars($d['name']); ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
 
-        <form method="post" id="departmentEditForm" class="d-none">
-            <input type="hidden" name="crud_action" value="update_department">
-            <input type="hidden" name="department_id" id="editDepartmentId">
-            <input type="hidden" name="department_name" id="editDepartmentName">
-        </form>
+            <form method="post" id="departmentEditForm" class="d-none">
+                <input type="hidden" name="crud_action" value="update_department">
+                <input type="hidden" name="department_id" id="editDepartmentId">
+                <input type="hidden" name="department_name" id="editDepartmentName">
+            </form>
 
         </div>
 
@@ -865,7 +870,8 @@ $totalDepartments = count($departments);
         const departmentName = selectedRow.getAttribute('data-name') || pendingDeleteDepartmentId;
         document.getElementById('deleteDepartmentName').textContent = departmentName;
 
-        const deleteModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteDepartmentModal'));
+        const deleteModal = bootstrap.Modal.getOrCreateInstance(document.getElementById(
+            'deleteDepartmentModal'));
         deleteModal.show();
     });
 

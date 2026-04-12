@@ -565,6 +565,26 @@ try {
             ]);
         }
 
+        case 'get_cart_count': {
+            $activeCartId = getActiveCartId($conn, $maKhachHang);
+            if ($activeCartId === null) {
+                respondCart(true, 'Lấy số lượng giỏ hàng thành công.', [
+                    'cart_count' => 0,
+                ]);
+            }
+
+            $countStmt = $conn->prepare('SELECT COALESCE(SUM(so_luong), 0) AS total_qty FROM gio_hang_chi_tiet WHERE id_gio_hang = ?');
+            $countStmt->bind_param('i', $activeCartId);
+            $countStmt->execute();
+            $countRes = $countStmt->get_result();
+            $countRow = $countRes ? $countRes->fetch_assoc() : null;
+            $countStmt->close();
+
+            respondCart(true, 'Lấy số lượng giỏ hàng thành công.', [
+                'cart_count' => max(0, (int) ($countRow['total_qty'] ?? 0)),
+            ]);
+        }
+
         case 'apply_voucher': {
             ensureVoucherUsageTable($conn);
 

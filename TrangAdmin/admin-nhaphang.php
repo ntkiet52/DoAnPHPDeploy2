@@ -1091,7 +1091,7 @@ foreach ($importItems as $item) {
                 <button class="btn btn-success fw-semibold" id="btnAddImportItem"><i class="fas fa-cart-plus me-1"></i>
                     Thêm hàng vào phiếu</button>
                 <button class="btn btn-warning fw-semibold" id="btnEditImport" disabled><i class="fas fa-pen me-1"></i>
-                    Sửa</button>
+                    Sửa nhập hàng</button>
                 <button class="btn btn-info fw-semibold text-white" id="btnViewImport" disabled><i
                         class="fas fa-eye me-1"></i>
                     Xem chi tiết</button>

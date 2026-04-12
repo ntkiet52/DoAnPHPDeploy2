@@ -632,25 +632,6 @@ $categories = $__catalogData['categories'];
 
             <div class="col-lg-9">
 
-                <div id="tetCarousel" class="carousel slide main-banner mb-4" data-bs-ride="carousel">
-                    <div class="carousel-inner">
-                        <div class="carousel-item active">
-                            <img src="../anhtrangchu/muctet.png" class="d-block w-100" alt="Tet Banner 1">
-                        </div>
-                        <div class="carousel-item">
-                            <img src="../anhtrangchu/drthanh.png" class="d-block w-100" alt="Tet Banner 2">
-                        </div>
-                    </div>
-                    <button class="carousel-control-prev" type="button" data-bs-target="#tetCarousel"
-                        data-bs-slide="prev">
-                        <span class="carousel-control-prev-icon bg-dark rounded-circle p-3" aria-hidden="true"></span>
-                    </button>
-                    <button class="carousel-control-next" type="button" data-bs-target="#tetCarousel"
-                        data-bs-slide="next">
-                        <span class="carousel-control-next-icon bg-dark rounded-circle p-3" aria-hidden="true"></span>
-                    </button>
-                </div>
-
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h4 class="fw-bold mb-0">Sản phẩm</h4>
                     <a href="#" class="text-primary text-decoration-none fw-bold">Xem tất cả <i
@@ -943,7 +924,7 @@ $categories = $__catalogData['categories'];
         </footer>
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="web-events.js?v=20260412-2"></script>
+        <script src="web-events.js?v=20260412-3"></script>
 
         <script>
         const slider = document.querySelector('.category-scroll-inner');

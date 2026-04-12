@@ -9,6 +9,117 @@ $isAdminUser = isset($_SESSION['user_role']) && strtolower((string) $_SESSION['u
 $adminEditError = '';
 $adminEditSuccess = '';
 
+function detailPageGetPdo(): PDO
+{
+    return new PDO(
+        'mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4',
+        'root',
+        '',
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
+    );
+}
+
+function detailEnsureCommentSchema(PDO $pdo): void
+{
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS hanghoa_binhluan (
+            Id INT NOT NULL AUTO_INCREMENT,
+            MaHang VARCHAR(10) NOT NULL,
+            ParentId INT NULL,
+            TenNguoiDung VARCHAR(120) NOT NULL,
+            NoiDung TEXT NOT NULL,
+            HinhAnh VARCHAR(255) NULL,
+            SoSao TINYINT NOT NULL DEFAULT 0,
+            NgayTao TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (Id),
+            KEY idx_hanghoa_binhluan_mahang (MaHang),
+            KEY idx_hanghoa_binhluan_parent (ParentId),
+            CONSTRAINT fk_hanghoa_binhluan_mahang FOREIGN KEY (MaHang)
+                REFERENCES hanghoa (MaHang) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    );
+
+    try {
+        $pdo->exec("ALTER TABLE hanghoa_binhluan ADD COLUMN IF NOT EXISTS ParentId INT NULL AFTER MaHang");
+    } catch (Throwable $e) {
+        // MariaDB cũ có thể không hỗ trợ IF NOT EXISTS, bỏ qua để không chặn trang.
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE hanghoa_binhluan ADD COLUMN IF NOT EXISTS HinhAnh VARCHAR(255) NULL AFTER NoiDung");
+    } catch (Throwable $e) {
+        // MariaDB cũ có thể không hỗ trợ IF NOT EXISTS, bỏ qua để không chặn trang.
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE hanghoa_binhluan ADD COLUMN IF NOT EXISTS NguoiDungId INT NULL AFTER SoSao");
+    } catch (Throwable $e) {
+        // MariaDB cũ có thể không hỗ trợ IF NOT EXISTS, bỏ qua để không chặn trang.
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE hanghoa_binhluan ADD COLUMN IF NOT EXISTS VaiTroNguoiDung VARCHAR(30) NULL AFTER NguoiDungId");
+    } catch (Throwable $e) {
+        // MariaDB cũ có thể không hỗ trợ IF NOT EXISTS, bỏ qua để không chặn trang.
+    }
+}
+
+function detailHandleCommentImageUpload(array $file): array
+{
+    if (!isset($file['error']) || (int)$file['error'] === UPLOAD_ERR_NO_FILE) {
+        return ['path' => '', 'error' => ''];
+    }
+
+    if ((int)$file['error'] !== UPLOAD_ERR_OK) {
+        return ['path' => '', 'error' => 'Tải ảnh lên thất bại, vui lòng thử lại.'];
+    }
+
+    $tmpPath = (string)($file['tmp_name'] ?? '');
+    if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+        return ['path' => '', 'error' => 'Tệp ảnh không hợp lệ.'];
+    }
+
+    $size = (int)($file['size'] ?? 0);
+    if ($size <= 0 || $size > (5 * 1024 * 1024)) {
+        return ['path' => '', 'error' => 'Ảnh tối đa 5MB.'];
+    }
+
+    $imgInfo = @getimagesize($tmpPath);
+    if ($imgInfo === false) {
+        return ['path' => '', 'error' => 'Tệp tải lên không phải ảnh hợp lệ.'];
+    }
+
+    $mime = strtolower((string)($imgInfo['mime'] ?? ''));
+    $allowedMimeToExt = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+
+    if (!isset($allowedMimeToExt[$mime])) {
+        return ['path' => '', 'error' => 'Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.'];
+    }
+
+    $uploadDir = __DIR__ . '/uploads/comment-images';
+    if (!is_dir($uploadDir) && !@mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+        return ['path' => '', 'error' => 'Không thể tạo thư mục lưu ảnh bình luận.'];
+    }
+
+    $ext = $allowedMimeToExt[$mime];
+    $fileName = 'cmt_' . date('Ymd_His') . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+    $targetPath = $uploadDir . '/' . $fileName;
+
+    if (!@move_uploaded_file($tmpPath, $targetPath)) {
+        return ['path' => '', 'error' => 'Không thể lưu ảnh bình luận.'];
+    }
+
+    return ['path' => 'uploads/comment-images/' . $fileName, 'error' => ''];
+}
+
 if ($isAdminUser && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['admin_action'] ?? '') === 'update_detail_product') {
     $editProductId = trim((string) ($_POST['product_id'] ?? ''));
     $editName = trim((string) ($_POST['ten_hang'] ?? ''));
@@ -22,15 +133,7 @@ if ($isAdminUser && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['ad
         $adminEditError = 'Vui lòng nhập đầy đủ thông tin hợp lệ (tên, đơn vị tính, đơn giá).';
     } else {
         try {
-            $pdo = new PDO(
-                'mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4',
-                'root',
-                '',
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                ]
-            );
+            $pdo = detailPageGetPdo();
 
             $soTienCoThue = $editPrice * (1 + ($editVat / 100));
 
@@ -468,12 +571,149 @@ if ($productId !== '') {
     }
 }
 
-$reviews = [
-    ['name' => 'Phạm Chi Hiếu', 'rating' => 5, 'content' => 'Sản phẩm ngon, đúng vị, giao hàng nhanh.'],
-    ['name' => 'Nguyễn Thanh Kiệt', 'rating' => 5, 'content' => 'Đóng gói cẩn thận, đồ uống mát lạnh, giá hợp lý.'],
-    ['name' => 'Lê Quốc Ân', 'rating' => 4, 'content' => 'Uống ổn, vị dễ chịu, sẽ ủng hộ tiếp.'],
-    ['name' => 'Đinh Quốc Cường', 'rating' => 5, 'content' => 'Chất lượng tốt, phục vụ nhanh, rất hài lòng.']
-];
+$commentError = '';
+$commentSuccess = '';
+$reviews = [];
+
+$isLoggedInUser = isset($_SESSION['user_id']) && (int)($_SESSION['user_id']) > 0;
+$currentUserName = trim((string)($_SESSION['user_name'] ?? ''));
+$currentUserId = $isLoggedInUser ? (int)($_SESSION['user_id'] ?? 0) : null;
+$currentUserRole = strtolower(trim((string)($_SESSION['user_role'] ?? 'guest')));
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['comment_action'] ?? '') === 'submit_product_comment') {
+    $commentProductId = trim((string)($_POST['product_id'] ?? ''));
+    $commentContent = trim((string)($_POST['comment_content'] ?? ''));
+    $parentCommentId = (int)($_POST['parent_comment_id'] ?? 0);
+    $parentCommentId = $parentCommentId > 0 ? $parentCommentId : null;
+    $commentRating = (int)($_POST['comment_rating'] ?? 5);
+    $commentRating = max(1, min(5, $commentRating));
+
+    $postedGuestName = trim((string)($_POST['guest_name'] ?? ''));
+    $commentUserName = $currentUserName !== '' ? $currentUserName : ($postedGuestName !== '' ? $postedGuestName : 'Khách hàng');
+
+    $isReply = $parentCommentId !== null;
+    if ($isReply) {
+        $commentRating = 0;
+    }
+
+    $uploadedImagePath = '';
+    $uploadResult = detailHandleCommentImageUpload($_FILES['comment_image'] ?? []);
+    if (($uploadResult['error'] ?? '') !== '') {
+        $commentError = (string)$uploadResult['error'];
+    } else {
+        $uploadedImagePath = (string)($uploadResult['path'] ?? '');
+    }
+
+    if ($commentError === '' && $commentProductId === '') {
+        $commentError = 'Không xác định được sản phẩm để bình luận.';
+    }
+
+    if ($commentError === '' && $commentContent === '' && $uploadedImagePath === '') {
+        $commentError = 'Vui lòng nhập nội dung hoặc chọn ảnh trước khi gửi.';
+    } else {
+        if ($commentError === '') {
+            try {
+            $pdo = detailPageGetPdo();
+            detailEnsureCommentSchema($pdo);
+
+            $insertStmt = $pdo->prepare(
+                'INSERT INTO hanghoa_binhluan (MaHang, ParentId, TenNguoiDung, NoiDung, HinhAnh, SoSao, NguoiDungId, VaiTroNguoiDung)
+                 VALUES (:mahang, :parentid, :ten, :noidung, :hinhanh, :sosao, :nguoidungid, :vaitro)'
+            );
+
+            $insertStmt->execute([
+                ':mahang' => $commentProductId,
+                ':parentid' => $parentCommentId,
+                ':ten' => mb_substr($commentUserName, 0, 120, 'UTF-8'),
+                ':noidung' => $commentContent,
+                ':hinhanh' => $uploadedImagePath !== '' ? $uploadedImagePath : null,
+                ':sosao' => $commentRating,
+                ':nguoidungid' => $currentUserId,
+                ':vaitro' => $currentUserRole,
+            ]);
+
+            header('Location: drink-detail.php?id=' . urlencode($commentProductId) . '&comment_saved=1#reviews');
+            exit;
+            } catch (Throwable $e) {
+                $commentError = 'Không thể gửi bình luận lúc này: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+if ((string)($_GET['comment_saved'] ?? '') === '1') {
+    $commentSuccess = 'Đã gửi bình luận thành công. Khách hàng khác có thể thấy bình luận này.';
+}
+
+try {
+    $pdo = detailPageGetPdo();
+    detailEnsureCommentSchema($pdo);
+
+    $commentStmt = $pdo->prepare(
+        'SELECT Id, ParentId, TenNguoiDung, NoiDung, HinhAnh, SoSao, NgayTao
+         FROM hanghoa_binhluan
+         WHERE MaHang = :mahang
+         ORDER BY NgayTao DESC, Id DESC'
+    );
+
+    $commentStmt->execute([
+        ':mahang' => (string)($product['id'] ?? ''),
+    ]);
+
+    foreach ($commentStmt->fetchAll() as $row) {
+        $reviews[] = [
+            'id' => (int)($row['Id'] ?? 0),
+            'parent_id' => isset($row['ParentId']) ? (int)$row['ParentId'] : null,
+            'name' => (string)($row['TenNguoiDung'] ?? 'Khách hàng'),
+            'rating' => max(0, min(5, (int)($row['SoSao'] ?? 0))),
+            'content' => (string)($row['NoiDung'] ?? ''),
+            'image' => trim((string)($row['HinhAnh'] ?? '')),
+            'created_at' => (string)($row['NgayTao'] ?? ''),
+        ];
+    }
+} catch (Throwable $e) {
+    if ($commentError === '') {
+        $commentError = 'Không thể tải danh sách bình luận: ' . $e->getMessage();
+    }
+}
+
+$reviewCount = count($reviews);
+$avgRating = (float)($product['rating'] ?? 4.0);
+if ($reviewCount > 0) {
+    $sumRating = 0;
+    $ratingCount = 0;
+    foreach ($reviews as $rv) {
+        $rate = (int)($rv['rating'] ?? 0);
+        if ($rate > 0) {
+            $sumRating += $rate;
+            $ratingCount++;
+        }
+    }
+    if ($ratingCount > 0) {
+        $avgRating = round($sumRating / $ratingCount, 1);
+    }
+}
+
+$reviewMapById = [];
+$rootReviews = [];
+$replyMap = [];
+
+foreach ($reviews as $rv) {
+    $reviewMapById[(int)($rv['id'] ?? 0)] = $rv;
+}
+
+foreach ($reviews as $rv) {
+    $parentId = (int)($rv['parent_id'] ?? 0);
+    $currentId = (int)($rv['id'] ?? 0);
+    if ($parentId > 0 && isset($reviewMapById[$parentId]) && $parentId !== $currentId) {
+        if (!isset($replyMap[$parentId])) {
+            $replyMap[$parentId] = [];
+        }
+        $replyMap[$parentId][] = $rv;
+    } else {
+        $rootReviews[] = $rv;
+    }
+}
 
 ?>
 <!DOCTYPE html>
@@ -485,48 +725,72 @@ $reviews = [
     <title>Chi Tiết - <?php echo htmlspecialchars($product['name']); ?> | ACK</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
     body {
         background-color: #f5f5f5;
-        font-family: 'Segoe UI', sans-serif;
+        font-family: 'Roboto', sans-serif;
         color: #333;
     }
 
-    .top-header {
-        background: white;
+    .top-bar {
+        background-color: #fff;
         padding: 10px 0;
+        border-bottom: 1px solid #eee;
     }
 
-    .logo {
-        font-size: 24px;
-        font-weight: 800;
-        color: #007bff;
-        text-decoration: none;
+    .ack-logo {
+        height: 40px;
+        width: auto;
+        object-fit: contain;
     }
 
     .search-box {
-        border-radius: 20px;
-        background: #f0f2f5;
-        border: none;
-        padding-left: 20px;
+        position: relative;
+        width: 100%;
     }
 
-    .nav-blue {
-        background-color: #0099ff;
+    .search-box input {
+        border-radius: 20px;
+        padding-right: 40px;
+        background: #f1f1f1;
+        border: none;
+    }
+
+    .search-box i {
+        position: absolute;
+        right: 15px;
+        top: 10px;
+        color: #666;
+    }
+
+    .location-select {
+        border-radius: 20px;
+        background: #eee;
+        padding: 5px 15px;
+        font-size: 0.9rem;
+        border: none;
+    }
+
+    .main-nav {
+        background-color: #007bff;
         color: white;
+        padding: 0;
+    }
+
+    .main-nav .nav-link {
+        color: white;
+        padding: 10px 15px;
         font-weight: 500;
     }
 
-    .nav-blue a {
-        color: white;
-        text-decoration: none;
-        padding: 10px 15px;
-        display: inline-block;
-        font-size: 14px;
+    .main-nav .nav-link:hover {
+        background: rgba(255, 255, 255, 0.2);
     }
 
-    .nav-blue a:hover {
-        background: rgba(255, 255, 255, 0.2);
+    .delivery-notice {
+        font-size: 0.9rem;
+        font-style: italic;
     }
 
     .product-container {
@@ -654,6 +918,41 @@ $reviews = [
         line-height: 1.5;
     }
 
+    .comment-image {
+        max-width: 220px;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        margin-top: 8px;
+        display: block;
+    }
+
+    .reply-list {
+        margin-top: 12px;
+        margin-left: 52px;
+        padding-left: 14px;
+        border-left: 2px solid #e5e7eb;
+    }
+
+    .reply-item {
+        padding-top: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px dashed #ececec;
+    }
+
+    .reply-form-wrap {
+        display: none;
+        margin-top: 12px;
+        margin-left: 52px;
+        padding: 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .reply-form-wrap.show {
+        display: block;
+    }
+
     .admin-edit-wrap {
         background: #fffbe8;
         border: 1px solid #ffe58f;
@@ -670,38 +969,55 @@ $reviews = [
 </head>
 
 <body>
-    <header class="top-header sticky-top shadow-sm">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-3 col-6">
-                    <a href="<?php echo htmlspecialchars($currentCategoryPageLink); ?>" class="logo"><span
-                            style="color:#003366">ACK</span></a>
+    <header class="sticky-top bg-white">
+        <div class="top-bar">
+            <div class="container d-flex align-items-center justify-content-between">
+                <a href="<?php echo htmlspecialchars($currentCategoryPageLink); ?>"
+                    class="d-flex align-items-center text-decoration-none me-3">
+                    <img src="../TrangUser/ack.png" alt="ACK Logo" class="ack-logo">
+                </a>
+
+                <div class="d-none d-md-block me-3">
+                    <button class="location-select">
+                        <i class="fas fa-map-marker-alt text-danger me-1"></i> Đồng Tháp <i
+                            class="fas fa-caret-down ms-1"></i>
+                    </button>
                 </div>
-                <div class="col-md-6 d-none d-md-block">
-                    <div class="input-group">
-                        <input type="text" class="form-control search-box" placeholder="Tìm kiếm sản phẩm...">
-                        <button class="btn btn-light border-0" style="background:#f0f2f5"><i
-                                class="fas fa-search"></i></button>
+
+                <div class="flex-grow-1 mx-3">
+                    <div class="search-box">
+                        <input type="text" class="form-control" placeholder="Tìm kiếm sản phẩm...">
+                        <i class="fas fa-search"></i>
                     </div>
                 </div>
-                <div class="col-md-3 col-6 text-end">
-                    <i class="fas fa-headset fs-5 me-3 text-secondary"></i>
-                    <i class="fas fa-globe fs-5 me-3 text-secondary"></i>
-                    <i class="fas fa-user-circle fs-4 text-warning"></i>
+
+                <div class="d-flex align-items-center gap-3">
+                    <a href="#" class="text-dark"><i class="fas fa-headset fa-lg"></i></a>
+                    <a href="giohang.php" class="text-dark position-relative">
+                        <i class="fas fa-shopping-basket"></i>
+                        <span data-cart-count
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
+                    </a>
+                    <a href="#" class="text-warning"><i class="fas fa-user-circle fa-2x"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-nav">
+            <div class="container d-flex justify-content-between align-items-center">
+                <ul class="nav">
+                    <li class="nav-item"><a class="nav-link"
+                            href="<?php echo htmlspecialchars($currentCategoryPageLink); ?>">Sản phẩm</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Tin tức</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Tuyển dụng</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Chuyển nhượng</a></li>
+                </ul>
+                <div class="delivery-notice d-none d-md-block">
+                    <i class="fas fa-bullhorn me-1"></i> Cơ hội cho nhà đầu tư
                 </div>
             </div>
         </div>
     </header>
-    <div class="nav-blue">
-        <div class="container">
-            <a href="<?php echo htmlspecialchars($currentCategoryPageLink); ?>">Sản phẩm</a>
-            <a href="#">Tin tức</a>
-            <a href="#">Tuyển dụng</a>
-            <a href="#">Chuyển nhượng</a>
-            <span class="float-end py-2 d-none d-md-inline"><i class="fas fa-bullhorn me-2"></i>Cơ hội cho nhà đầu
-                tư</span>
-        </div>
-    </div>
     <div class="container">
         <div class="product-container" data-product-id="<?php echo $productDataId; ?>"
             data-product-name="<?php echo $productDataName; ?>" data-product-price="<?php echo $productDataPrice; ?>"
@@ -821,43 +1137,182 @@ $reviews = [
                 </div>
             </div>
         </div>
-        <div class="product-container">
-            <h4 class="fw-bold mb-3">Đánh giá (100)</h4>
+        <div class="product-container" id="reviews">
+            <h4 class="fw-bold mb-3">Đánh giá (<?php echo $reviewCount; ?>)</h4>
             <div class="review-header-box d-flex flex-wrap">
                 <div class="score-circle">
-                    <div class="score-big"><?php echo number_format($product['rating'], 1); ?></div>
+                    <div class="score-big"><?php echo number_format($avgRating, 1); ?></div>
                     <div class="text-warning"><i class="fas fa-star"></i><i class="fas fa-star"></i><i
                             class="fas fa-star"></i><i class="fas fa-star"></i><i class="far fa-star"></i></div>
                 </div>
                 <div class="filters">
-                    <button class="filter-btn active">Tất cả (100)</button>
-                    <button class="filter-btn">5 sao (80)</button>
-                    <button class="filter-btn">4 sao (10)</button>
-                    <button class="filter-btn">3 sao (10)</button>
-                    <button class="filter-btn">Có bình luận (50)</button>
+                    <button class="filter-btn active">Tất cả (<?php echo $reviewCount; ?>)</button>
+                    <button class="filter-btn">5 sao</button>
+                    <button class="filter-btn">4 sao</button>
+                    <button class="filter-btn">3 sao</button>
+                    <button class="filter-btn">Có bình luận</button>
                 </div>
             </div>
+
+            <div class="mb-4 p-3 border rounded bg-light">
+                <h6 class="fw-bold mb-3">Viết bình luận của bạn</h6>
+                <?php if ($commentSuccess !== ''): ?>
+                <div class="alert alert-success py-2 mb-3"><?php echo htmlspecialchars($commentSuccess); ?></div>
+                <?php endif; ?>
+                <?php if ($commentError !== ''): ?>
+                <div class="alert alert-danger py-2 mb-3"><?php echo htmlspecialchars($commentError); ?></div>
+                <?php endif; ?>
+
+                <form method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="comment_action" value="submit_product_comment">
+                    <input type="hidden" name="product_id"
+                        value="<?php echo htmlspecialchars((string)($product['id'] ?? '')); ?>">
+                    <div class="row g-2">
+                        <?php if (!$isLoggedInUser): ?>
+                        <div class="col-md-4">
+                            <label class="form-label">Tên của bạn</label>
+                            <input type="text" class="form-control" name="guest_name" maxlength="120"
+                                placeholder="Nhập tên hiển thị">
+                        </div>
+                        <?php endif; ?>
+                        <div class="col-md-3">
+                            <label class="form-label">Đánh giá</label>
+                            <select class="form-select" name="comment_rating">
+                                <option value="5">5 sao</option>
+                                <option value="4">4 sao</option>
+                                <option value="3">3 sao</option>
+                                <option value="2">2 sao</option>
+                                <option value="1">1 sao</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Nội dung bình luận</label>
+                            <textarea class="form-control" name="comment_content" rows="3"
+                                placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm..." required></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Ảnh đính kèm (tùy chọn)</label>
+                            <input type="file" class="form-control" name="comment_image"
+                                accept="image/jpeg,image/png,image/webp,image/gif">
+                            <small class="text-muted">Hỗ trợ JPG/PNG/WEBP/GIF, tối đa 5MB.</small>
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane me-2"></i>Gửi bình luận
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
             <div class="review-list">
-                <?php foreach($reviews as $rv): ?>
+                <?php if ($reviewCount === 0): ?>
+                <div class="text-muted py-3">Chưa có bình luận nào cho sản phẩm này. Hãy là người đầu tiên bình luận!
+                </div>
+                <?php endif; ?>
+                <?php foreach($rootReviews as $rv): ?>
                 <div class="user-review">
                     <div class="d-flex">
                         <img src="../TrangUser/ack.png" class="avatar" alt="User">
                         <div>
                             <div class="fw-bold"><?php echo htmlspecialchars($rv['name']); ?> <span class="text-success"
                                     style="font-size:12px;"><i class="fas fa-check-circle"></i> Đã mua hàng</span></div>
+                            <?php if ((int)($rv['rating'] ?? 0) > 0): ?>
                             <div class="text-warning" style="font-size: 12px;">
-                                <?php for($i = 0; $i < $rv['rating']; $i++) echo '<i class="fas fa-star"></i>'; ?>
+                                <?php for($i = 0; $i < (int)$rv['rating']; $i++) echo '<i class="fas fa-star"></i>'; ?>
                             </div>
-                            <p class="review-content"><?php echo htmlspecialchars($rv['content']); ?></p>
+                            <?php endif; ?>
+                            <?php if (trim((string)($rv['content'] ?? '')) !== ''): ?>
+                            <p class="review-content"><?php echo nl2br(htmlspecialchars($rv['content'])); ?></p>
+                            <?php endif; ?>
+                            <?php if (!empty($rv['image'])): ?>
+                            <img src="<?php echo htmlspecialchars((string)$rv['image']); ?>" class="comment-image"
+                                alt="Ảnh bình luận">
+                            <?php endif; ?>
+                            <?php if (!empty($rv['created_at'])): ?>
+                            <div class="text-muted" style="font-size:12px;">Gửi lúc:
+                                <?php echo htmlspecialchars((string)$rv['created_at']); ?></div>
+                            <?php endif; ?>
+                            <button type="button"
+                                class="btn btn-sm btn-link p-0 mt-1 text-decoration-none reply-toggle-btn"
+                                data-reply-target="reply-form-<?php echo (int)$rv['id']; ?>">Phản hồi</button>
                         </div>
                     </div>
+
+                    <div class="reply-form-wrap" id="reply-form-<?php echo (int)$rv['id']; ?>">
+                        <form method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="comment_action" value="submit_product_comment">
+                            <input type="hidden" name="product_id"
+                                value="<?php echo htmlspecialchars((string)($product['id'] ?? '')); ?>">
+                            <input type="hidden" name="parent_comment_id" value="<?php echo (int)$rv['id']; ?>">
+                            <div class="row g-2">
+                                <?php if (!$isLoggedInUser): ?>
+                                <div class="col-md-5">
+                                    <input type="text" class="form-control form-control-sm" name="guest_name"
+                                        maxlength="120" placeholder="Tên của bạn">
+                                </div>
+                                <?php endif; ?>
+                                <div class="col-12">
+                                    <textarea class="form-control form-control-sm" name="comment_content" rows="2"
+                                        placeholder="Viết phản hồi..."></textarea>
+                                </div>
+                                <div class="col-md-7">
+                                    <input type="file" class="form-control form-control-sm" name="comment_image"
+                                        accept="image/jpeg,image/png,image/webp,image/gif">
+                                </div>
+                                <div class="col-md-5 d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-sm btn-primary">Gửi phản hồi</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <?php $childReplies = $replyMap[(int)$rv['id']] ?? []; ?>
+                    <?php if (!empty($childReplies)): ?>
+                    <div class="reply-list">
+                        <?php foreach ($childReplies as $reply): ?>
+                        <div class="reply-item">
+                            <div class="fw-semibold"><?php echo htmlspecialchars((string)$reply['name']); ?></div>
+                            <?php if (trim((string)($reply['content'] ?? '')) !== ''): ?>
+                            <div class="review-content mb-1">
+                                <?php echo nl2br(htmlspecialchars((string)$reply['content'])); ?></div>
+                            <?php endif; ?>
+                            <?php if (!empty($reply['image'])): ?>
+                            <img src="<?php echo htmlspecialchars((string)$reply['image']); ?>" class="comment-image"
+                                alt="Ảnh phản hồi">
+                            <?php endif; ?>
+                            <?php if (!empty($reply['created_at'])): ?>
+                            <div class="text-muted" style="font-size:12px;">Phản hồi lúc:
+                                <?php echo htmlspecialchars((string)$reply['created_at']); ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js?v=20260412-2"></script>
+    <script>
+    document.querySelectorAll('.reply-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.getAttribute('data-reply-target');
+            const formWrap = targetId ? document.getElementById(targetId) : null;
+            if (!formWrap) return;
+
+            formWrap.classList.toggle('show');
+            if (formWrap.classList.contains('show')) {
+                const textarea = formWrap.querySelector('textarea[name="comment_content"]');
+                if (textarea) {
+                    textarea.focus();
+                }
+            }
+        });
+    });
+    </script>
+    <script src="web-events.js?v=20260412-3"></script>
 </body>
 
 </html>

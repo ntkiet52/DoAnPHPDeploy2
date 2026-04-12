@@ -1,8 +1,10 @@
 (function () {
   const CART_KEY = "ack_cart";
   const CART_API_ENDPOINT = "cart-handler.php";
+  const NOTIFICATION_API_ENDPOINT = "notification-handler.php";
   const USER_SESSION_ENDPOINT = "user-session.php";
   const USER_MENU_STYLE_ID = "ack-global-user-menu-style";
+  let userSessionPromise = null;
 
   function parseMoney(value) {
     if (typeof value === "number") return value;
@@ -350,6 +352,91 @@
         white-space: nowrap;
         border-radius: 8px;
       }
+
+      .ack-notify-menu .ack-notify-toggle {
+        border: none;
+        background: transparent;
+        color: #111827;
+        padding: 0;
+        position: relative;
+      }
+
+      .ack-notify-menu .ack-notify-toggle::after {
+        display: none;
+      }
+
+      .ack-notify-badge {
+        font-size: 10px;
+        min-width: 17px;
+        height: 17px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .ack-notify-menu .ack-notify-dropdown {
+        width: min(420px, 92vw);
+        max-height: 420px;
+        overflow: auto;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        padding: 0;
+      }
+
+      .ack-notify-menu .ack-notify-head {
+        position: sticky;
+        top: 0;
+        background: #f8fbff;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 10px 12px;
+        font-weight: 700;
+        z-index: 1;
+      }
+
+      .ack-notify-item {
+        display: block;
+        text-decoration: none;
+        color: #111827;
+        padding: 10px 12px;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .ack-notify-item:hover {
+        background: #f8fbff;
+        color: #111827;
+      }
+
+      .ack-notify-item.unread {
+        background: #f4f8ff;
+      }
+
+      .ack-notify-item-title {
+        font-size: 0.86rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 2px;
+      }
+
+      .ack-notify-item-desc {
+        font-size: 0.8rem;
+        color: #475569;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .ack-notify-item-meta {
+        margin-top: 3px;
+        font-size: 0.74rem;
+        color: #64748b;
+      }
+
+      .ack-notify-empty {
+        padding: 18px 12px;
+        text-align: center;
+        color: #64748b;
+        font-size: 0.85rem;
+      }
     `;
 
     document.head.appendChild(style);
@@ -424,6 +511,218 @@
     return null;
   }
 
+  function findNotificationAnchor(container) {
+    if (!container) return null;
+    const links = container.querySelectorAll("a");
+    for (const link of links) {
+      if (link.querySelector(".fa-bell")) {
+        return link;
+      }
+    }
+    return null;
+  }
+
+  function formatNotificationTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+    });
+  }
+
+  async function fetchNotifications() {
+    try {
+      const form = new URLSearchParams();
+      form.set("action", "list");
+      const response = await fetch(NOTIFICATION_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: form.toString(),
+        cache: "no-store",
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success !== true) {
+        return {
+          is_logged_in: false,
+          notifications: [],
+          unseen_count: 0,
+        };
+      }
+
+      return {
+        is_logged_in: !!data?.is_logged_in,
+        notifications: Array.isArray(data?.notifications)
+          ? data.notifications
+          : [],
+        unseen_count: Math.max(
+          0,
+          Number.parseInt(String(data?.unseen_count || 0), 10) || 0,
+        ),
+      };
+    } catch (_) {
+      return {
+        is_logged_in: false,
+        notifications: [],
+        unseen_count: 0,
+      };
+    }
+  }
+
+  async function markNotificationsSeen() {
+    try {
+      const form = new URLSearchParams();
+      form.set("action", "mark_seen");
+      await fetch(NOTIFICATION_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: form.toString(),
+        cache: "no-store",
+      });
+    } catch (_) {
+      // noop
+    }
+  }
+
+  async function markNotificationSeenById(notificationId) {
+    const id = String(notificationId || "").trim();
+    if (!id) return;
+
+    try {
+      const form = new URLSearchParams();
+      form.set("action", "mark_one");
+      form.set("notification_id", id);
+      await fetch(NOTIFICATION_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: form.toString(),
+        cache: "no-store",
+        keepalive: true,
+      });
+    } catch (_) {
+      // noop
+    }
+  }
+
+  function updateNotificationBadgeByDelta(menuNode, delta) {
+    const badge = menuNode?.querySelector("[data-notify-count]");
+    if (!badge) return;
+
+    const current = Number.parseInt(String(badge.textContent || "0"), 10) || 0;
+    const next = Math.max(0, current + Number(delta || 0));
+
+    if (next <= 0) {
+      badge.textContent = "0";
+      badge.style.display = "none";
+      return;
+    }
+
+    badge.textContent = next > 99 ? "99+" : String(next);
+    badge.style.display = "inline-flex";
+  }
+
+  function buildNotificationMenuHtml(payload) {
+    const notifications = Array.isArray(payload?.notifications)
+      ? payload.notifications
+      : [];
+    const unseenCount = Math.max(
+      0,
+      Number.parseInt(String(payload?.unseen_count || 0), 10) || 0,
+    );
+    const displayCount = unseenCount > 99 ? "99+" : String(unseenCount);
+
+    let listHtml =
+      '<li class="ack-notify-empty">Chưa có thông báo phản hồi nào.</li>';
+    if (notifications.length > 0) {
+      listHtml = notifications
+        .map((item) => {
+          const title = escapeHtml(item?.title || "Thông báo mới");
+          const sender = escapeHtml(item?.sender_name || "Người dùng");
+          const content = escapeHtml(item?.content || "");
+          const productName = escapeHtml(item?.product_name || "");
+          const when = formatNotificationTime(item?.created_at || "");
+          const url = escapeHtml(item?.url || "#");
+          const notificationId = escapeHtml(item?.id || "");
+          const isRead = !!item?.is_read;
+          return `
+            <li>
+              <a class="ack-notify-item ${isRead ? "" : "unread"}" href="${url}" data-notify-id="${notificationId}" data-notify-read="${isRead ? "1" : "0"}">
+                <div class="ack-notify-item-title">${title}</div>
+                <div class="ack-notify-item-desc"><strong>${sender}:</strong> ${content || "(không có nội dung)"}</div>
+                <div class="ack-notify-item-meta">${productName ? `Sản phẩm: ${productName} · ` : ""}${when}</div>
+              </a>
+            </li>
+          `;
+        })
+        .join("");
+    }
+
+    return `
+      <div class="dropdown ack-notify-menu">
+        <button class="dropdown-toggle ack-notify-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fas fa-bell fa-lg"></i>
+          <span class="ack-notify-badge position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" data-notify-count ${unseenCount > 0 ? "" : 'style="display:none"'}>${displayCount}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end ack-notify-dropdown shadow">
+          <li class="ack-notify-head">Thông báo phản hồi</li>
+          ${listHtml}
+        </ul>
+      </div>
+    `;
+  }
+
+  async function setupGlobalNotificationMenu() {
+    if (document.querySelector(".ack-notify-menu")) return;
+
+    const container = findTopActionContainer();
+    if (!container) return;
+
+    const bellAnchor = findNotificationAnchor(container);
+    if (!bellAnchor) return;
+
+    injectGlobalUserMenuStyles();
+
+    const payload = await fetchNotifications();
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = buildNotificationMenuHtml(payload).trim();
+    const menuNode = wrapper.firstElementChild;
+    if (!menuNode) return;
+
+    bellAnchor.replaceWith(menuNode);
+
+    menuNode.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const notifyLink = target.closest(".ack-notify-item[data-notify-id]");
+      if (!notifyLink) return;
+
+      if (notifyLink.getAttribute("data-notify-read") === "1") {
+        return;
+      }
+
+      notifyLink.setAttribute("data-notify-read", "1");
+      notifyLink.classList.remove("unread");
+
+      const notificationId = notifyLink.getAttribute("data-notify-id") || "";
+      updateNotificationBadgeByDelta(menuNode, -1);
+      markNotificationSeenById(notificationId);
+    });
+  }
+
   function buildUserMenuHtml(userData) {
     const isLoggedIn = !!userData?.is_logged_in;
     const name = escapeHtml(userData?.name || "Khách hàng");
@@ -474,6 +773,41 @@
     `;
   }
 
+  async function fetchCurrentUserSession() {
+    if (userSessionPromise) return userSessionPromise;
+
+    userSessionPromise = fetch(USER_SESSION_ENDPOINT, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      cache: "no-store",
+    })
+      .then((response) =>
+        response
+          .json()
+          .catch(() => ({}))
+          .then((data) => {
+            if (response.ok && data?.ok === true) {
+              return data;
+            }
+            return {
+              is_logged_in: false,
+              name: "Khách hàng",
+              email: "",
+              role: "guest",
+              role_label: "Khách",
+            };
+          }),
+      )
+      .catch(() => ({
+        is_logged_in: false,
+        name: "Khách hàng",
+        email: "",
+        role: "guest",
+        role_label: "Khách",
+      }));
+
+    return userSessionPromise;
+  }
+
   async function setupGlobalUserMenu() {
     syncExistingDropdown();
 
@@ -491,25 +825,7 @@
       return;
     }
 
-    let userData = {
-      is_logged_in: false,
-      name: "Khách hàng",
-      email: "",
-      role_label: "Khách",
-    };
-
-    try {
-      const response = await fetch(USER_SESSION_ENDPOINT, {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        cache: "no-store",
-      });
-      const data = await response.json();
-      if (response.ok && data?.ok === true) {
-        userData = data;
-      }
-    } catch (_) {
-      // Keep guest fallback
-    }
+    const userData = await fetchCurrentUserSession();
 
     injectGlobalUserMenuStyles();
 
@@ -590,13 +906,70 @@
     });
   }
 
-  function updateCartBadge() {
-    const cart = loadCart();
-    const qty = cart.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+  function setCartBadgeCount(qty) {
+    const safeQty = Math.max(0, Number.parseInt(String(qty || 0), 10) || 0);
 
     document.querySelectorAll("[data-cart-count]").forEach((el) => {
-      el.textContent = String(qty);
+      el.textContent = String(safeQty);
     });
+  }
+
+  function ensureCartBadgeElements() {
+    const cartAnchors = document.querySelectorAll('a[href*="giohang.php"]');
+    cartAnchors.forEach((anchor) => {
+      if (anchor.querySelector("[data-cart-count]")) {
+        return;
+      }
+
+      const hasCartIcon =
+        !!anchor.querySelector(".fa-shopping-basket") ||
+        !!anchor.querySelector(".fa-cart-shopping") ||
+        !!anchor.querySelector(".fa-cart-plus");
+
+      if (!hasCartIcon) {
+        return;
+      }
+
+      anchor.classList.add("position-relative");
+
+      const badge = document.createElement("span");
+      badge.setAttribute("data-cart-count", "");
+      badge.className =
+        "position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger";
+      badge.textContent = "0";
+      anchor.appendChild(badge);
+    });
+  }
+
+  async function updateCartBadge() {
+    ensureCartBadgeElements();
+
+    try {
+      const form = new URLSearchParams();
+      form.set("action", "get_cart_count");
+
+      const response = await fetch(CART_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: form.toString(),
+        cache: "no-store",
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data?.success === true) {
+        setCartBadgeCount(data?.cart_count || 0);
+        return;
+      }
+    } catch (_) {
+      // fallback local only when server endpoint is temporarily unavailable
+    }
+
+    const cart = loadCart();
+    const qty = cart.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+    setCartBadgeCount(qty);
   }
 
   function getProductFromCard(card) {
@@ -955,6 +1328,16 @@
     const linkMaps = await fetchProductLinksMap();
     if (!linkMaps) return;
 
+    const userData = await fetchCurrentUserSession();
+    const isAdminUser =
+      String(userData?.role || "")
+        .trim()
+        .toLowerCase() === "admin";
+
+    if (isAdminUser) {
+      injectAdminEditButtonStyles();
+    }
+
     cards.forEach((card) => {
       if (card.dataset.navBound === "1") return;
       if (card.closest(".admin-home-toolbar")) return;
@@ -1007,6 +1390,10 @@
         card.setAttribute("tabindex", "0");
       }
 
+      if (isAdminUser) {
+        attachAdminEditButtonToCard(card, resolvedLink);
+      }
+
       const navigate = () => {
         if (!card.dataset.link) return;
         window.location.href = card.dataset.link;
@@ -1036,6 +1423,82 @@
         }
       });
     });
+  }
+
+  function injectAdminEditButtonStyles() {
+    if (document.getElementById("ack-admin-edit-btn-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "ack-admin-edit-btn-style";
+    style.textContent = `
+      .admin-edit-btn {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 28px;
+        height: 28px;
+        border: none;
+        border-radius: 50%;
+        background: #5865f8;
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 10px rgba(88, 101, 248, 0.35);
+        z-index: 15;
+        cursor: pointer;
+      }
+
+      .admin-edit-btn:hover {
+        transform: translateY(-1px);
+        background: #3f4ae6;
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  function extractProductIdFromLink(rawLink) {
+    const link = String(rawLink || "").trim();
+    if (!link) return "";
+
+    try {
+      const url = new URL(link, window.location.href);
+      return String(url.searchParams.get("id") || "").trim();
+    } catch (_) {
+      const match = link.match(/[?&]id=([^&#]+)/i);
+      return match ? decodeURIComponent(match[1]).trim() : "";
+    }
+  }
+
+  function attachAdminEditButtonToCard(card, resolvedLink) {
+    if (!card || card.querySelector(".admin-edit-btn")) return;
+
+    const explicitId = String(
+      card.getAttribute("data-product-id") || "",
+    ).trim();
+    const productId = explicitId || extractProductIdFromLink(resolvedLink);
+    if (!productId) return;
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "admin-edit-btn";
+    editBtn.title = "Sửa sản phẩm này";
+    editBtn.setAttribute("aria-label", "Sửa sản phẩm này");
+    editBtn.innerHTML = '<i class="fas fa-pen"></i>';
+
+    editBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.location.href = `../TrangAdmin/admin-sanpham.php?edit=${encodeURIComponent(productId)}`;
+    });
+
+    const currentPosition = window.getComputedStyle(card).position;
+    if (!currentPosition || currentPosition === "static") {
+      card.style.position = "relative";
+    }
+
+    card.appendChild(editBtn);
   }
 
   function normalizeFooterPaymentLogos() {
@@ -1091,7 +1554,40 @@
     });
   }
 
+  function applyHeroVisibilityRules() {
+    const fileName = String(window.location.pathname || "")
+      .split("/")
+      .pop()
+      .toLowerCase();
+
+    const isHomepage =
+      fileName === "" ||
+      fileName === "trangchu.php" ||
+      fileName === "index.php";
+
+    if (!document.getElementById("ack-hero-visibility-style")) {
+      const style = document.createElement("style");
+      style.id = "ack-hero-visibility-style";
+      style.textContent = `
+        body.ack-category-page #tetCarousel,
+        body.ack-category-page .main-banner {
+          display: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    if (!isHomepage && document.body) {
+      document.body.classList.add("ack-category-page");
+    }
+  }
+
+  function keepHeroOnlyOnHomepage() {
+    applyHeroVisibilityRules();
+  }
+
   function init() {
+    keepHeroOnlyOnHomepage();
     injectGlobalFooterLayoutStyles();
     normalizeFooterPaymentLogos();
     syncProductStockStates();
@@ -1099,6 +1595,7 @@
     bindProductCardNavigation();
     bindSearchFilter();
     updateCartBadge();
+    setupGlobalNotificationMenu();
     bindPromotionForms();
     setupGlobalUserMenu();
   }

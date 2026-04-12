@@ -138,6 +138,22 @@
     return Math.max(0, Number(cleaned || 0));
   }
 
+  function setHeaderCartCount(qty) {
+    const safeQty = Math.max(0, Number.parseInt(String(qty || 0), 10) || 0);
+    document.querySelectorAll("[data-cart-count]").forEach((el) => {
+      el.textContent = String(safeQty);
+    });
+  }
+
+  async function refreshHeaderCartCount() {
+    try {
+      const data = await postCartAction("get_cart_count");
+      setHeaderCartCount(data?.cart_count || 0);
+    } catch (_) {
+      // keep silent: cart screen still works even if badge refresh fails
+    }
+  }
+
   function getSelectedPaymentMethod() {
     const selected = document.querySelector(
       'input[name="payment_method"]:checked',
@@ -315,6 +331,7 @@
       qtyInput.value = String(nextQty);
       updateRowTotal(id);
       calculateTotal();
+      refreshHeaderCartCount();
     } catch (error) {
       await showAlertCenter(error.message || "Không thể cập nhật số lượng.");
     }
@@ -337,6 +354,7 @@
       if (card) card.remove();
       ensureEmptyCartView();
       calculateTotal();
+      refreshHeaderCartCount();
     } catch (error) {
       await showAlertCenter(error.message || "Không thể xóa sản phẩm.");
     }
@@ -368,6 +386,7 @@
       });
       ensureEmptyCartView();
       calculateTotal();
+      refreshHeaderCartCount();
     } catch (error) {
       await showAlertCenter(
         error.message || "Không thể xóa danh sách đã chọn.",
@@ -697,6 +716,7 @@
         }
 
         await postCartAction("clear_cart");
+        await refreshHeaderCartCount();
 
         const orderId = data?.order_id || "(đang cập nhật)";
         const voucherHint =
@@ -732,6 +752,7 @@
     bindPaymentMethodActions();
     loadVoucherQuickList();
     bindCheckoutButton();
+    refreshHeaderCartCount();
     calculateTotal();
     tryApplyVoucherFromQuery();
   }

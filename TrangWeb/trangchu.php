@@ -935,7 +935,11 @@ $categories = $__catalogData['categories'];
                 <div class="d-flex align-items-center gap-3">
                     <a href="#" class="text-dark"><i class="fas fa-headset fa-lg"></i></a>
                     <a href="#" class="text-dark"><i class="fas fa-bell fa-lg"></i></a>
-                    <a href="giohang.php" class="text-dark"><i class="fas fa-shopping-basket"></i></a>
+                    <a href="giohang.php" class="text-dark position-relative">
+                        <i class="fas fa-shopping-basket"></i>
+                        <span data-cart-count
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
+                    </a>
 
                     <div class="dropdown">
                         <button class="dropdown-toggle user-menu-toggle" type="button" id="userMenuDropdown"
@@ -1439,7 +1443,7 @@ $categories = $__catalogData['categories'];
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js?v=20260412-2"></script>
+    <script src="web-events.js?v=20260412-3"></script>
     <script>
     const isAdminUser = <?php echo $isAdminUser ? 'true' : 'false'; ?>;
     const adminThemeStorageKey = 'ack_home_admin_theme_v1';

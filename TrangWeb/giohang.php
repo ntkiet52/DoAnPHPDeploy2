@@ -85,39 +85,65 @@ if ($result_cart->num_rows > 0) {
         font-size: 14px;
     }
 
-    /* --- HEADER --- */
-    header {
-        background: #fff;
-        padding: 15px 0;
-        border-bottom: 1px solid #ececec;
-        margin-bottom: 20px;
+    /* --- HEADER (đồng bộ trang hàng hóa) --- */
+    .top-bar {
+        background-color: #fff;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
     }
 
-    .logo-img {
+    .ack-logo {
         height: 40px;
+        width: auto;
+        object-fit: contain;
     }
 
-    .search-wrapper {
+    .search-box {
         position: relative;
-        max-width: 600px;
         width: 100%;
-        margin: 0 20px;
     }
 
-    .search-input {
-        border-radius: 4px;
-        border: 1px solid #ddd;
-        padding-left: 15px;
-        height: 40px;
-        width: 100%;
-        background: #f8f8f8;
+    .search-box input {
+        border-radius: 20px;
+        padding-right: 40px;
+        background: #f1f1f1;
+        border: none;
     }
 
-    .search-icon {
+    .search-box i {
         position: absolute;
         right: 15px;
         top: 10px;
-        color: #999;
+        color: #666;
+    }
+
+    .location-select {
+        border-radius: 20px;
+        background: #eee;
+        padding: 5px 15px;
+        font-size: 0.9rem;
+        border: none;
+    }
+
+    .main-nav {
+        background-color: #007bff;
+        color: white;
+        padding: 0;
+    }
+
+    .main-nav .nav-link {
+        color: white;
+        padding: 10px 20px;
+        font-weight: 500;
+    }
+
+    .main-nav .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .delivery-notice {
+        font-size: 0.9rem;
+        font-style: italic;
     }
 
     /* --- CART CARD STYLING (Quan trọng) --- */
@@ -525,29 +551,51 @@ if ($result_cart->num_rows > 0) {
 
 <body>
 
-    <header>
-        <div class="container d-flex align-items-center justify-content-between">
-            <a href="trangchu.php" class="text-decoration-none d-flex align-items-center">
-                <img src="../TrangUser/ack.png" alt="ACK Mart" class="logo-img">
-                <span class="ms-3 fs-5 fw-bold text-primary border-start ps-3"
-                    style="border-color: #ddd !important;">Giỏ Hàng</span>
-            </a>
-
-            <div class="search-wrapper d-none d-md-block">
-                <input type="text" class="search-input"
-                    placeholder="Tìm sản phẩm, danh mục hay thương hiệu mong muốn...">
-                <i class="fas fa-search search-icon"></i>
-            </div>
-
-            <div class="d-flex gap-4 text-secondary align-items-center">
-                <a href="trangchu.php" class="text-decoration-none text-dark">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-home fs-5 me-1"></i>
-                        <span class="d-none d-lg-block">Trang chủ</span>
-                    </div>
+    <header class="sticky-top bg-white">
+        <div class="top-bar">
+            <div class="container d-flex align-items-center justify-content-between">
+                <a href="trangchu.php" class="d-flex align-items-center text-decoration-none me-3">
+                    <img src="../TrangUser/ack.png" alt="ACK Logo" class="ack-logo">
                 </a>
-                <!-- <div class="d-flex align-items-center"><i class="fas fa-crown fs-5 me-1"></i> <span class="d-none d-lg-block">Astra</span></div> -->
-                <div class="d-flex align-items-center text-primary"><i class="fas fa-user-circle fs-3"></i></div>
+
+                <div class="d-none d-md-block me-3">
+                    <button class="location-select">
+                        <i class="fas fa-map-marker-alt text-danger me-1"></i> Đồng Tháp <i
+                            class="fas fa-caret-down ms-1"></i>
+                    </button>
+                </div>
+
+                <div class="flex-grow-1 mx-3">
+                    <div class="search-box">
+                        <input type="text" class="form-control" placeholder="Tìm kiếm sản phẩm...">
+                        <i class="fas fa-search"></i>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-3">
+                    <a href="#" class="text-dark"><i class="fas fa-headset fa-lg"></i></a>
+                    <a href="#" class="text-dark"><i class="fas fa-bell fa-lg"></i></a>
+                    <a href="giohang.php" class="text-dark position-relative">
+                        <i class="fas fa-shopping-basket"></i>
+                        <span data-cart-count
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
+                    </a>
+                    <a href="#" class="text-warning"><i class="fas fa-user-circle fa-2x"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-nav">
+            <div class="container d-flex justify-content-between align-items-center">
+                <ul class="nav">
+                    <li class="nav-item"><a class="nav-link" href="trangchu.php">Sản phẩm</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Tin tức</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Tuyển dụng</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Chuyển nhượng</a></li>
+                </ul>
+                <div class="delivery-notice d-none d-md-block">
+                    <i class="fas fa-truck-fast me-1"></i> Miễn phí giao hàng tại Đồng Tháp
+                </div>
             </div>
         </div>
     </header>
@@ -578,13 +626,17 @@ if ($result_cart->num_rows > 0) {
                         data-product-name="<?php echo htmlspecialchars((string)$item['name'], ENT_QUOTES); ?>"
                         onchange="calculateTotal()">
 
-                    <div class="img-wrapper">
-                        <img src="<?php echo $item['img']; ?>" class="item-img" alt="Sản phẩm"
-                            onerror="this.src='../TrangUser/ack.png'">
-                    </div>
+                    <a href="drink-detail.php?id=<?php echo urlencode((string)$item['id']); ?>"
+                        class="text-decoration-none">
+                        <div class="img-wrapper">
+                            <img src="<?php echo $item['img']; ?>" class="item-img" alt="Sản phẩm"
+                                onerror="this.src='../TrangUser/ack.png'">
+                        </div>
+                    </a>
 
                     <div class="item-info">
-                        <a href="#" class="product-name">
+                        <a href="drink-detail.php?id=<?php echo urlencode((string)$item['id']); ?>"
+                            class="product-name">
                             <?php if($item['id'] == 1) echo '<span class="shop-badge">OFFICIAL</span>'; ?>
                             <?php echo $item['name']; ?>
                         </a>
@@ -733,6 +785,7 @@ if ($result_cart->num_rows > 0) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="cart-events.js"></script>
+    <script src="web-events.js?v=20260412-3"></script>
 </body>
 
 </html>

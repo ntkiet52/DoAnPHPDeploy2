@@ -121,78 +121,10 @@ function bindTableSearch(searchInput) {
   searchInput.dataset.ackSearchBound = "1";
 }
 
-function bindModalSelectSearch() {
-  const modalSelects = Array.from(
-    document.querySelectorAll(".modal select.form-select"),
-  ).filter((select) => {
-    if (select.dataset.enableSearch === "false") return false;
-    return select.options && select.options.length >= 8;
-  });
-
-  modalSelects.forEach((select) => {
-    if (select.dataset.ackSelectSearchBound === "1") return;
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "mb-2";
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "form-control form-control-sm";
-    input.placeholder = "Tìm nhanh trong danh sách...";
-
-    select.parentNode.insertBefore(wrapper, select);
-    wrapper.appendChild(input);
-
-    const options = Array.from(select.options);
-
-    const runFilter = () => {
-      const keyword = normalizeText(input.value);
-      let hasVisibleSelected = false;
-
-      options.forEach((option, index) => {
-        if (index === 0 && (option.value || "") === "") {
-          option.hidden = false;
-          return;
-        }
-
-        const text = normalizeText(option.textContent);
-        const visible = keyword === "" || text.includes(keyword);
-        option.hidden = !visible;
-
-        if (visible && option.selected) {
-          hasVisibleSelected = true;
-        }
-      });
-
-      if (!hasVisibleSelected && keyword !== "") {
-        const current = select.options[select.selectedIndex];
-        if (current && current.hidden) {
-          select.selectedIndex = 0;
-          select.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      }
-    };
-
-    input.addEventListener("input", runFilter);
-
-    const modal = select.closest(".modal");
-    if (modal) {
-      modal.addEventListener("show.bs.modal", () => {
-        input.value = "";
-        runFilter();
-      });
-    }
-
-    select.dataset.ackSelectSearchBound = "1";
-  });
-}
-
 function initAdminSearch() {
   document
     .querySelectorAll("input.search-top, input.search-input")
     .forEach((input) => bindTableSearch(input));
-
-  bindModalSelectSearch();
 }
 
 (function setupScrollPersistence() {

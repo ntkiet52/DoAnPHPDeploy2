@@ -903,7 +903,7 @@ $totalSuppliers = count($suppliers);
                     <i class="fas fa-plus me-1"></i> Thêm nhà cung cấp
                 </button>
                 <button class="btn btn-warning fw-semibold" id="btnEditSupplier" disabled>
-                    <i class="fas fa-pen me-1"></i> Sửa
+                    <i class="fas fa-pen me-1"></i> Sửa nhà cung cấp
                 </button>
                 <button class="btn btn-info fw-semibold text-white" id="btnViewSupplier" disabled>
                     <i class="fas fa-eye me-1"></i> Xem chi tiết

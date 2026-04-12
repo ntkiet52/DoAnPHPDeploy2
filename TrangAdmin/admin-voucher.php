@@ -689,7 +689,7 @@ foreach ($vouchers as $voucher) {
                 <i class="fas fa-plus me-2"></i> Thêm voucher
             </button>
             <button class="btn btn-warning fw-semibold" id="btnEditVoucher" disabled>
-                <i class="fas fa-pen me-1"></i> Sửa
+                <i class="fas fa-pen me-1"></i> Sửa voucher
             </button>
             <button class="btn btn-info fw-semibold text-white" id="btnViewVoucher" disabled>
                 <i class="fas fa-eye me-1"></i> Xem chi tiết
@@ -699,7 +699,8 @@ foreach ($vouchers as $voucher) {
             </button>
         </div>
 
-        <div class="modal fade" id="addVoucherModal" tabindex="-1" aria-labelledby="addVoucherModalLabel" aria-hidden="true">
+        <div class="modal fade" id="addVoucherModal" tabindex="-1" aria-labelledby="addVoucherModalLabel"
+            aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -712,11 +713,13 @@ foreach ($vouchers as $voucher) {
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label class="form-label">Mã voucher</label>
-                                    <input type="text" class="form-control" name="voucher_code" value="<?php echo htmlspecialchars($nextVoucherCode); ?>" required>
+                                    <input type="text" class="form-control" name="voucher_code"
+                                        value="<?php echo htmlspecialchars($nextVoucherCode); ?>" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Tên voucher</label>
-                                    <input type="text" class="form-control" name="voucher_name" placeholder="Ví dụ: Giảm giá sinh nhật" required>
+                                    <input type="text" class="form-control" name="voucher_name"
+                                        placeholder="Ví dụ: Giảm giá sinh nhật" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Kiểu giảm</label>
@@ -727,11 +730,13 @@ foreach ($vouchers as $voucher) {
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Giá trị giảm</label>
-                                    <input type="number" class="form-control" name="voucher_value" min="1" step="0.01" required>
+                                    <input type="number" class="form-control" name="voucher_value" min="1" step="0.01"
+                                        required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Đơn tối thiểu</label>
-                                    <input type="number" class="form-control" name="voucher_min_order" min="0" step="0.01" value="0">
+                                    <input type="number" class="form-control" name="voucher_min_order" min="0"
+                                        step="0.01" value="0">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Số lượt tối đa</label>
@@ -763,7 +768,8 @@ foreach ($vouchers as $voucher) {
             </div>
         </div>
 
-        <div class="modal fade" id="voucherDetailModal" tabindex="-1" aria-labelledby="voucherDetailModalLabel" aria-hidden="true">
+        <div class="modal fade" id="voucherDetailModal" tabindex="-1" aria-labelledby="voucherDetailModalLabel"
+            aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -777,11 +783,13 @@ foreach ($vouchers as $voucher) {
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label class="form-label">Mã voucher</label>
-                                    <input type="text" class="form-control" name="voucher_code" id="detailVoucherCode" required>
+                                    <input type="text" class="form-control" name="voucher_code" id="detailVoucherCode"
+                                        required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Tên voucher</label>
-                                    <input type="text" class="form-control" name="voucher_name" id="detailVoucherName" required>
+                                    <input type="text" class="form-control" name="voucher_name" id="detailVoucherName"
+                                        required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Kiểu giảm</label>
@@ -792,23 +800,28 @@ foreach ($vouchers as $voucher) {
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Giá trị giảm</label>
-                                    <input type="number" class="form-control" name="voucher_value" id="detailVoucherValue" min="1" step="0.01" required>
+                                    <input type="number" class="form-control" name="voucher_value"
+                                        id="detailVoucherValue" min="1" step="0.01" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Đơn tối thiểu</label>
-                                    <input type="number" class="form-control" name="voucher_min_order" id="detailVoucherMinOrder" min="0" step="0.01">
+                                    <input type="number" class="form-control" name="voucher_min_order"
+                                        id="detailVoucherMinOrder" min="0" step="0.01">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Số lượt tối đa</label>
-                                    <input type="number" class="form-control" name="voucher_max_use" id="detailVoucherMaxUse" min="0">
+                                    <input type="number" class="form-control" name="voucher_max_use"
+                                        id="detailVoucherMaxUse" min="0">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Ngày bắt đầu</label>
-                                    <input type="date" class="form-control" name="voucher_start_date" id="detailVoucherStartDate" required>
+                                    <input type="date" class="form-control" name="voucher_start_date"
+                                        id="detailVoucherStartDate" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Ngày kết thúc</label>
-                                    <input type="date" class="form-control" name="voucher_end_date" id="detailVoucherEndDate" required>
+                                    <input type="date" class="form-control" name="voucher_end_date"
+                                        id="detailVoucherEndDate" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Trạng thái</label>
@@ -821,7 +834,8 @@ foreach ($vouchers as $voucher) {
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
-                            <button type="submit" class="btn btn-primary" id="btnSaveVoucherDetail">Lưu thay đổi</button>
+                            <button type="submit" class="btn btn-primary" id="btnSaveVoucherDetail">Lưu thay
+                                đổi</button>
                         </div>
                     </form>
                 </div>
@@ -858,8 +872,7 @@ foreach ($vouchers as $voucher) {
                     </tr>
                     <?php endif; ?>
                     <?php foreach ($vouchers as $voucher): ?>
-                    <tr class="voucher-row"
-                        data-id="<?php echo (int) ($voucher['id'] ?? 0); ?>"
+                    <tr class="voucher-row" data-id="<?php echo (int) ($voucher['id'] ?? 0); ?>"
                         data-code="<?php echo htmlspecialchars((string) ($voucher['code'] ?? ''), ENT_QUOTES); ?>"
                         data-name="<?php echo htmlspecialchars((string) ($voucher['name'] ?? ''), ENT_QUOTES); ?>"
                         data-type="<?php echo htmlspecialchars((string) ($voucher['type'] ?? 'fixed'), ENT_QUOTES); ?>"
@@ -881,14 +894,16 @@ foreach ($vouchers as $voucher) {
                         </td>
                         <td><?php echo number_format((float) ($voucher['min_order'] ?? 0), 0, ',', '.'); ?> ₫</td>
                         <td>
-                            <?php echo (int) ($voucher['used'] ?? 0); ?> / <?php echo (int) ($voucher['max_use'] ?? 0); ?>
+                            <?php echo (int) ($voucher['used'] ?? 0); ?> /
+                            <?php echo (int) ($voucher['max_use'] ?? 0); ?>
                         </td>
                         <td>
                             <?php echo htmlspecialchars((string) ($voucher['start_date_display'] ?? '')); ?> -
                             <?php echo htmlspecialchars((string) ($voucher['end_date_display'] ?? '')); ?>
                         </td>
                         <td>
-                            <span class="voucher-badge <?php echo (($voucher['status'] ?? 'inactive') === 'active') ? 'voucher-status-active' : 'voucher-status-inactive'; ?>">
+                            <span
+                                class="voucher-badge <?php echo (($voucher['status'] ?? 'inactive') === 'active') ? 'voucher-status-active' : 'voucher-status-inactive'; ?>">
                                 <?php echo htmlspecialchars((string) ($voucher['status_label'] ?? 'Tạm dừng')); ?>
                             </span>
                         </td>

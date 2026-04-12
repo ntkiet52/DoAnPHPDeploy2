@@ -1214,7 +1214,7 @@ foreach ($staff as $member) {
                 <i class="fas fa-plus me-2"></i> Thêm nhân viên
             </button>
             <button class="btn btn-warning fw-semibold" id="btnEditStaff" disabled>
-                <i class="fas fa-pen me-1"></i> Sửa
+                <i class="fas fa-pen me-1"></i> Sửa nhân viên
             </button>
             <button class="btn btn-info fw-semibold text-white" id="btnViewStaff" disabled>
                 <i class="fas fa-eye me-1"></i> Xem chi tiết
@@ -1365,7 +1365,8 @@ foreach ($staff as $member) {
                     <label>Xem ảnh</label>
                     <div class="detail-image-preview">
                         <img id="detailImagePreview" src="../TrangUser/ack.png" alt="Ảnh nhân viên"
-                            onerror="this.src=this.dataset.fallback || '../TrangUser/ack.png'" data-fallback="../TrangUser/ack.png">
+                            onerror="this.src=this.dataset.fallback || '../TrangUser/ack.png'"
+                            data-fallback="../TrangUser/ack.png">
                     </div>
                 </div>
                 <div class="detail-field">
