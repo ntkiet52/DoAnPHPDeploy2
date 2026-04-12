@@ -471,6 +471,12 @@ try {
         padding: 20px;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
         height: 100%;
+        flex-wrap: nowrap;
+        overflow: hidden;
+    }
+
+    .stat-card>div:nth-child(2) {
+        min-width: 0;
     }
 
     .icon-box {
@@ -506,11 +512,14 @@ try {
         font-weight: 700;
         color: var(--text-dark);
         margin-bottom: 0;
+        white-space: nowrap;
+        line-height: 1.1;
     }
 
     .stat-label {
         font-size: 0.9rem;
         color: #67748e;
+        white-space: nowrap;
     }
 
     .stat-growth {
@@ -518,6 +527,8 @@ try {
         font-weight: bold;
         color: #10b981;
         margin-left: auto;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 
     /* --- CHARTS & TABLES --- */
@@ -670,7 +681,7 @@ try {
                     <div class="icon-box bg-gradient-success me-3"><i class="fas fa-wallet"></i></div>
                     <div>
                         <div class="stat-label">Doanh thu</div>
-                        <h4 class="stat-value"><?php echo number_format($totalRevenue, 0, ',', '.'); ?> ₫</h4>
+                        <h4 class="stat-value"><?php echo number_format($totalRevenue, 0, ',', '.'); ?>&nbsp;₫</h4>
                     </div>
                     <div class="stat-growth">Tổng đơn</div>
                 </div>

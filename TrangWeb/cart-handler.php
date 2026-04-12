@@ -199,7 +199,20 @@ function getAvailableStockByProduct(mysqli $conn, string $maSanPham): int
     $selectStockSql = $stockCol !== null ? "hh.`{$stockCol}` AS so_luong_ton, " : '';
     $sql = "SELECT {$selectStockSql}
                    COALESCE((SELECT SUM(SoLuongNhap) FROM chitietnhaphang WHERE MaHang = ?), 0) AS tong_nhap,
-                   COALESCE((SELECT SUM(SoLuongPX) FROM chitietphieuxuat WHERE MaHang = ?), 0) AS tong_xuat
+                   COALESCE((
+                       SELECT SUM(ctx.SoLuongPX)
+                       FROM chitietphieuxuat ctx
+                       LEFT JOIN phieuxuat px ON px.IdPhieuXuat = ctx.IdPhieuXuat
+                       WHERE ctx.MaHang = ?
+                         AND (
+                             px.KyHieuPX IS NULL
+                             OR (
+                                 LOWER(px.KyHieuPX) NOT LIKE '%hủy%'
+                                 AND LOWER(px.KyHieuPX) NOT LIKE '%huy%'
+                                 AND LOWER(px.KyHieuPX) NOT LIKE '%cancel%'
+                             )
+                         )
+                   ), 0) AS tong_xuat
             FROM hanghoa hh
             WHERE hh.MaHang = ?
             LIMIT 1";
@@ -211,17 +224,22 @@ function getAvailableStockByProduct(mysqli $conn, string $maSanPham): int
     $row = $res ? $res->fetch_assoc() : null;
     $stmt->close();
 
+    $tongNhap = (int) ($row['tong_nhap'] ?? 0);
+    $tongXuat = (int) ($row['tong_xuat'] ?? 0);
+    $stockFromFlow = max(0, $tongNhap - $tongXuat);
+
+    if ($stockFromFlow > 0) {
+        return $stockFromFlow;
+    }
+
     if (is_array($row)) {
         $stockFromTable = pickStockValueFromRow($row);
         if ($stockFromTable !== null) {
-            return $stockFromTable;
+            return max(0, $stockFromTable);
         }
     }
 
-    $tongNhap = (int) ($row['tong_nhap'] ?? 0);
-    $tongXuat = (int) ($row['tong_xuat'] ?? 0);
-
-    return max(0, $tongNhap - $tongXuat);
+    return $stockFromFlow;
 }
 
 function getStockMapByProducts(mysqli $conn, array $productIds): array
@@ -252,9 +270,16 @@ function getStockMapByProducts(mysqli $conn, array $productIds): array
                 GROUP BY MaHang
             ) nhap ON nhap.MaHang = hh.MaHang
             LEFT JOIN (
-                SELECT MaHang, COALESCE(SUM(SoLuongPX), 0) AS TongXuat
-                FROM chitietphieuxuat
-                GROUP BY MaHang
+                SELECT ctx.MaHang, COALESCE(SUM(ctx.SoLuongPX), 0) AS TongXuat
+                FROM chitietphieuxuat ctx
+                LEFT JOIN phieuxuat px ON px.IdPhieuXuat = ctx.IdPhieuXuat
+                WHERE px.KyHieuPX IS NULL
+                   OR (
+                       LOWER(px.KyHieuPX) NOT LIKE '%hủy%'
+                       AND LOWER(px.KyHieuPX) NOT LIKE '%huy%'
+                       AND LOWER(px.KyHieuPX) NOT LIKE '%cancel%'
+                   )
+                GROUP BY ctx.MaHang
             ) xuat ON xuat.MaHang = hh.MaHang
             WHERE hh.MaHang IN ({$placeholders})";
 
@@ -275,13 +300,19 @@ function getStockMapByProducts(mysqli $conn, array $productIds): array
             continue;
         }
 
-        $stockFromTable = pickStockValueFromRow($row);
-        if ($stockFromTable !== null) {
-            $map[$key] = $stockFromTable;
+        $stockFromFlow = max(0, (int) ($row['tong_nhap'] ?? 0) - (int) ($row['tong_xuat'] ?? 0));
+        if ($stockFromFlow > 0) {
+            $map[$key] = $stockFromFlow;
             continue;
         }
 
-        $map[$key] = max(0, (int) ($row['tong_nhap'] ?? 0) - (int) ($row['tong_xuat'] ?? 0));
+        $stockFromTable = pickStockValueFromRow($row);
+        if ($stockFromTable !== null) {
+            $map[$key] = max(0, $stockFromTable);
+            continue;
+        }
+
+        $map[$key] = $stockFromFlow;
     }
 
     $stmt->close();

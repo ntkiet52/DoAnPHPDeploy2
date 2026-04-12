@@ -18,7 +18,145 @@ $roleLabelMap = [
 ];
 
 $currentUserRoleLabel = $roleLabelMap[$currentUserRole] ?? 'Người dùng';
-$isAdminUser = $isLoggedIn && $currentUserRole === 'admin';
+$sessionEmailLower = strtolower(trim((string) ($_SESSION['user_email'] ?? '')));
+$hasAdminAccessSession = !empty($_SESSION['is_admin']) && (!empty($_SESSION['admin_created_account']) || $sessionEmailLower === 'admin@gmail.com');
+$isAdminUser = $isLoggedIn && $currentUserRole === 'admin' && $hasAdminAccessSession;
+
+$homeThemeDefaults = [
+    'pageBg' => '#f5f5f5',
+    'sectionBg' => '#e0f2fe',
+    'navBg' => '#007bff',
+];
+
+$homeTextDefaults = [
+    'home_product_heading' => 'Sản phẩm',
+    'section_soft_drink_title' => 'Nước ngọt tết sale 10%',
+    'section_beer_title' => 'Bia tết sale 10%',
+    'section_gift_title' => 'Đồ biếu tết sale 10%',
+    'section_market_title' => 'Đi chợ ngày tết',
+    'countdown_day_label' => 'ngày',
+    'newsletter_title' => 'Đăng kí nhận khuyến mãi',
+    'newsletter_subtitle' => 'Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt',
+    'newsletter_button' => 'Đăng ký',
+];
+
+$homeThemeConfig = $homeThemeDefaults;
+$homeTextConfig = $homeTextDefaults;
+
+try {
+    $homeConfigPdo = new PDO(
+        'mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4',
+        'root',
+        '',
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
+    );
+
+    $homeConfigPdo->exec(
+        "CREATE TABLE IF NOT EXISTS caidat_trangchu (
+            id TINYINT(1) NOT NULL,
+            theme_config LONGTEXT NULL,
+            text_config LONGTEXT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    );
+
+    if (isset($_GET['admin_home_config_api'])) {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!$isAdminUser) {
+            http_response_code(403);
+            echo json_encode([
+                'ok' => false,
+                'message' => 'Bạn không có quyền chỉnh sửa cấu hình trang chủ.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $rawBody = file_get_contents('php://input');
+        $payload = json_decode((string) $rawBody, true);
+        if (!is_array($payload)) {
+            $payload = $_POST;
+        }
+
+        $action = trim((string) ($payload['action'] ?? 'save'));
+
+        if ($action === 'reset') {
+            $themeToSave = $homeThemeDefaults;
+            $textToSave = $homeTextDefaults;
+        } else {
+            $incomingTheme = is_array($payload['theme'] ?? null) ? $payload['theme'] : [];
+            $incomingText = is_array($payload['text'] ?? null) ? $payload['text'] : [];
+
+            $themeToSave = $homeThemeDefaults;
+            foreach ($homeThemeDefaults as $key => $defaultValue) {
+                if (isset($incomingTheme[$key])) {
+                    $themeToSave[$key] = trim((string) $incomingTheme[$key]);
+                }
+            }
+
+            $textToSave = $homeTextDefaults;
+            foreach ($homeTextDefaults as $key => $defaultValue) {
+                if (isset($incomingText[$key])) {
+                    $textToSave[$key] = mb_substr(trim((string) $incomingText[$key]), 0, 200);
+                }
+            }
+        }
+
+        $upsert = $homeConfigPdo->prepare(
+            "INSERT INTO caidat_trangchu (id, theme_config, text_config)
+             VALUES (1, :theme_config, :text_config)
+             ON DUPLICATE KEY UPDATE
+                theme_config = VALUES(theme_config),
+                text_config = VALUES(text_config)"
+        );
+        $upsert->execute([
+            ':theme_config' => json_encode($themeToSave, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':text_config' => json_encode($textToSave, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+
+        echo json_encode([
+            'ok' => true,
+            'theme' => $themeToSave,
+            'text' => $textToSave,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    $storedConfig = $homeConfigPdo->query('SELECT theme_config, text_config FROM caidat_trangchu WHERE id = 1 LIMIT 1')->fetch();
+    if ($storedConfig) {
+        $decodedTheme = json_decode((string) ($storedConfig['theme_config'] ?? ''), true);
+        if (is_array($decodedTheme)) {
+            foreach ($homeThemeDefaults as $key => $defaultValue) {
+                if (isset($decodedTheme[$key])) {
+                    $homeThemeConfig[$key] = (string) $decodedTheme[$key];
+                }
+            }
+        }
+
+        $decodedText = json_decode((string) ($storedConfig['text_config'] ?? ''), true);
+        if (is_array($decodedText)) {
+            foreach ($homeTextDefaults as $key => $defaultValue) {
+                if (isset($decodedText[$key])) {
+                    $homeTextConfig[$key] = (string) $decodedText[$key];
+                }
+            }
+        }
+    }
+} catch (Throwable $ignored) {
+    if (isset($_GET['admin_home_config_api'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(500);
+        echo json_encode([
+            'ok' => false,
+            'message' => 'Không thể lưu cài đặt trang chủ lúc này.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
 
 if ($currentUserName === '') {
     $currentUserName = 'Khách hàng';
@@ -333,6 +471,61 @@ $categories = $__catalogData['categories'];
         padding: 0;
         background: transparent;
         cursor: pointer;
+    }
+
+    .admin-text-editor {
+        width: 100%;
+        background: #fff;
+        border: 1px dashed #f5c35c;
+        border-radius: 10px;
+        padding: 10px 12px;
+    }
+
+    .admin-text-editor summary {
+        cursor: pointer;
+        font-weight: 700;
+        color: #92400e;
+    }
+
+    .admin-text-grid {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 10px;
+    }
+
+    .admin-text-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .admin-text-field label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #475569;
+    }
+
+    .admin-text-field input {
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        min-height: 34px;
+        padding: 6px 10px;
+        font-size: 0.9rem;
+        color: #1f2937;
+    }
+
+    .admin-text-actions {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .admin-text-hint {
+        font-size: 0.78rem;
+        color: #64748b;
     }
 
     .admin-edit-btn {
@@ -906,6 +1099,214 @@ $categories = $__catalogData['categories'];
         align-items: center;
         justify-content: center;
     }
+
+    /* AI Chatbot Widget */
+    #chatbot-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: white;
+        font-size: 28px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 998;
+        transition: all 0.3s ease;
+    }
+
+    #chatbot-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 18px rgba(0, 123, 255, 0.6);
+    }
+
+    #chatbot-button.active {
+        bottom: 390px;
+    }
+
+    #chatbot-widget {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 380px;
+        height: 500px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 40px rgba(0, 0, 0, 0.16);
+        display: none;
+        flex-direction: column;
+        z-index: 999;
+        animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    #chatbot-widget.active {
+        display: flex;
+    }
+
+    .chatbot-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 15px 15px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .chatbot-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .chatbot-close {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .chatbot-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px;
+        background: #f9f9f9;
+    }
+
+    .chatbot-message {
+        margin-bottom: 10px;
+        display: flex;
+        animation: fadeIn .3s ease;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .chatbot-message.user {
+        justify-content: flex-end;
+    }
+
+    .chatbot-message.ai {
+        justify-content: flex-start;
+    }
+
+    .chatbot-bubble {
+        max-width: 70%;
+        padding: 10px 15px;
+        border-radius: 10px;
+        word-wrap: break-word;
+        line-height: 1.4;
+        font-size: 14px;
+        white-space: pre-line;
+    }
+
+    .chatbot-message.user .chatbot-bubble {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border-bottom-right-radius: 2px;
+    }
+
+    .chatbot-message.ai .chatbot-bubble {
+        background: #e9ecef;
+        color: #333;
+        border-bottom-left-radius: 2px;
+    }
+
+    .chatbot-input-area {
+        padding: 15px;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        gap: 10px;
+        background: white;
+        border-radius: 0 0 15px 15px;
+    }
+
+    .chatbot-input-area input {
+        flex: 1;
+        border: 1px solid #ddd;
+        border-radius: 20px;
+        padding: 10px 15px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color .2s;
+    }
+
+    .chatbot-input-area input:focus {
+        border-color: #007bff;
+    }
+
+    .chatbot-send-btn {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        transition: transform .2s;
+    }
+
+    .chatbot-send-btn:hover {
+        transform: scale(1.05);
+    }
+
+    .chatbot-send-btn:active {
+        transform: scale(0.95);
+    }
+
+    @media (max-width: 480px) {
+        #chatbot-widget {
+            width: calc(100% - 10px);
+            height: 60vh;
+            bottom: 10px;
+            right: 5px;
+        }
+
+        #chatbot-button {
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+        }
+    }
     </style>
 </head>
 
@@ -1009,15 +1410,23 @@ $categories = $__catalogData['categories'];
                 <i class="fas fa-shield-halved text-primary me-2"></i>Chế độ Admin trên trang chủ
             </div>
             <div class="admin-theme-controls">
-                <a href="../TrangAdmin/admin.php" class="btn btn-sm btn-outline-primary"><i
+                <a href="../TrangAdmin/admin.php" class="btn btn-sm btn-outline-primary" id="adminGoDashboardLink"><i
                         class="fas fa-gauge-high me-1"></i>Về Admin</a>
-                <a href="../TrangAdmin/admin-sanpham.php" class="btn btn-sm btn-primary"><i
+                <a href="../TrangAdmin/admin-sanpham.php?return_to=<?php echo urlencode($_SERVER['REQUEST_URI'] ?? '/DoAnPHP/TrangWeb/trangchu.php?admin_mode=1'); ?>" class="btn btn-sm btn-primary" id="adminGoProductsLink"><i
                         class="fas fa-pen-to-square me-1"></i>Sửa sản phẩm</a>
                 <label>BG trang <input type="color" id="adminPageBgPicker" value="#f5f5f5"></label>
                 <label>BG khối <input type="color" id="adminSectionBgPicker" value="#e0f2fe"></label>
                 <label>BG menu <input type="color" id="adminNavBgPicker" value="#007bff"></label>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="adminResetThemeBtn">Mặc định</button>
             </div>
+            <details class="admin-text-editor">
+                <summary><i class="fas fa-font me-1"></i>Chỉnh chữ nhanh trên trang chủ</summary>
+                <div class="admin-text-grid" id="adminTextEditorFields"></div>
+                <div class="admin-text-actions">
+                    <button type="button" class="btn btn-sm btn-outline-dark" id="adminResetTextBtn">Khôi phục chữ gốc</button>
+                    <span class="admin-text-hint">Gõ tới đâu cập nhật ngay tới đó.</span>
+                </div>
+            </details>
         </div>
     </div>
     <?php endif; ?>
@@ -1064,7 +1473,7 @@ $categories = $__catalogData['categories'];
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="fw-bold mb-0">Sản phẩm</h4>
+                    <h4 class="fw-bold mb-0" data-admin-text-key="home_product_heading">Sản phẩm</h4>
                     <a href="#" class="text-primary text-decoration-none fw-bold">Xem tất cả <i
                             class="fas fa-chevron-right"></i></a>
                 </div>
@@ -1075,9 +1484,9 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title">Nước ngọt tết sale 10%</h5>
+                        <h5 class="section-title" data-admin-text-key="section_soft_drink_title">Nước ngọt tết sale 10%</h5>
                         <div class="countdown-timer" id="timer1">
-                            <div class="time-box days">11</div> <span class="time-label">ngày</span>
+                            <div class="time-box days">11</div> <span class="time-label" data-admin-text-key="countdown_day_label">ngày</span>
                             <div class="time-box hours">06</div> <span class="time-label">:</span>
                             <div class="time-box minutes">50</div> <span class="time-label">:</span>
                             <div class="time-box seconds">16</div>
@@ -1110,9 +1519,9 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title">Bia tết sale 10%</h5>
+                        <h5 class="section-title" data-admin-text-key="section_beer_title">Bia tết sale 10%</h5>
                         <div class="countdown-timer" id="timer2">
-                            <div class="time-box days">11</div> <span class="time-label">ngày</span>
+                            <div class="time-box days">11</div> <span class="time-label" data-admin-text-key="countdown_day_label">ngày</span>
                             <div class="time-box hours">06</div> <span class="time-label">:</span>
                             <div class="time-box minutes">50</div> <span class="time-label">:</span>
                             <div class="time-box seconds">16</div>
@@ -1143,7 +1552,7 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title text-primary">Đồ biếu tết sale 10%</h5>
+                        <h5 class="section-title text-primary" data-admin-text-key="section_gift_title">Đồ biếu tết sale 10%</h5>
                     </div>
                     <div class="row g-3">
                         <?php foreach($gifts as $prod): ?>
@@ -1169,7 +1578,7 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title">Đi chợ ngày tết</h5>
+                        <h5 class="section-title" data-admin-text-key="section_market_title">Đi chợ ngày tết</h5>
                     </div>
                     <div class="row g-3">
                         <?php foreach($fresh_foods as $prod): ?>
@@ -1195,9 +1604,9 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title">Bia tết sale 10%</h5>
+                        <h5 class="section-title" data-admin-text-key="section_beer_title">Bia tết sale 10%</h5>
                         <div class="countdown-timer" id="timer2">
-                            <div class="time-box days">11</div> <span class="time-label">ngày</span>
+                            <div class="time-box days">11</div> <span class="time-label" data-admin-text-key="countdown_day_label">ngày</span>
                             <div class="time-box hours">06</div> <span class="time-label">:</span>
                             <div class="time-box minutes">50</div> <span class="time-label">:</span>
                             <div class="time-box seconds">16</div>
@@ -1228,7 +1637,7 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title text-primary">Đồ biếu tết sale 10%</h5>
+                        <h5 class="section-title text-primary" data-admin-text-key="section_gift_title">Đồ biếu tết sale 10%</h5>
                     </div>
                     <div class="row g-3">
                         <?php foreach($gifts as $prod): ?>
@@ -1255,7 +1664,7 @@ $categories = $__catalogData['categories'];
 
                 <div class="section-container">
                     <div class="section-header">
-                        <h5 class="section-title">Đi chợ ngày tết</h5>
+                        <h5 class="section-title" data-admin-text-key="section_market_title">Đi chợ ngày tết</h5>
                     </div>
                     <div class="row g-3">
                         <?php foreach($fresh_foods as $prod): ?>
@@ -1369,11 +1778,11 @@ $categories = $__catalogData['categories'];
     <section class="newsletter-section">
         <div class="newsletter-content">
             <i class="far fa-envelope newsletter-icon" aria-hidden="true"></i>
-            <h3 class="newsletter-title">Đăng kí nhận khuyến mãi</h3>
-            <p class="newsletter-subtitle">Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt</p>
+            <h3 class="newsletter-title" data-admin-text-key="newsletter_title">Đăng kí nhận khuyến mãi</h3>
+            <p class="newsletter-subtitle" data-admin-text-key="newsletter_subtitle">Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt</p>
             <div class="newsletter-form">
                 <input type="email" class="newsletter-input" placeholder="Email của bạn...">
-                <button type="button" class="newsletter-btn">Đăng ký</button>
+                <button type="button" class="newsletter-btn" data-admin-text-key="newsletter_button">Đăng ký</button>
             </div>
         </div>
     </section>
@@ -1442,11 +1851,79 @@ $categories = $__catalogData['categories'];
         </div>
     </footer>
 
+    <button id="chatbot-button" title="Hỏi AI tư vấn">
+        <i class="fas fa-robot"></i>
+    </button>
+
+    <div id="chatbot-widget">
+        <div class="chatbot-header">
+            <h3>🤖 AI Tư Vấn</h3>
+            <button class="chatbot-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="chatbot-messages">
+            <div class="chatbot-message ai">
+                <div class="chatbot-bubble">👋 Xin chào! Tôi có thể giúp bạn chọn sản phẩm nào không? Hỏi tôi về nước ngọt, trái cây, sữa, v.v...</div>
+            </div>
+        </div>
+        <div class="chatbot-input-area">
+            <input type="text" placeholder="Nhập câu hỏi..." autocomplete="off">
+            <button class="chatbot-send-btn" title="Gửi"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="web-events.js?v=20260412-3"></script>
     <script>
     const isAdminUser = <?php echo $isAdminUser ? 'true' : 'false'; ?>;
-    const adminThemeStorageKey = 'ack_home_admin_theme_v1';
+    const adminConfigApiUrl = 'trangchu.php?admin_home_config_api=1';
+    const adminInitialThemeConfig = <?php echo json_encode($homeThemeConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    const adminInitialTextConfig = <?php echo json_encode($homeTextConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    const adminCurrentThemeConfig = {
+        ...adminInitialThemeConfig
+    };
+    const adminCurrentTextConfig = {
+        ...adminInitialTextConfig
+    };
+    let adminSaveDebounceTimer = null;
+
+    const adminEditableTextMeta = {
+        home_product_heading: {
+            label: 'Tiêu đề khối sản phẩm',
+            defaultValue: 'Sản phẩm'
+        },
+        section_soft_drink_title: {
+            label: 'Tiêu đề khối nước ngọt',
+            defaultValue: 'Nước ngọt tết sale 10%'
+        },
+        section_beer_title: {
+            label: 'Tiêu đề khối bia',
+            defaultValue: 'Bia tết sale 10%'
+        },
+        section_gift_title: {
+            label: 'Tiêu đề khối đồ biếu',
+            defaultValue: 'Đồ biếu tết sale 10%'
+        },
+        section_market_title: {
+            label: 'Tiêu đề khối đi chợ',
+            defaultValue: 'Đi chợ ngày tết'
+        },
+        countdown_day_label: {
+            label: 'Nhãn đếm ngược (ngày)',
+            defaultValue: 'ngày'
+        },
+        newsletter_title: {
+            label: 'Tiêu đề đăng ký email',
+            defaultValue: 'Đăng kí nhận khuyến mãi'
+        },
+        newsletter_subtitle: {
+            label: 'Mô tả đăng ký email',
+            defaultValue: 'Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt'
+        },
+        newsletter_button: {
+            label: 'Nút đăng ký email',
+            defaultValue: 'Đăng ký'
+        }
+    };
 
     function adminApplyTheme(themeConfig) {
         if (!themeConfig || typeof themeConfig !== 'object') {
@@ -1465,19 +1942,131 @@ $categories = $__catalogData['categories'];
         }
     }
 
-    function adminSaveTheme(themeConfig) {
-        try {
-            localStorage.setItem(adminThemeStorageKey, JSON.stringify(themeConfig));
-        } catch (e) {}
+    function adminQueueSaveConfig() {
+        if (!isAdminUser) {
+            return;
+        }
+
+        if (adminSaveDebounceTimer) {
+            clearTimeout(adminSaveDebounceTimer);
+        }
+
+        adminSaveDebounceTimer = setTimeout(() => {
+            fetch(adminConfigApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'save',
+                        theme: adminCurrentThemeConfig,
+                        text: adminCurrentTextConfig,
+                    })
+                })
+                .catch(() => {
+                    // Không khóa UI nếu API lỗi.
+                });
+        }, 250);
     }
 
-    function adminReadStoredTheme() {
-        try {
-            const raw = localStorage.getItem(adminThemeStorageKey);
-            return raw ? JSON.parse(raw) : null;
-        } catch (e) {
-            return null;
+    function adminGetDefaultThemeConfig() {
+        return {
+            pageBg: '#f5f5f5',
+            sectionBg: '#e0f2fe',
+            navBg: '#007bff'
+        };
+    }
+
+    function adminGetDefaultTextConfig() {
+        const defaults = {
+            ...adminInitialTextConfig
+        };
+        Object.keys(adminEditableTextMeta).forEach((key) => {
+            if (!Object.prototype.hasOwnProperty.call(defaults, key)) {
+                defaults[key] = adminEditableTextMeta[key].defaultValue || '';
+            }
+        });
+        return defaults;
+    }
+
+    function adminApplyTextConfig(textConfig) {
+        if (!textConfig || typeof textConfig !== 'object') {
+            return;
         }
+
+        document.querySelectorAll('[data-admin-text-key]').forEach((el) => {
+            const key = el.getAttribute('data-admin-text-key');
+            if (!key || !Object.prototype.hasOwnProperty.call(textConfig, key)) {
+                return;
+            }
+            el.textContent = textConfig[key] ?? '';
+        });
+    }
+
+    function initAdminTextControls() {
+        const defaults = adminGetDefaultTextConfig();
+        const currentConfig = {
+            ...defaults,
+            ...adminCurrentTextConfig
+        };
+
+        adminApplyTextConfig(currentConfig);
+
+        if (!isAdminUser) {
+            return;
+        }
+
+        const fieldWrap = document.getElementById('adminTextEditorFields');
+        const resetTextBtn = document.getElementById('adminResetTextBtn');
+        if (!fieldWrap || !resetTextBtn) {
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        Object.keys(adminEditableTextMeta).forEach((key) => {
+            const item = adminEditableTextMeta[key];
+            const field = document.createElement('div');
+            field.className = 'admin-text-field';
+
+            const label = document.createElement('label');
+            label.setAttribute('for', `admin-text-input-${key}`);
+            label.textContent = item.label;
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = `admin-text-input-${key}`;
+            input.value = currentConfig[key] ?? item.defaultValue ?? '';
+            input.maxLength = 120;
+            input.setAttribute('data-admin-text-input', key);
+
+            input.addEventListener('input', () => {
+                currentConfig[key] = input.value;
+                adminCurrentTextConfig[key] = input.value;
+                adminApplyTextConfig(currentConfig);
+                adminQueueSaveConfig();
+            });
+
+            field.appendChild(label);
+            field.appendChild(input);
+            fragment.appendChild(field);
+        });
+
+        fieldWrap.innerHTML = '';
+        fieldWrap.appendChild(fragment);
+
+        resetTextBtn.addEventListener('click', () => {
+            const defaultConfig = adminGetDefaultTextConfig();
+            Object.keys(defaultConfig).forEach((key) => {
+                currentConfig[key] = defaultConfig[key];
+                adminCurrentTextConfig[key] = defaultConfig[key];
+                const input = document.querySelector(`[data-admin-text-input="${key}"]`);
+                if (input) {
+                    input.value = defaultConfig[key];
+                }
+            });
+            adminApplyTextConfig(defaultConfig);
+            adminQueueSaveConfig();
+        });
     }
 
     function attachAdminEditButtons() {
@@ -1497,9 +2086,10 @@ $categories = $__catalogData['categories'];
             }
 
             const productId = decodeURIComponent(match[1]);
+            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
             const editLink = document.createElement('a');
             editLink.className = 'admin-edit-btn';
-            editLink.href = `../TrangAdmin/admin-sanpham.php?edit=${encodeURIComponent(productId)}`;
+            editLink.href = `../TrangAdmin/admin-sanpham.php?edit=${encodeURIComponent(productId)}&return_to=${returnTo}`;
             editLink.title = 'Sửa sản phẩm này';
             editLink.innerHTML = '<i class="fas fa-pen"></i>';
             editLink.addEventListener('click', function(event) {
@@ -1511,6 +2101,8 @@ $categories = $__catalogData['categories'];
     }
 
     function initAdminThemeControls() {
+        adminApplyTheme(adminCurrentThemeConfig);
+
         if (!isAdminUser) {
             return;
         }
@@ -1524,20 +2116,12 @@ $categories = $__catalogData['categories'];
             return;
         }
 
-        const defaultTheme = {
-            pageBg: '#f5f5f5',
-            sectionBg: '#e0f2fe',
-            navBg: '#007bff'
-        };
-
-        const stored = adminReadStoredTheme();
+        const defaultTheme = adminGetDefaultThemeConfig();
         const currentTheme = {
-            pageBg: stored?.pageBg || defaultTheme.pageBg,
-            sectionBg: stored?.sectionBg || defaultTheme.sectionBg,
-            navBg: stored?.navBg || defaultTheme.navBg,
+            ...defaultTheme,
+            ...adminCurrentThemeConfig,
         };
 
-        adminApplyTheme(currentTheme);
         pageBgPicker.value = currentTheme.pageBg;
         sectionBgPicker.value = currentTheme.sectionBg;
         navBgPicker.value = currentTheme.navBg;
@@ -1549,7 +2133,10 @@ $categories = $__catalogData['categories'];
                 navBg: navBgPicker.value,
             };
             adminApplyTheme(theme);
-            adminSaveTheme(theme);
+            adminCurrentThemeConfig.pageBg = theme.pageBg;
+            adminCurrentThemeConfig.sectionBg = theme.sectionBg;
+            adminCurrentThemeConfig.navBg = theme.navBg;
+            adminQueueSaveConfig();
         };
 
         pageBgPicker.addEventListener('input', onThemeChange);
@@ -1557,12 +2144,41 @@ $categories = $__catalogData['categories'];
         navBgPicker.addEventListener('input', onThemeChange);
 
         resetBtn.addEventListener('click', () => {
-            localStorage.removeItem(adminThemeStorageKey);
             adminApplyTheme(defaultTheme);
+            adminCurrentThemeConfig.pageBg = defaultTheme.pageBg;
+            adminCurrentThemeConfig.sectionBg = defaultTheme.sectionBg;
+            adminCurrentThemeConfig.navBg = defaultTheme.navBg;
             pageBgPicker.value = defaultTheme.pageBg;
             sectionBgPicker.value = defaultTheme.sectionBg;
             navBgPicker.value = defaultTheme.navBg;
+            adminQueueSaveConfig();
         });
+    }
+
+    function bindAdminQuickLinks() {
+        if (!isAdminUser) {
+            return;
+        }
+
+        const goDashboardLink = document.getElementById('adminGoDashboardLink');
+        const goProductsLink = document.getElementById('adminGoProductsLink');
+
+        if (goDashboardLink) {
+            goDashboardLink.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                window.location.assign('../TrangAdmin/admin.php');
+            });
+        }
+
+        if (goProductsLink) {
+            goProductsLink.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.assign(`../TrangAdmin/admin-sanpham.php?return_to=${returnTo}`);
+            });
+        }
     }
 
     // JS tạo hiệu ứng đếm ngược thời gian giả lập
@@ -1594,9 +2210,238 @@ $categories = $__catalogData['categories'];
     window.onload = function() {
         attachAdminEditButtons();
         initAdminThemeControls();
+        initAdminTextControls();
+        bindAdminQuickLinks();
         startTimer(975000, 'timer1');
         startTimer(975010, 'timer2');
     };
+    </script>
+    <script>
+    (function() {
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text || '').replace(/[&<>"']/g, (m) => map[m]);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatbotButton = document.getElementById('chatbot-button');
+            const chatbotWidget = document.getElementById('chatbot-widget');
+            const chatbotClose = document.querySelector('.chatbot-close');
+            const chatbotMessages = document.querySelector('.chatbot-messages');
+            const chatbotInput = document.querySelector('.chatbot-input-area input');
+            const chatbotSendBtn = document.querySelector('.chatbot-send-btn');
+
+            if (!chatbotButton || !chatbotWidget || !chatbotClose || !chatbotMessages || !chatbotInput || !chatbotSendBtn) {
+                return;
+            }
+
+            chatbotButton.addEventListener('click', function() {
+                chatbotWidget.classList.toggle('active');
+                chatbotButton.classList.toggle('active');
+                if (chatbotWidget.classList.contains('active')) {
+                    chatbotInput.focus();
+                }
+            });
+
+            chatbotClose.addEventListener('click', function() {
+                chatbotWidget.classList.remove('active');
+                chatbotButton.classList.remove('active');
+            });
+
+            function sendChatMessage() {
+                const message = chatbotInput.value.trim();
+                if (!message) return;
+
+                const userDiv = document.createElement('div');
+                userDiv.className = 'chatbot-message user';
+                userDiv.innerHTML = '<div class="chatbot-bubble">' + escapeHtml(message) + '</div>';
+                chatbotMessages.appendChild(userDiv);
+                chatbotInput.value = '';
+
+                const typingDiv = document.createElement('div');
+                typingDiv.className = 'chatbot-message ai';
+                typingDiv.id = 'typing-indicator';
+                typingDiv.innerHTML = '<div class="chatbot-bubble">Đang suy nghĩ...</div>';
+                chatbotMessages.appendChild(typingDiv);
+                chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+                fetch('ai-advisor.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: 'message=' + encodeURIComponent(message)
+                    })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        const typingEl = document.getElementById('typing-indicator');
+                        if (typingEl) typingEl.remove();
+
+                        const aiDiv = document.createElement('div');
+                        aiDiv.className = 'chatbot-message ai';
+                        aiDiv.innerHTML = '<div class="chatbot-bubble">' + escapeHtml(data.reply || '') + '</div>';
+                        chatbotMessages.appendChild(aiDiv);
+
+                        if (data.type === 'products' && Array.isArray(data.products) && data.products.length > 0) {
+                            if (!document.getElementById('chatbot-products-style')) {
+                                const style = document.createElement('style');
+                                style.id = 'chatbot-products-style';
+                                style.textContent = `
+                                    .chatbot-products {
+                                        display: grid;
+                                        grid-template-columns: 1fr;
+                                        gap: 10px;
+                                        margin: 10px 0 2px;
+                                    }
+                                    .chatbot-product-item {
+                                        background: white;
+                                        border: 2px solid #0d6efd;
+                                        border-radius: 12px;
+                                        padding: 0;
+                                        overflow: hidden;
+                                        text-align: left;
+                                        cursor: pointer;
+                                        transition: all 0.2s;
+                                        text-decoration: none !important;
+                                        color: #333 !important;
+                                        display: block;
+                                    }
+                                    .chatbot-product-item:hover {
+                                        border-color: #007bff;
+                                        background: #ffffff;
+                                        transform: translateY(-2px);
+                                        box-shadow: 0 6px 16px rgba(0,123,255,0.24);
+                                    }
+                                    .chatbot-product-img {
+                                        width: 100%;
+                                        aspect-ratio: 1 / 1;
+                                        height: auto;
+                                        object-fit: cover;
+                                        display: block;
+                                        background: #fff;
+                                    }
+                                    .chatbot-product-body {
+                                        padding: 8px 10px 10px;
+                                    }
+                                    .chatbot-product-name {
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        margin-bottom: 4px;
+                                        line-height: 1.3;
+                                    }
+                                    .chatbot-product-price {
+                                        font-size: 14px;
+                                        color: #dc3545;
+                                        font-weight: bold;
+                                    }
+                                    .chatbot-view-more {
+                                        grid-column: 1 / -1;
+                                        margin-top: 8px;
+                                        text-align: center;
+                                        padding-top: 8px;
+                                        border-top: 1px solid #f0f0f0;
+                                    }
+                                    .chatbot-view-more a {
+                                        text-decoration: none !important;
+                                    }
+                                    .chatbot-view-more-btn {
+                                        background: none;
+                                        border: none;
+                                        color: #007bff;
+                                        cursor: pointer;
+                                        font-size: 12px;
+                                        font-weight: 500;
+                                        padding: 3px 8px;
+                                        transition: all 0.2s;
+                                        display: inline-block;
+                                    }
+                                    .chatbot-view-more-btn:hover {
+                                        color: #0056b3;
+                                        text-decoration: underline;
+                                    }
+                                `;
+                                document.head.appendChild(style);
+                            }
+
+                            const productsDiv = document.createElement('div');
+                            productsDiv.className = 'chatbot-message ai';
+
+                            let productsHTML = '<div class="chatbot-products">';
+                            data.products.forEach((product) => {
+                                const productUrl = product.link || '#';
+                                productsHTML += `
+                                    <a href="${escapeHtml(productUrl)}" class="chatbot-product-item" target="_blank" title="${escapeHtml(product.name || '')}">
+                                        <img src="${escapeHtml(product.img || '')}" alt="${escapeHtml(product.name || '')}" class="chatbot-product-img">
+                                        <div class="chatbot-product-body">
+                                            <div class="chatbot-product-name">${escapeHtml(product.name || '')}</div>
+                                            <div class="chatbot-product-price">${escapeHtml(product.price || '')}</div>
+                                        </div>
+                                    </a>
+                                `;
+                            });
+                            productsHTML += '</div>';
+
+                            if (data.hasMore) {
+                                const categoryNameMap = {
+                                    'nuocngot': 'Trangnuocngot.php',
+                                    'douong': 'Trangdouong.php',
+                                    'anvat': 'Tranganvat.php',
+                                    'thucannhanh': 'Trangthucannhanh.php',
+                                    'traicay': 'Trangtraicay.php',
+                                    'raucu': 'Trangraucu.php',
+                                    'sua': 'Trangsua.php',
+                                    'banhngot': 'Trangbanhngot.php',
+                                    'giadung': 'Tranggiadung.php',
+                                    'mypham': 'Trangmypham.php',
+                                    'kem': 'Trangkem.php',
+                                    'mianlien': 'Trangmianlien.php',
+                                    'tuoisong': 'Trangtuoisong.php',
+                                    'dohop': 'Trangdohop.php',
+                                    'giavi': 'Tranggiavi.php',
+                                    'bia': 'Trangbia.php'
+                                };
+                                const categoryLink = categoryNameMap[data.categorySlug] || '#';
+                                const remaining = Math.max(0, Number(data.totalCount || 0) - Number(data.displayedCount || 0));
+                                productsHTML += `
+                                    <div class="chatbot-view-more">
+                                        <a href="${categoryLink}" target="_blank">
+                                            <button class="chatbot-view-more-btn">Xem thêm ${remaining} sản phẩm →</button>
+                                        </a>
+                                    </div>
+                                `;
+                            }
+
+                            productsDiv.innerHTML = productsHTML;
+                            chatbotMessages.appendChild(productsDiv);
+                        }
+
+                        chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+                    })
+                    .catch(() => {
+                        const typingEl = document.getElementById('typing-indicator');
+                        if (typingEl) typingEl.remove();
+
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'chatbot-message ai';
+                        errorDiv.innerHTML = '<div class="chatbot-bubble">Xin lỗi, tôi gặp lỗi. Vui lòng thử lại!</div>';
+                        chatbotMessages.appendChild(errorDiv);
+                    });
+            }
+
+            chatbotSendBtn.addEventListener('click', sendChatMessage);
+            chatbotInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendChatMessage();
+                }
+            });
+        });
+    })();
     </script>
 </body>
 

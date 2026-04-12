@@ -965,6 +965,78 @@ foreach ($reviews as $rv) {
         font-weight: 600;
         font-size: 0.85rem;
     }
+
+    .comment-form-card {
+        background: linear-gradient(180deg, #f8fbff 0%, #f1f6ff 100%);
+        border: 1px solid #dbeafe;
+        border-radius: 14px;
+        padding: 16px;
+    }
+
+    .comment-form-card .form-label {
+        font-size: 0.86rem;
+        font-weight: 600;
+        color: #334155;
+        margin-bottom: 6px;
+    }
+
+    .comment-form-card .form-control,
+    .comment-form-card .form-select {
+        border-radius: 10px;
+        border-color: #dbe3ef;
+        min-height: 40px;
+    }
+
+    .comment-form-card .form-control:focus,
+    .comment-form-card .form-select:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.18);
+    }
+
+    .pretty-file-input {
+        width: 100%;
+        display: block;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #fff;
+        color: #0f172a;
+        padding: 6px;
+        font-size: 0.9rem;
+    }
+
+    .pretty-file-input::file-selector-button {
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+        padding: 8px 12px;
+        margin-right: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity .2s ease;
+    }
+
+    .pretty-file-input:hover::file-selector-button {
+        opacity: .92;
+    }
+
+    .pretty-file-input::-webkit-file-upload-button {
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+        padding: 8px 12px;
+        margin-right: 10px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .file-input-hint {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 0.8rem;
+        color: #64748b;
+    }
     </style>
 </head>
 
@@ -1154,7 +1226,7 @@ foreach ($reviews as $rv) {
                 </div>
             </div>
 
-            <div class="mb-4 p-3 border rounded bg-light">
+            <div class="mb-4 comment-form-card">
                 <h6 class="fw-bold mb-3">Viết bình luận của bạn</h6>
                 <?php if ($commentSuccess !== ''): ?>
                 <div class="alert alert-success py-2 mb-3"><?php echo htmlspecialchars($commentSuccess); ?></div>
@@ -1192,9 +1264,9 @@ foreach ($reviews as $rv) {
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Ảnh đính kèm (tùy chọn)</label>
-                            <input type="file" class="form-control" name="comment_image"
+                            <input type="file" class="pretty-file-input" name="comment_image"
                                 accept="image/jpeg,image/png,image/webp,image/gif">
-                            <small class="text-muted">Hỗ trợ JPG/PNG/WEBP/GIF, tối đa 5MB.</small>
+                            <small class="file-input-hint">Hỗ trợ JPG/PNG/WEBP/GIF, tối đa 5MB.</small>
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-primary">
@@ -1257,7 +1329,7 @@ foreach ($reviews as $rv) {
                                         placeholder="Viết phản hồi..."></textarea>
                                 </div>
                                 <div class="col-md-7">
-                                    <input type="file" class="form-control form-control-sm" name="comment_image"
+                                    <input type="file" class="pretty-file-input" name="comment_image"
                                         accept="image/jpeg,image/png,image/webp,image/gif">
                                 </div>
                                 <div class="col-md-5 d-flex justify-content-end">

@@ -3,8 +3,14 @@
   const CART_API_ENDPOINT = "cart-handler.php";
   const NOTIFICATION_API_ENDPOINT = "notification-handler.php";
   const USER_SESSION_ENDPOINT = "user-session.php";
+  const LOCATION_API_ENDPOINT = "locations.php";
+  const PRODUCT_SEARCH_ENDPOINT = "product-search.php";
+  const AI_ADVISOR_ENDPOINT = "ai-advisor.php";
   const USER_MENU_STYLE_ID = "ack-global-user-menu-style";
+  const CHATBOT_STYLE_ID = "ack-global-chatbot-style";
+  const LOCATION_STORAGE_KEY = "ack_selected_location";
   let userSessionPromise = null;
+  let locationListPromise = null;
 
   function parseMoney(value) {
     if (typeof value === "number") return value;
@@ -1220,15 +1226,17 @@
   }
 
   function bindSearchFilter() {
+    injectGlobalHeaderUxStyles();
+
     const inputs = document.querySelectorAll(
       ".search-box input, .search-input, input[placeholder*='Tìm kiếm sản phẩm']",
     );
     if (!inputs.length) return;
 
     const cards = Array.from(document.querySelectorAll(".product-card"));
-    if (!cards.length) return;
 
-    const runFilter = (keyword) => {
+    const runLocalFilter = (keyword) => {
+      if (!cards.length) return;
       const q = String(keyword || "")
         .trim()
         .toLowerCase();
@@ -1244,8 +1252,160 @@
       });
     };
 
+    const fetchSearchResults = async (keyword) => {
+      const q = String(keyword || "").trim();
+      if (!q) return [];
+
+      try {
+        const response = await fetch(
+          `${PRODUCT_SEARCH_ENDPOINT}?q=${encodeURIComponent(q)}&limit=8&_=${Date.now()}`,
+          {
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            cache: "no-store",
+          },
+        );
+        const data = await response.json().catch(() => ({}));
+
+        if (
+          !response.ok ||
+          data?.ok !== true ||
+          !Array.isArray(data?.results)
+        ) {
+          return [];
+        }
+
+        return data.results;
+      } catch (_) {
+        return [];
+      }
+    };
+
     inputs.forEach((input) => {
-      input.addEventListener("input", () => runFilter(input.value));
+      if (!(input instanceof HTMLInputElement)) return;
+      if (input.dataset.ackSearchBound === "1") return;
+
+      input.dataset.ackSearchBound = "1";
+
+      const host =
+        input.closest(".search-box") || input.parentElement || document.body;
+
+      const suggest = document.createElement("div");
+      suggest.className = "ack-search-suggest";
+      host.appendChild(suggest);
+
+      let debounceTimer = null;
+      let latestResults = [];
+
+      const hideSuggest = () => {
+        suggest.style.display = "none";
+      };
+
+      const showSuggest = () => {
+        suggest.style.display = "block";
+      };
+
+      const renderSuggest = (results) => {
+        latestResults = Array.isArray(results) ? results : [];
+
+        if (!latestResults.length) {
+          suggest.innerHTML =
+            '<div class="ack-search-suggest-empty">Không tìm thấy sản phẩm phù hợp.</div>';
+          showSuggest();
+          return;
+        }
+
+        suggest.innerHTML = latestResults
+          .map((item) => {
+            const link = String(item?.link || "#").trim() || "#";
+            return `
+              <a class="ack-search-suggest-item" href="${escapeHtml(link)}">
+                <img class="ack-search-suggest-img" src="${escapeHtml(item?.img || "../TrangUser/ack.png")}" alt="${escapeHtml(item?.name || "")}">
+                <div>
+                  <div class="ack-search-suggest-name">${escapeHtml(item?.name || "Sản phẩm")}</div>
+                  <div class="ack-search-suggest-price">${escapeHtml(item?.price || "")}</div>
+                </div>
+              </a>
+            `;
+          })
+          .join("");
+        showSuggest();
+      };
+
+      const runBackendSearch = async () => {
+        const keyword = String(input.value || "").trim();
+        runLocalFilter(keyword);
+
+        if (!keyword) {
+          hideSuggest();
+          latestResults = [];
+          return;
+        }
+
+        const results = await fetchSearchResults(keyword);
+        renderSuggest(results);
+      };
+
+      input.addEventListener("input", () => {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+        }
+        debounceTimer = setTimeout(runBackendSearch, 180);
+      });
+
+      input.addEventListener("keydown", async (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+
+        const keyword = String(input.value || "").trim();
+        if (!keyword) {
+          hideSuggest();
+          runLocalFilter("");
+          return;
+        }
+
+        if (!latestResults.length) {
+          latestResults = await fetchSearchResults(keyword);
+        }
+
+        const firstLink = String(latestResults?.[0]?.link || "").trim();
+        if (firstLink) {
+          window.location.href = firstLink;
+          return;
+        }
+
+        toast("Không tìm thấy sản phẩm phù hợp.");
+      });
+
+      const icon = host.querySelector("i.fa-search");
+      if (icon) {
+        icon.style.cursor = "pointer";
+        icon.addEventListener("click", async () => {
+          const keyword = String(input.value || "").trim();
+          if (!keyword) {
+            hideSuggest();
+            runLocalFilter("");
+            return;
+          }
+
+          if (!latestResults.length) {
+            latestResults = await fetchSearchResults(keyword);
+          }
+
+          const firstLink = String(latestResults?.[0]?.link || "").trim();
+          if (firstLink) {
+            window.location.href = firstLink;
+          } else {
+            toast("Không tìm thấy sản phẩm phù hợp.");
+          }
+        });
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest(".search-box") === host) return;
+        hideSuggest();
+      });
     });
   }
 
@@ -1490,7 +1650,10 @@
     editBtn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      window.location.href = `../TrangAdmin/admin-sanpham.php?edit=${encodeURIComponent(productId)}`;
+      const returnTo = encodeURIComponent(
+        window.location.pathname + window.location.search,
+      );
+      window.location.href = `../TrangAdmin/admin-sanpham.php?edit=${encodeURIComponent(productId)}&return_to=${returnTo}`;
     });
 
     const currentPosition = window.getComputedStyle(card).position;
@@ -1586,10 +1749,826 @@
     applyHeroVisibilityRules();
   }
 
+  function injectGlobalHeaderUxStyles() {
+    if (document.getElementById("ack-global-header-ux-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "ack-global-header-ux-style";
+    style.textContent = `
+      .ack-location-select {
+        border-radius: 20px !important;
+        background: #eee !important;
+        border: none !important;
+        padding: 5px 32px 5px 14px !important;
+        font-size: 0.9rem !important;
+        min-width: 170px;
+      }
+
+      .ack-location-wrap {
+        position: relative;
+        min-width: 190px;
+      }
+
+      .ack-location-btn {
+        width: 100%;
+        border: none;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #0f172a;
+        font-size: 0.95rem;
+        font-weight: 500;
+        padding: 8px 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+      }
+
+      .ack-location-btn:hover {
+        background: #e8eef8;
+      }
+
+      .ack-location-wrap.open .ack-location-btn {
+        background: #e6efff;
+        box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35);
+      }
+
+      .ack-location-label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 145px;
+      }
+
+      .ack-location-caret {
+        margin-left: auto;
+        transition: transform 0.2s ease;
+      }
+
+      .ack-location-wrap.open .ack-location-caret {
+        transform: rotate(180deg);
+      }
+
+      .ack-location-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        width: 100%;
+        min-width: 260px;
+        max-height: 320px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #dbe3ef;
+        border-radius: 14px;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
+        padding: 6px;
+        z-index: 1200;
+        display: none;
+      }
+
+      .ack-location-wrap.open .ack-location-menu {
+        display: block;
+      }
+
+      .ack-location-item {
+        width: 100%;
+        border: none;
+        background: transparent;
+        border-radius: 10px;
+        padding: 8px 10px;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #0f172a;
+        font-size: 0.92rem;
+      }
+
+      .ack-location-item:hover {
+        background: #f3f7ff;
+      }
+
+      .ack-location-item.active {
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+      }
+
+      .search-box {
+        position: relative;
+      }
+
+      .ack-search-suggest {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.15);
+        z-index: 1050;
+        max-height: 380px;
+        overflow-y: auto;
+        display: none;
+      }
+
+      .ack-search-suggest-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        text-decoration: none;
+        color: #111827;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .ack-search-suggest-item:last-child {
+        border-bottom: none;
+      }
+
+      .ack-search-suggest-item:hover {
+        background: #f8fbff;
+        color: #111827;
+      }
+
+      .ack-search-suggest-img {
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        object-fit: cover;
+        flex-shrink: 0;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+      }
+
+      .ack-search-suggest-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+
+      .ack-search-suggest-price {
+        font-size: 0.8rem;
+        color: #dc2626;
+        margin-top: 2px;
+      }
+
+      .ack-search-suggest-empty {
+        padding: 10px 12px;
+        color: #64748b;
+        font-size: 0.84rem;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  async function fetchLocations() {
+    if (locationListPromise) return locationListPromise;
+
+    locationListPromise = fetch(`${LOCATION_API_ENDPOINT}?_=${Date.now()}`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      cache: "no-store",
+    })
+      .then((response) =>
+        response
+          .json()
+          .catch(() => ({}))
+          .then((data) => {
+            if (
+              response.ok &&
+              data?.ok === true &&
+              Array.isArray(data?.locations)
+            ) {
+              return data.locations
+                .map((item) => String(item || "").trim())
+                .filter(Boolean);
+            }
+
+            return [];
+          }),
+      )
+      .catch(() => []);
+
+    return locationListPromise;
+  }
+
+  function updateDeliveryNoticeLocation(locationName) {
+    const location = String(locationName || "").trim();
+    if (!location) return;
+
+    document.querySelectorAll(".delivery-notice").forEach((node) => {
+      node.innerHTML = `<i class=\"fas fa-truck-fast me-1\"></i> Miễn phí giao hàng tại ${escapeHtml(location)}`;
+    });
+  }
+
+  async function setupLocationSelector() {
+    injectGlobalHeaderUxStyles();
+
+    const locationNodes = Array.from(
+      document.querySelectorAll(".location-select"),
+    );
+    if (!locationNodes.length) return;
+
+    const locations = await fetchLocations();
+    if (!locations.length) return;
+
+    const fallback = locations.includes("Đồng Tháp")
+      ? "Đồng Tháp"
+      : locations[0];
+    const stored = String(
+      localStorage.getItem(LOCATION_STORAGE_KEY) || "",
+    ).trim();
+    const selected = locations.includes(stored) ? stored : fallback;
+
+    locationNodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (node.dataset.ackLocationBound === "1") return;
+
+      const wrap = document.createElement("div");
+      wrap.className = "ack-location-wrap";
+      wrap.dataset.ackLocationBound = "1";
+
+      wrap.innerHTML = `
+        <button type="button" class="ack-location-btn" aria-haspopup="listbox" aria-expanded="false">
+          <i class="fas fa-map-marker-alt text-danger"></i>
+          <span class="ack-location-label">${escapeHtml(selected)}</span>
+          <i class="fas fa-caret-down ack-location-caret"></i>
+        </button>
+        <div class="ack-location-menu" role="listbox"></div>
+      `;
+
+      const button = wrap.querySelector(".ack-location-btn");
+      const label = wrap.querySelector(".ack-location-label");
+      const menu = wrap.querySelector(".ack-location-menu");
+      if (!button || !label || !menu) return;
+
+      menu.innerHTML = locations
+        .map((name) => {
+          const active = name === selected ? " active" : "";
+          return `<button type=\"button\" class=\"ack-location-item${active}\" data-location=\"${escapeHtml(name)}\"><i class=\"fas fa-location-dot text-danger\"></i><span>${escapeHtml(name)}</span></button>`;
+        })
+        .join("");
+
+      const closeAllMenus = () => {
+        document.querySelectorAll(".ack-location-wrap.open").forEach((item) => {
+          if (!(item instanceof HTMLElement)) return;
+          item.classList.remove("open");
+          const btn = item.querySelector(".ack-location-btn");
+          if (btn instanceof HTMLElement) {
+            btn.setAttribute("aria-expanded", "false");
+          }
+        });
+      };
+
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const willOpen = !wrap.classList.contains("open");
+        closeAllMenus();
+        if (willOpen) {
+          wrap.classList.add("open");
+          button.setAttribute("aria-expanded", "true");
+        }
+      });
+
+      menu.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const option = target.closest(".ack-location-item[data-location]");
+        if (!(option instanceof HTMLElement)) return;
+
+        const value = String(option.dataset.location || "").trim();
+        if (!value) return;
+
+        localStorage.setItem(LOCATION_STORAGE_KEY, value);
+        label.textContent = value;
+        updateDeliveryNoticeLocation(value);
+
+        menu
+          .querySelectorAll(".ack-location-item")
+          .forEach((item) => item.classList.remove("active"));
+        option.classList.add("active");
+
+        wrap.classList.remove("open");
+        button.setAttribute("aria-expanded", "false");
+      });
+
+      if (!document.body.dataset.ackLocationOutsideBound) {
+        document.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          if (target.closest(".ack-location-wrap")) return;
+
+          document
+            .querySelectorAll(".ack-location-wrap.open")
+            .forEach((item) => {
+              if (!(item instanceof HTMLElement)) return;
+              item.classList.remove("open");
+              const btn = item.querySelector(".ack-location-btn");
+              if (btn instanceof HTMLElement) {
+                btn.setAttribute("aria-expanded", "false");
+              }
+            });
+        });
+        document.body.dataset.ackLocationOutsideBound = "1";
+      }
+
+      node.replaceWith(wrap);
+    });
+
+    updateDeliveryNoticeLocation(selected);
+  }
+
+  function injectGlobalChatbotStyles() {
+    if (document.getElementById(CHATBOT_STYLE_ID)) return;
+
+    const style = document.createElement("style");
+    style.id = CHATBOT_STYLE_ID;
+    style.textContent = `
+      #chatbot-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: #fff;
+        font-size: 28px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9998;
+        transition: all 0.25s ease;
+      }
+
+      #chatbot-button:hover {
+        transform: scale(1.08);
+        box-shadow: 0 6px 18px rgba(0, 123, 255, 0.6);
+      }
+
+      #chatbot-button.active {
+        bottom: 390px;
+      }
+
+      #chatbot-widget {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 380px;
+        height: 500px;
+        background: #fff;
+        border-radius: 15px;
+        box-shadow: 0 5px 40px rgba(0, 0, 0, 0.16);
+        display: none;
+        flex-direction: column;
+        z-index: 9999;
+        animation: ackChatbotSlideUp 0.25s ease;
+        overflow: hidden;
+      }
+
+      #chatbot-widget.active {
+        display: flex;
+      }
+
+      @keyframes ackChatbotSlideUp {
+        from {
+          opacity: 0;
+          transform: translateY(24px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .chatbot-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: #fff;
+        padding: 14px 15px;
+        border-radius: 15px 15px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .chatbot-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .chatbot-close {
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 20px;
+        cursor: pointer;
+        width: 30px;
+        height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .chatbot-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        background: #f9f9f9;
+      }
+
+      .chatbot-message {
+        margin-bottom: 10px;
+        display: flex;
+      }
+
+      .chatbot-message.user {
+        justify-content: flex-end;
+      }
+
+      .chatbot-message.ai {
+        justify-content: flex-start;
+      }
+
+      .chatbot-bubble {
+        max-width: 78%;
+        padding: 10px 14px;
+        border-radius: 10px;
+        word-wrap: break-word;
+        line-height: 1.45;
+        font-size: 14px;
+        white-space: pre-line;
+      }
+
+      .chatbot-message.user .chatbot-bubble {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: #fff;
+        border-bottom-right-radius: 2px;
+      }
+
+      .chatbot-message.ai .chatbot-bubble {
+        background: #e9ecef;
+        color: #333;
+        border-bottom-left-radius: 2px;
+      }
+
+      .chatbot-input-area {
+        padding: 12px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        gap: 8px;
+        background: #fff;
+      }
+
+      .chatbot-input-area input {
+        flex: 1;
+        border: 1px solid #d1d5db;
+        border-radius: 999px;
+        padding: 10px 14px;
+        font-size: 14px;
+        outline: none;
+      }
+
+      .chatbot-input-area input:focus {
+        border-color: #0b74e5;
+      }
+
+      .chatbot-send-btn {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: #fff;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+      }
+
+      .chatbot-products {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin: 10px 0 2px;
+      }
+
+      .chatbot-product-item {
+        background: white;
+        border: 2px solid #0d6efd;
+        border-radius: 12px;
+        padding: 0;
+        overflow: hidden;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none !important;
+        color: #333 !important;
+        display: block;
+      }
+
+      .chatbot-product-item:hover {
+        border-color: #007bff;
+        background: #ffffff;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 123, 255, 0.24);
+      }
+
+      .chatbot-product-img {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        height: auto;
+        object-fit: cover;
+        display: block;
+        background: #fff;
+      }
+
+      .chatbot-product-body {
+        padding: 8px 10px 10px;
+      }
+
+      .chatbot-product-name {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        line-height: 1.3;
+      }
+
+      .chatbot-product-price {
+        font-size: 14px;
+        color: #dc3545;
+        font-weight: 700;
+      }
+
+      .chatbot-view-more {
+        margin-top: 8px;
+        text-align: center;
+        padding-top: 8px;
+        border-top: 1px solid #f0f0f0;
+      }
+
+      .chatbot-view-more a {
+        text-decoration: none !important;
+      }
+
+      .chatbot-view-more-btn {
+        background: none;
+        border: none;
+        color: #007bff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 8px;
+      }
+
+      @media (max-width: 480px) {
+        #chatbot-widget {
+          width: calc(100% - 10px);
+          height: 62vh;
+          bottom: 10px;
+          right: 5px;
+        }
+
+        #chatbot-button {
+          width: 52px;
+          height: 52px;
+          font-size: 24px;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  function ensureGlobalChatbotWidget() {
+    const hasButton = !!document.getElementById("chatbot-button");
+    const hasWidget = !!document.getElementById("chatbot-widget");
+
+    // Trang nào đã tự có chatbot riêng thì không đụng vào
+    if (hasButton || hasWidget) {
+      return false;
+    }
+
+    injectGlobalChatbotStyles();
+
+    const button = document.createElement("button");
+    button.id = "chatbot-button";
+    button.title = "Hỏi AI tư vấn";
+    button.innerHTML = '<i class="fas fa-robot" aria-hidden="true"></i>';
+
+    const widget = document.createElement("div");
+    widget.id = "chatbot-widget";
+    widget.innerHTML = `
+      <div class="chatbot-header">
+        <h3>🤖 AI Tư Vấn</h3>
+        <button class="chatbot-close" type="button" aria-label="Đóng"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="chatbot-messages">
+        <div class="chatbot-message ai">
+          <div class="chatbot-bubble">👋 Xin chào! Tôi có thể giúp bạn chọn sản phẩm nào không? Hỏi tôi về nước ngọt, trái cây, sữa, v.v...</div>
+        </div>
+      </div>
+      <div class="chatbot-input-area">
+        <input type="text" placeholder="Nhập câu hỏi..." autocomplete="off">
+        <button class="chatbot-send-btn" type="button" title="Gửi"><i class="fas fa-paper-plane"></i></button>
+      </div>
+    `;
+
+    document.body.appendChild(button);
+    document.body.appendChild(widget);
+    return true;
+  }
+
+  function bindGlobalChatbot() {
+    const createdByGlobal = ensureGlobalChatbotWidget();
+    if (!createdByGlobal) {
+      return;
+    }
+
+    const chatbotButton = document.getElementById("chatbot-button");
+    const chatbotWidget = document.getElementById("chatbot-widget");
+    const chatbotClose = document.querySelector(
+      "#chatbot-widget .chatbot-close",
+    );
+    const chatbotMessages = document.querySelector(
+      "#chatbot-widget .chatbot-messages",
+    );
+    const chatbotInput = document.querySelector(
+      "#chatbot-widget .chatbot-input-area input",
+    );
+    const chatbotSendBtn = document.querySelector(
+      "#chatbot-widget .chatbot-send-btn",
+    );
+
+    if (
+      !chatbotButton ||
+      !chatbotWidget ||
+      !chatbotClose ||
+      !chatbotMessages ||
+      !chatbotInput ||
+      !chatbotSendBtn
+    ) {
+      return;
+    }
+
+    if (chatbotWidget.dataset.ackBound === "1") {
+      return;
+    }
+    chatbotWidget.dataset.ackBound = "1";
+
+    chatbotButton.addEventListener("click", () => {
+      chatbotWidget.classList.toggle("active");
+      chatbotButton.classList.toggle("active");
+      if (chatbotWidget.classList.contains("active")) {
+        chatbotInput.focus();
+      }
+    });
+
+    chatbotClose.addEventListener("click", () => {
+      chatbotWidget.classList.remove("active");
+      chatbotButton.classList.remove("active");
+    });
+
+    function appendAiMessage(text) {
+      const aiDiv = document.createElement("div");
+      aiDiv.className = "chatbot-message ai";
+      aiDiv.innerHTML = `<div class="chatbot-bubble">${escapeHtml(text)}</div>`;
+      chatbotMessages.appendChild(aiDiv);
+      chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+    }
+
+    function buildProductsHtml(data) {
+      let html = '<div class="chatbot-products">';
+      (Array.isArray(data?.products) ? data.products : []).forEach(
+        (product) => {
+          const productUrl = product?.link || "#";
+          html += `
+          <a href="${escapeHtml(productUrl)}" class="chatbot-product-item" target="_blank" title="${escapeHtml(product?.name || "")}">
+            <img src="${escapeHtml(product?.img || "")}" alt="${escapeHtml(product?.name || "")}" class="chatbot-product-img">
+            <div class="chatbot-product-body">
+              <div class="chatbot-product-name">${escapeHtml(product?.name || "")}</div>
+              <div class="chatbot-product-price">${escapeHtml(product?.price || "")}</div>
+            </div>
+          </a>
+        `;
+        },
+      );
+      html += "</div>";
+
+      if (data?.hasMore) {
+        const categoryNameMap = {
+          nuocngot: "Trangnuocngot.php",
+          douong: "Trangdouong.php",
+          anvat: "Tranganvat.php",
+          thucannhanh: "Trangthucannhanh.php",
+          traicay: "Trangtraicay.php",
+          raucu: "Trangraucu.php",
+          sua: "Trangsua.php",
+          banhngot: "Trangbanhngot.php",
+          giadung: "Tranggiadung.php",
+          mypham: "Trangmypham.php",
+          kem: "Trangkem.php",
+          mianlien: "Trangmianlien.php",
+          tuoisong: "Trangtuoisong.php",
+          dohop: "Trangdohop.php",
+          giavi: "Tranggiavi.php",
+          bia: "Trangbia.php",
+        };
+        const categoryLink = categoryNameMap[data.categorySlug] || "#";
+        const remaining = Math.max(
+          0,
+          Number(data?.totalCount || 0) - Number(data?.displayedCount || 0),
+        );
+
+        html += `
+          <div class="chatbot-view-more">
+            <a href="${escapeHtml(categoryLink)}" target="_blank">
+              <button class="chatbot-view-more-btn" type="button">Xem thêm ${remaining} sản phẩm →</button>
+            </a>
+          </div>
+        `;
+      }
+
+      return html;
+    }
+
+    async function sendMessage() {
+      const message = String(chatbotInput.value || "").trim();
+      if (!message) return;
+
+      const userDiv = document.createElement("div");
+      userDiv.className = "chatbot-message user";
+      userDiv.innerHTML = `<div class="chatbot-bubble">${escapeHtml(message)}</div>`;
+      chatbotMessages.appendChild(userDiv);
+      chatbotInput.value = "";
+
+      const typingDiv = document.createElement("div");
+      typingDiv.className = "chatbot-message ai";
+      typingDiv.id = "ack-chatbot-typing";
+      typingDiv.innerHTML =
+        '<div class="chatbot-bubble">Đang suy nghĩ...</div>';
+      chatbotMessages.appendChild(typingDiv);
+      chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+      try {
+        const body = new URLSearchParams();
+        body.set("message", message);
+
+        const response = await fetch(AI_ADVISOR_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: body.toString(),
+          cache: "no-store",
+        });
+
+        const data = await response.json().catch(() => ({}));
+        const typingEl = document.getElementById("ack-chatbot-typing");
+        if (typingEl) typingEl.remove();
+
+        appendAiMessage(data?.reply || "Xin lỗi, tôi chưa hiểu câu hỏi này.");
+
+        if (
+          data?.type === "products" &&
+          Array.isArray(data?.products) &&
+          data.products.length > 0
+        ) {
+          const productsDiv = document.createElement("div");
+          productsDiv.className = "chatbot-message ai";
+          productsDiv.innerHTML = buildProductsHtml(data);
+          chatbotMessages.appendChild(productsDiv);
+          chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+        }
+      } catch (_) {
+        const typingEl = document.getElementById("ack-chatbot-typing");
+        if (typingEl) typingEl.remove();
+        appendAiMessage("Xin lỗi, tôi gặp lỗi. Vui lòng thử lại!");
+      }
+    }
+
+    chatbotSendBtn.addEventListener("click", sendMessage);
+    chatbotInput.addEventListener("keypress", (event) => {
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+    });
+  }
+
   function init() {
     keepHeroOnlyOnHomepage();
     injectGlobalFooterLayoutStyles();
     normalizeFooterPaymentLogos();
+    setupLocationSelector();
+    bindGlobalChatbot();
     syncProductStockStates();
     bindAddToCartButtons();
     bindProductCardNavigation();

@@ -247,8 +247,14 @@ function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $impo
     }
 
     $hangColumns = getExistingColumns($pdo, 'hanghoa');
+    $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
+    $pxColumns = getExistingColumns($pdo, 'phieuxuat');
+
     $hangIdCol = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
     $hangStockCol = pickExistingColumn($hangColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho']);
+    $detailOrderIdCol = pickExistingColumn($ctpxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon']) ?? 'IdPhieuXuat';
+    $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']) ?? $detailOrderIdCol;
+    $orderStatusCol = pickExistingColumn($pxColumns, ['kyhieupx', 'ky_hieu_px', 'trangthai', 'trang_thai', 'status']) ?? 'KyHieuPX';
 
     if ($hangIdCol !== null) {
         $selectStockSql = $hangStockCol !== null ? "hh.`{$hangStockCol}` AS so_luong_ton," : '';
@@ -256,7 +262,20 @@ function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $impo
             "SELECT
                 {$selectStockSql}
                 COALESCE((SELECT SUM(`{$importQtyCol}`) FROM chitietnhaphang WHERE `{$importProductCol}` = :product_id), 0) AS tong_nhap,
-                COALESCE((SELECT SUM(`{$exportQtyCol}`) FROM chitietphieuxuat WHERE `{$exportProductCol}` = :product_id), 0) AS tong_xuat
+                COALESCE((
+                    SELECT SUM(ctx.`{$exportQtyCol}`)
+                    FROM chitietphieuxuat ctx
+                    LEFT JOIN phieuxuat px ON px.`{$orderIdCol}` = ctx.`{$detailOrderIdCol}`
+                    WHERE ctx.`{$exportProductCol}` = :product_id
+                      AND (
+                          px.`{$orderStatusCol}` IS NULL
+                          OR (
+                              LOWER(px.`{$orderStatusCol}`) NOT LIKE '%hủy%'
+                              AND LOWER(px.`{$orderStatusCol}`) NOT LIKE '%huy%'
+                              AND LOWER(px.`{$orderStatusCol}`) NOT LIKE '%cancel%'
+                          )
+                      )
+                ), 0) AS tong_xuat
              FROM hanghoa hh
              WHERE hh.`{$hangIdCol}` = :product_id
              LIMIT 1"
@@ -265,7 +284,20 @@ function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $impo
         $stockStmt = $pdo->prepare(
             "SELECT
                 COALESCE((SELECT SUM(`{$importQtyCol}`) FROM chitietnhaphang WHERE `{$importProductCol}` = :product_id), 0) AS tong_nhap,
-                COALESCE((SELECT SUM(`{$exportQtyCol}`) FROM chitietphieuxuat WHERE `{$exportProductCol}` = :product_id), 0) AS tong_xuat"
+                COALESCE((
+                    SELECT SUM(ctx.`{$exportQtyCol}`)
+                    FROM chitietphieuxuat ctx
+                    LEFT JOIN phieuxuat px ON px.`{$orderIdCol}` = ctx.`{$detailOrderIdCol}`
+                    WHERE ctx.`{$exportProductCol}` = :product_id
+                      AND (
+                          px.`{$orderStatusCol}` IS NULL
+                          OR (
+                              LOWER(px.`{$orderStatusCol}`) NOT LIKE '%hủy%'
+                              AND LOWER(px.`{$orderStatusCol}`) NOT LIKE '%huy%'
+                              AND LOWER(px.`{$orderStatusCol}`) NOT LIKE '%cancel%'
+                          )
+                      )
+                ), 0) AS tong_xuat"
         );
     }
     $stockStmt->execute([':product_id' => $productId]);
@@ -275,7 +307,12 @@ function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $impo
     $stockCandidates = ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho'];
     foreach ($stockCandidates as $candidate) {
         if (array_key_exists($candidate, $lowerStockRow)) {
-            return max(0, (int) $lowerStockRow[$candidate]);
+            $stockFromTable = max(0, (int) $lowerStockRow[$candidate]);
+            $tongNhap = (int) ($stockRow['tong_nhap'] ?? 0);
+            $tongXuat = (int) ($stockRow['tong_xuat'] ?? 0);
+            $stockFromFlow = max(0, $tongNhap - $tongXuat);
+
+            return $stockFromFlow > 0 ? $stockFromFlow : $stockFromTable;
         }
     }
 

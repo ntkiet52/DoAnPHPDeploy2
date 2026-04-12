@@ -100,6 +100,36 @@ function generateNextCode(PDO $pdo, string $table, array $columnCandidates, stri
     return $prefix . str_pad((string) $nextNumber, $padLength, '0', STR_PAD_LEFT);
 }
 
+function sanitizeReturnToPath(string $rawPath): string {
+    $rawPath = trim($rawPath);
+    if ($rawPath === '') {
+        return '';
+    }
+
+    if (preg_match('/[\r\n]/', $rawPath)) {
+        return '';
+    }
+
+    $decoded = rawurldecode($rawPath);
+    $parts = parse_url($decoded);
+    if ($parts === false) {
+        return '';
+    }
+
+    $path = (string) ($parts['path'] ?? '');
+    if ($path === '') {
+        return '';
+    }
+
+    $normalizedPath = str_replace('\\', '/', $path);
+    if (!preg_match('#(^|/)TrangWeb/trangchu\.php$#i', $normalizedPath)) {
+        return '';
+    }
+
+    $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+    return $path . $query;
+}
+
 $products = [];
 $dbError = '';
 $crudMessage = '';
@@ -110,6 +140,9 @@ $dbHost = '127.0.0.1';
 $dbName = 'qlhethongbanhangmini';
 $dbUser = 'root';
 $dbPass = '';
+$requestedReturnTo = isset($_REQUEST['return_to']) ? (string) $_REQUEST['return_to'] : '';
+$safeReturnTo = sanitizeReturnToPath($requestedReturnTo);
+$action = '';
 
 try {
     $pdo = new PDO(
@@ -351,7 +384,13 @@ try {
                     }
                 }
             }
+
+            if ($action === 'update_product' && $crudError === '' && $safeReturnTo !== '') {
+                header('Location: ' . $safeReturnTo);
+                exit;
+            }
         }
+
     }
 
     $nhomHangMap = [];
@@ -394,7 +433,28 @@ try {
 
     $stockBalanceByProduct = [];
     try {
-        $stockRows = $pdo->query("SELECT MaHang, COALESCE(SUM(SoLuongNhap), 0) AS TongNhap FROM chitietnhaphang GROUP BY MaHang")->fetchAll();
+        $ctnhColumns = getExistingColumns($pdo, 'chitietnhaphang');
+        $importProductCol = pickExistingColumn($ctnhColumns, ['mahang', 'ma_hang', 'idhanghoa']);
+        $importQtyCol = pickExistingColumn($ctnhColumns, ['soluongnhap', 'so_luong_nhap', 'soluong', 'so_luong']);
+
+        $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
+        $exportProductCol = pickExistingColumn($ctpxColumns, ['mahang', 'ma_hang', 'idhanghoa']);
+        $exportQtyCol = pickExistingColumn($ctpxColumns, ['soluongpx', 'so_luong_px', 'soluong', 'so_luong']);
+        $exportOrderIdCol = pickExistingColumn($ctpxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon']);
+
+        $pxColumns = getExistingColumns($pdo, 'phieuxuat');
+        $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']);
+        $orderStatusCol = pickExistingColumn($pxColumns, ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']);
+
+        if ($importProductCol === null || $importQtyCol === null || $exportProductCol === null || $exportQtyCol === null) {
+            throw new RuntimeException('Không đủ cột để tính tồn kho từ nhập/xuất.');
+        }
+
+        $stockRows = $pdo->query(
+            "SELECT `{$importProductCol}` AS MaHang, COALESCE(SUM(`{$importQtyCol}`), 0) AS TongNhap
+             FROM chitietnhaphang
+             GROUP BY `{$importProductCol}`"
+        )->fetchAll();
         foreach ($stockRows as $stockRow) {
             $maHangStock = (string) ($stockRow['MaHang'] ?? '');
             if ($maHangStock === '') {
@@ -406,7 +466,27 @@ try {
             $stockBalanceByProduct[$maHangStock] += (int) ($stockRow['TongNhap'] ?? 0);
         }
 
-        $exportRows = $pdo->query("SELECT MaHang, COALESCE(SUM(SoLuongPX), 0) AS TongXuat FROM chitietphieuxuat GROUP BY MaHang")->fetchAll();
+        if ($exportOrderIdCol !== null && $orderIdCol !== null && $orderStatusCol !== null) {
+            $exportRows = $pdo->query(
+                "SELECT ctx.`{$exportProductCol}` AS MaHang, COALESCE(SUM(ctx.`{$exportQtyCol}`), 0) AS TongXuat
+                 FROM chitietphieuxuat ctx
+                 LEFT JOIN phieuxuat px ON px.`{$orderIdCol}` = ctx.`{$exportOrderIdCol}`
+                 WHERE px.`{$orderStatusCol}` IS NULL
+                    OR (
+                        LOWER(px.`{$orderStatusCol}`) NOT LIKE '%hủy%'
+                        AND LOWER(px.`{$orderStatusCol}`) NOT LIKE '%huy%'
+                        AND LOWER(px.`{$orderStatusCol}`) NOT LIKE '%cancel%'
+                    )
+                 GROUP BY ctx.`{$exportProductCol}`"
+            )->fetchAll();
+        } else {
+            $exportRows = $pdo->query(
+                "SELECT `{$exportProductCol}` AS MaHang, COALESCE(SUM(`{$exportQtyCol}`), 0) AS TongXuat
+                 FROM chitietphieuxuat
+                 GROUP BY `{$exportProductCol}`"
+            )->fetchAll();
+        }
+
         foreach ($exportRows as $exportRow) {
             $maHangStock = (string) ($exportRow['MaHang'] ?? '');
             if ($maHangStock === '') {

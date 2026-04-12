@@ -272,7 +272,7 @@ function catalogFetchProducts(): array
         );
 
         $rows = $pdo->query(
-            'SELECT hh.*, nh.MaNhomHang AS NhomHangMa, nh.TenNhomHang AS NhomHangTen,
+            "SELECT hh.*, nh.MaNhomHang AS NhomHangMa, nh.TenNhomHang AS NhomHangTen,
                     COALESCE(nhap.TongNhap, 0) AS TongNhap,
                     COALESCE(xuat.TongXuat, 0) AS TongXuat
              FROM hanghoa hh
@@ -283,10 +283,17 @@ function catalogFetchProducts(): array
                  GROUP BY MaHang
              ) nhap ON nhap.MaHang = hh.MaHang
              LEFT JOIN (
-                 SELECT MaHang, COALESCE(SUM(SoLuongPX), 0) AS TongXuat
-                 FROM chitietphieuxuat
+                 SELECT ctx.MaHang, COALESCE(SUM(ctx.SoLuongPX), 0) AS TongXuat
+                 FROM chitietphieuxuat ctx
+                 LEFT JOIN phieuxuat px ON px.IdPhieuXuat = ctx.IdPhieuXuat
+                 WHERE px.KyHieuPX IS NULL
+                    OR (
+                        LOWER(px.KyHieuPX) NOT LIKE '%hủy%'
+                        AND LOWER(px.KyHieuPX) NOT LIKE '%huy%'
+                        AND LOWER(px.KyHieuPX) NOT LIKE '%cancel%'
+                    )
                  GROUP BY MaHang
-             ) xuat ON xuat.MaHang = hh.MaHang'
+             ) xuat ON xuat.MaHang = hh.MaHang"
         )->fetchAll();
 
         foreach ($rows as $row) {

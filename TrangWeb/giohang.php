@@ -784,7 +784,7 @@ if ($result_cart->num_rows > 0) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="cart-events.js"></script>
+    <script src="cart-events.js?v=20260412-4"></script>
     <script src="web-events.js?v=20260412-3"></script>
 </body>
 

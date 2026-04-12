@@ -99,6 +99,35 @@ function isReceivedStatus(string $rawStatus): bool {
         || str_contains($status, 'success');
 }
 
+function isExcludedSpentStatus(string $rawStatus): bool {
+    $status = mb_strtolower(trim($rawStatus));
+    if ($status === '') {
+        return false;
+    }
+
+    $excludedKeywords = [
+        'hủy',
+        'huy',
+        'cancel',
+        'void',
+        'thất bại',
+        'that bai',
+        'failed',
+        'fail',
+        'refund',
+        'hoàn tiền',
+        'hoan tien',
+    ];
+
+    foreach ($excludedKeywords as $keyword) {
+        if (str_contains($status, $keyword)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 $tab = strtolower(trim((string) ($_GET['tab'] ?? 'info')));
 if (!in_array($tab, ['info', 'manage', 'settings'], true)) {
     $tab = 'info';
@@ -428,7 +457,7 @@ if (isset($conn) && $conn instanceof mysqli) {
 
             $rawStatus = trim((string) ($row['order_status'] ?? ''));
             if (isReceivedStatus($rawStatus)) {
-                $purchaseSummary['total_spent'] += $orderTotal;
+                $purchaseSummary['total_spent'] += max(0, $orderTotal);
             }
 
             if (count($recentOrders) < 5) {
@@ -456,6 +485,159 @@ if (isset($conn) && $conn instanceof mysqli) {
     body {
         background: #f5f7fb;
         font-family: 'Segoe UI', sans-serif;
+    }
+
+    .top-bar {
+        background-color: #fff;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+    }
+
+    .ack-logo {
+        height: 40px;
+        width: auto;
+        object-fit: contain;
+    }
+
+    .search-box {
+        position: relative;
+        width: 100%;
+    }
+
+    .search-box input {
+        border-radius: 20px;
+        padding-right: 40px;
+        background: #f1f1f1;
+        border: none;
+    }
+
+    .search-box i {
+        position: absolute;
+        right: 15px;
+        top: 10px;
+        color: #666;
+    }
+
+    .location-select {
+        border-radius: 20px;
+        background: #eee;
+        padding: 5px 15px;
+        font-size: 0.9rem;
+        border: none;
+    }
+
+    .main-nav {
+        background-color: #007bff;
+        color: white;
+        padding: 0;
+    }
+
+    .main-nav .nav-link {
+        color: white;
+        padding: 10px 20px;
+        font-weight: 500;
+    }
+
+    .main-nav .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .delivery-notice {
+        font-size: 0.9rem;
+        font-style: italic;
+    }
+
+    .account-page-container {
+        padding-top: 10px;
+        padding-bottom: 5px;
+    }
+
+    body.account-split-layout {
+        overflow: hidden;
+    }
+
+    body.account-split-layout .account-page-container {
+        height: calc(100vh - var(--account-header-offset, 130px));
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .account-page-heading {
+        flex: 0 0 auto;
+    }
+
+    .account-layout-row {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    body.account-split-layout .account-layout-row {
+        overflow: hidden;
+    }
+
+    body.account-split-layout .account-layout-row>.account-left-col,
+    body.account-split-layout .account-layout-row>.account-right-col {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    body.account-split-layout .account-layout-row>.account-right-col {
+        overflow: hidden;
+    }
+
+    .account-right-scroll {
+        min-height: 0;
+    }
+
+    body.account-split-layout .account-right-scroll {
+        flex: 1 1 auto;
+        height: 100%;
+        max-height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 0;
+        padding-bottom: 5px;
+        border-radius: 14px;
+        box-sizing: border-box;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    body.account-split-layout .account-right-scroll .panel {
+        overflow: hidden;
+    }
+
+    body.account-split-layout .account-right-scroll::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
+    }
+
+    @media (min-width: 768px) {
+        .account-page-container {
+            padding-bottom: 5px;
+        }
+    }
+
+    @media (max-width: 991.98px) {
+        body.account-split-layout {
+            overflow: auto;
+        }
+
+        body.account-split-layout .account-page-container {
+            height: auto;
+            display: block;
+            overflow: visible;
+        }
+
+        body.account-split-layout .account-right-scroll {
+            overflow: visible;
+            padding-right: 0;
+        }
     }
 
     .panel {
@@ -519,9 +701,58 @@ if (isset($conn) && $conn instanceof mysqli) {
     </style>
 </head>
 
-<body>
-    <div class="container py-4 py-md-5">
-        <div class="d-flex align-items-center mb-3">
+<body class="account-split-layout">
+    <header class="sticky-top bg-white">
+        <div class="top-bar">
+            <div class="container d-flex align-items-center justify-content-between">
+                <a href="trangchu.php" class="d-flex align-items-center text-decoration-none me-3">
+                    <img src="../TrangUser/ack.png" alt="ACK Logo" class="ack-logo">
+                </a>
+
+                <div class="d-none d-md-block me-3">
+                    <button class="location-select">
+                        <i class="fas fa-map-marker-alt text-danger me-1"></i> Đồng Tháp <i
+                            class="fas fa-caret-down ms-1"></i>
+                    </button>
+                </div>
+
+                <div class="flex-grow-1 mx-3">
+                    <div class="search-box">
+                        <input type="text" class="form-control" placeholder="Tìm kiếm sản phẩm...">
+                        <i class="fas fa-search"></i>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-3">
+                    <a href="#" class="text-dark"><i class="fas fa-headset fa-lg"></i></a>
+                    <a href="#" class="text-dark"><i class="fas fa-bell fa-lg"></i></a>
+                    <a href="giohang.php" class="text-dark position-relative">
+                        <i class="fas fa-shopping-basket"></i>
+                        <span data-cart-count
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
+                    </a>
+                    <a href="#" class="text-warning"><i class="fas fa-user-circle fa-2x"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-nav">
+            <div class="container d-flex justify-content-between align-items-center">
+                <ul class="nav">
+                    <li class="nav-item"><a class="nav-link" href="trangchu.php">Sản phẩm</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Tin tức</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Tuyển dụng</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Chuyển nhượng</a></li>
+                </ul>
+                <div class="delivery-notice d-none d-md-block">
+                    <i class="fas fa-truck-fast me-1"></i> Miễn phí giao hàng tại Đồng Tháp
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container account-page-container">
+        <div class="d-flex align-items-center mb-3 account-page-heading">
             <h4 class="mb-0 fw-bold">Tài khoản người dùng</h4>
         </div>
 
@@ -530,8 +761,8 @@ if (isset($conn) && $conn instanceof mysqli) {
             <?php echo htmlspecialchars($flashMessage); ?></div>
         <?php endif; ?>
 
-        <div class="row g-3 g-md-4">
-            <div class="col-lg-4">
+        <div class="row g-3 g-md-4 account-layout-row">
+            <div class="col-lg-4 account-left-col">
                 <div class="panel p-3 p-md-4">
                     <div class="d-flex align-items-center gap-3 mb-3">
                         <span class="avatar-circle"><i class="fas fa-user"></i></span>
@@ -559,176 +790,229 @@ if (isset($conn) && $conn instanceof mysqli) {
                 </div>
             </div>
 
-            <div class="col-lg-8">
-                <?php if ($tab === 'info'): ?>
-                <div class="panel p-3 p-md-4">
-                    <h5 class="fw-bold mb-3">Thông tin tài khoản</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label text-muted small">Mã người dùng</label>
-                            <input class="form-control" value="<?php echo $userId; ?>" readonly>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label text-muted small">Vai trò</label>
-                            <input class="form-control" value="<?php echo htmlspecialchars($roleLabel); ?>" readonly>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label text-muted small">Tên hiển thị</label>
-                            <input class="form-control" value="<?php echo htmlspecialchars($userName); ?>" readonly>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label text-muted small">Email</label>
-                            <input class="form-control"
-                                value="<?php echo htmlspecialchars($userEmail !== '' ? $userEmail : 'Chưa cập nhật'); ?>"
-                                readonly>
+            <div class="col-lg-8 account-right-col">
+                <div class="account-right-scroll">
+                    <?php if ($tab === 'info'): ?>
+                    <div class="panel p-3 p-md-4">
+                        <h5 class="fw-bold mb-3">Thông tin tài khoản</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Mã người dùng</label>
+                                <input class="form-control" value="<?php echo $userId; ?>" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Vai trò</label>
+                                <input class="form-control" value="<?php echo htmlspecialchars($roleLabel); ?>"
+                                    readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Tên hiển thị</label>
+                                <input class="form-control" value="<?php echo htmlspecialchars($userName); ?>" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Email</label>
+                                <input class="form-control"
+                                    value="<?php echo htmlspecialchars($userEmail !== '' ? $userEmail : 'Chưa cập nhật'); ?>"
+                                    readonly>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <?php elseif ($tab === 'manage'): ?>
-                <div class="panel p-3 p-md-4">
-                    <h5 class="fw-bold mb-3">Quản lý tài khoản</h5>
-                    <div class="list-group">
-                        <a href="giohang.php"
-                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-cart-shopping me-2 text-primary"></i>Quản lý giỏ hàng</span>
-                            <i class="fas fa-chevron-right"></i>
-                        </a>
-                        <a href="drink-detail.php"
-                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-clock-rotate-left me-2 text-primary"></i>Xem sản phẩm đã quan
-                                tâm</span>
-                            <i class="fas fa-chevron-right"></i>
-                        </a>
-                        <a href="don-hang-cua-toi.php"
-                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-receipt me-2 text-primary"></i>Theo dõi đơn hàng của tôi</span>
-                            <i class="fas fa-chevron-right"></i>
-                        </a>
-                        <?php if ($userRole === 'admin'): ?>
-                        <a href="../TrangAdmin/admin.php"
-                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-user-shield me-2 text-primary"></i>Vào trang quản trị</span>
-                            <i class="fas fa-chevron-right"></i>
-                        </a>
-                        <?php endif; ?>
-                    </div>
+                    <?php elseif ($tab === 'manage'): ?>
+                    <div class="panel p-3 p-md-4">
+                        <h5 class="fw-bold mb-3">Quản lý tài khoản</h5>
+                        <div class="list-group">
+                            <a href="giohang.php"
+                                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-cart-shopping me-2 text-primary"></i>Quản lý giỏ hàng</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                            <a href="drink-detail.php"
+                                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-clock-rotate-left me-2 text-primary"></i>Xem sản phẩm đã quan
+                                    tâm</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                            <a href="don-hang-cua-toi.php"
+                                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-receipt me-2 text-primary"></i>Theo dõi đơn hàng của tôi</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                            <?php if ($userRole === 'admin'): ?>
+                            <a href="../TrangAdmin/admin.php"
+                                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-user-shield me-2 text-primary"></i>Vào trang quản trị</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                            <?php endif; ?>
+                        </div>
 
-                    <div class="row g-3 mt-1">
-                        <div class="col-md-6">
-                            <div class="mini-stat-card h-100">
-                                <h6 class="fw-bold mb-2"><i class="fas fa-ticket me-2 text-primary"></i>Nhận voucher
-                                </h6>
-                                <form method="post" class="mb-2">
-                                    <input type="hidden" name="action" value="claim_voucher">
-                                    <div class="input-group input-group-sm">
-                                        <select class="form-select" name="voucher_id" required>
-                                            <option value="">-- Chọn voucher để nhận --</option>
-                                            <?php foreach ($availableVouchers as $voucher): ?>
-                                            <option value="<?php echo (int) ($voucher['id_voucher'] ?? 0); ?>">
-                                                <?php echo htmlspecialchars(formatVoucherLabel($voucher)); ?>
-                                            </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                        <button class="btn btn-primary" type="submit">Nhận</button>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <div class="mini-stat-card h-100">
+                                    <h6 class="fw-bold mb-2"><i class="fas fa-ticket me-2 text-primary"></i>Nhận voucher
+                                    </h6>
+                                    <form method="post" class="mb-2">
+                                        <input type="hidden" name="action" value="claim_voucher">
+                                        <div class="input-group input-group-sm">
+                                            <select class="form-select" name="voucher_id" required>
+                                                <option value="">-- Chọn voucher để nhận --</option>
+                                                <?php foreach ($availableVouchers as $voucher): ?>
+                                                <option value="<?php echo (int) ($voucher['id_voucher'] ?? 0); ?>">
+                                                    <?php echo htmlspecialchars(formatVoucherLabel($voucher)); ?>
+                                                </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <button class="btn btn-primary" type="submit">Nhận</button>
+                                        </div>
+                                    </form>
+
+                                    <?php if (count($availableVouchers) === 0): ?>
+                                    <div class="small text-muted">Hiện không có voucher mới để nhận.</div>
+                                    <?php endif; ?>
+
+                                    <?php if (count($claimedVouchers) > 0): ?>
+                                    <div class="small text-muted mt-2">Đã nhận gần đây:</div>
+                                    <div>
+                                        <?php foreach ($claimedVouchers as $claimed): ?>
+                                        <span class="voucher-tag"><i
+                                                class="fas fa-check-circle"></i><?php echo htmlspecialchars((string) ($claimed['ma_voucher'] ?? '')); ?></span>
+                                        <?php endforeach; ?>
                                     </div>
-                                </form>
-
-                                <?php if (count($availableVouchers) === 0): ?>
-                                <div class="small text-muted">Hiện không có voucher mới để nhận.</div>
-                                <?php endif; ?>
-
-                                <?php if (count($claimedVouchers) > 0): ?>
-                                <div class="small text-muted mt-2">Đã nhận gần đây:</div>
-                                <div>
-                                    <?php foreach ($claimedVouchers as $claimed): ?>
-                                    <span class="voucher-tag"><i
-                                            class="fas fa-check-circle"></i><?php echo htmlspecialchars((string) ($claimed['ma_voucher'] ?? '')); ?></span>
-                                    <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </div>
-                                <?php endif; ?>
                             </div>
-                        </div>
 
-                        <div class="col-md-6">
-                            <div class="mini-stat-card h-100">
-                                <h6 class="fw-bold mb-2"><i class="fas fa-chart-line me-2 text-primary"></i>Tổng quan
-                                    mua sắm</h6>
-                                <div class="small text-muted">Số đơn đã mua</div>
-                                <div class="fs-5 fw-bold mb-2">
-                                    <?php echo (int) ($purchaseSummary['total_orders'] ?? 0); ?> đơn</div>
+                            <div class="col-md-6">
+                                <div class="mini-stat-card h-100">
+                                    <h6 class="fw-bold mb-2"><i class="fas fa-chart-line me-2 text-primary"></i>Tổng
+                                        quan
+                                        mua sắm</h6>
+                                    <div class="small text-muted">Số đơn đã mua</div>
+                                    <div class="fs-5 fw-bold mb-2">
+                                        <?php echo (int) ($purchaseSummary['total_orders'] ?? 0); ?> đơn</div>
 
-                                <div class="small text-muted">Tổng tiền đã bỏ ra</div>
-                                <div class="fs-5 fw-bold text-success mb-2">
-                                    <?php echo number_format((float) ($purchaseSummary['total_spent'] ?? 0), 0, ',', '.'); ?>
-                                    ₫</div>
+                                    <div class="small text-muted">Tổng tiền đã bỏ ra</div>
+                                    <div class="fs-5 fw-bold text-success mb-2">
+                                        <?php echo number_format((float) ($purchaseSummary['total_spent'] ?? 0), 0, ',', '.'); ?>
+                                        ₫</div>
 
-                                <?php if (count($recentOrders) > 0): ?>
-                                <div class="small text-muted mb-1">Đơn gần đây:</div>
-                                <ul class="small ps-3 mb-2">
-                                    <?php foreach ($recentOrders as $order): ?>
-                                    <li>
-                                        <span
-                                            class="fw-semibold"><?php echo htmlspecialchars((string) ($order['id'] ?? '')); ?></span>
-                                        - <?php echo number_format((float) ($order['total'] ?? 0), 0, ',', '.'); ?> ₫
-                                    </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                                <?php endif; ?>
+                                    <?php if (count($recentOrders) > 0): ?>
+                                    <div class="small text-muted mb-1">Đơn gần đây:</div>
+                                    <ul class="small ps-3 mb-2">
+                                        <?php foreach ($recentOrders as $order): ?>
+                                        <li>
+                                            <span
+                                                class="fw-semibold"><?php echo htmlspecialchars((string) ($order['id'] ?? '')); ?></span>
+                                            - <?php echo number_format((float) ($order['total'] ?? 0), 0, ',', '.'); ?>
+                                            ₫
+                                        </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                    <?php endif; ?>
 
-                                <a href="don-hang-cua-toi.php" class="btn btn-outline-primary btn-sm">Xem lại tất cả đơn
-                                    đã mua</a>
+                                    <a href="don-hang-cua-toi.php" class="btn btn-outline-primary btn-sm">Xem lại tất cả
+                                        đơn
+                                        đã mua</a>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <?php else: ?>
-                <div class="panel p-3 p-md-4">
-                    <h5 class="fw-bold mb-3">Cài đặt tài khoản</h5>
-                    <form method="post">
-                        <input type="hidden" name="action" value="save_profile">
-                        <div class="mb-3">
-                            <label class="form-label">Tên hiển thị</label>
-                            <input type="text" class="form-control" name="display_name"
-                                value="<?php echo htmlspecialchars($userName); ?>" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" value="<?php echo htmlspecialchars($userEmail); ?>"
-                                readonly>
-                        </div>
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-1"></i>Lưu thay
-                            đổi</button>
-                    </form>
+                    <?php else: ?>
+                    <div class="panel p-3 p-md-4">
+                        <h5 class="fw-bold mb-3">Cài đặt tài khoản</h5>
+                        <form method="post">
+                            <input type="hidden" name="action" value="save_profile">
+                            <div class="mb-3">
+                                <label class="form-label">Tên hiển thị</label>
+                                <input type="text" class="form-control" name="display_name"
+                                    value="<?php echo htmlspecialchars($userName); ?>" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control"
+                                    value="<?php echo htmlspecialchars($userEmail); ?>" readonly>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-1"></i>Lưu
+                                thay
+                                đổi</button>
+                        </form>
 
-                    <hr class="my-4">
+                        <hr class="my-4">
 
-                    <h6 class="fw-bold mb-3">Cài đặt hệ thống</h6>
-                    <form method="post">
-                        <input type="hidden" name="action" value="save_system_settings">
-                        <div class="mb-3">
-                            <label class="form-label">Ngôn ngữ</label>
-                            <select class="form-select" name="language">
-                                <option value="vi" <?php echo $userLanguage === 'vi' ? 'selected' : ''; ?>>Tiếng Việt</option>
-                                <option value="en" <?php echo $userLanguage === 'en' ? 'selected' : ''; ?>>English</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Theme</label>
-                            <select class="form-select" name="theme">
-                                <option value="light" <?php echo $userTheme === 'light' ? 'selected' : ''; ?>>Light</option>
-                                <option value="dark" <?php echo $userTheme === 'dark' ? 'selected' : ''; ?>>Dark</option>
-                                <option value="system" <?php echo $userTheme === 'system' ? 'selected' : ''; ?>>Theo hệ thống</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="btn btn-outline-primary"><i class="fas fa-sliders me-1"></i>Lưu cài đặt hệ thống</button>
-                    </form>
+                        <h6 class="fw-bold mb-3">Cài đặt hệ thống</h6>
+                        <form method="post">
+                            <input type="hidden" name="action" value="save_system_settings">
+                            <div class="mb-3">
+                                <label class="form-label">Ngôn ngữ</label>
+                                <select class="form-select" name="language">
+                                    <option value="vi" <?php echo $userLanguage === 'vi' ? 'selected' : ''; ?>>Tiếng
+                                        Việt
+                                    </option>
+                                    <option value="en" <?php echo $userLanguage === 'en' ? 'selected' : ''; ?>>English
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Theme</label>
+                                <select class="form-select" name="theme">
+                                    <option value="light" <?php echo $userTheme === 'light' ? 'selected' : ''; ?>>Light
+                                    </option>
+                                    <option value="dark" <?php echo $userTheme === 'dark' ? 'selected' : ''; ?>>Dark
+                                    </option>
+                                    <option value="system" <?php echo $userTheme === 'system' ? 'selected' : ''; ?>>Theo
+                                        hệ
+                                        thống</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-outline-primary"><i class="fas fa-sliders me-1"></i>Lưu
+                                cài
+                                đặt hệ thống</button>
+                        </form>
+                    </div>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+        const body = document.body;
+        if (!body || !body.classList.contains('account-split-layout')) {
+            return;
+        }
+
+        const rightScroll = document.querySelector('.account-right-scroll');
+
+        function updateRightScrollHeight() {
+            if (!rightScroll) return;
+
+            if (window.innerWidth <= 991) {
+                rightScroll.style.height = '';
+                rightScroll.style.maxHeight = '';
+                return;
+            }
+
+            const rect = rightScroll.getBoundingClientRect();
+            const available = Math.max(220, Math.floor(window.innerHeight - rect.top - 5));
+            rightScroll.style.height = `${available}px`;
+            rightScroll.style.maxHeight = `${available}px`;
+        }
+
+        function updateHeaderOffset() {
+            const header = document.querySelector('header.sticky-top');
+            const offset = header ? Math.ceil(header.getBoundingClientRect().height) : 130;
+            body.style.setProperty('--account-header-offset', `${offset + 10}px`);
+            updateRightScrollHeight();
+        }
+
+        updateHeaderOffset();
+        window.addEventListener('resize', updateHeaderOffset);
+        window.addEventListener('load', updateHeaderOffset);
+    })();
+    </script>
+    <script src="web-events.js?v=20260412-3"></script>
 </body>
 
 </html>

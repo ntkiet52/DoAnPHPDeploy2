@@ -1,6 +1,12 @@
 (function () {
+  if (window.__ackCartEventsInitialized) {
+    return;
+  }
+  window.__ackCartEventsInitialized = true;
+
   const CART_ENDPOINT = "cart-handler.php";
   let appliedVoucher = null;
+  let isCheckoutSubmitting = false;
 
   function ensureDialogStyle() {
     if (document.getElementById("ack-cart-dialog-style")) return;
@@ -657,7 +663,16 @@
     const checkoutButton = document.querySelector(".btn-checkout-big");
     if (!checkoutButton) return;
 
+    if (checkoutButton.dataset.boundCheckout === "1") {
+      return;
+    }
+    checkoutButton.dataset.boundCheckout = "1";
+
     checkoutButton.addEventListener("click", async function () {
+      if (isCheckoutSubmitting) {
+        return;
+      }
+
       const selectedItems = getSelectedCheckoutItems();
       if (selectedItems.length === 0) {
         await showAlertCenter("Vui lòng chọn ít nhất 1 sản phẩm để đặt hàng.");
@@ -676,6 +691,20 @@
         return;
       }
 
+      const confirmPlaceOrder = await showDialog({
+        title: "Xác nhận đặt hàng",
+        message: `Bạn chắc chắn muốn đặt ${selectedItems.length} sản phẩm đã chọn không?\nBấm \"Hủy\" để giữ nguyên giỏ hàng và KHÔNG gửi đơn.`,
+        confirmText: "Đặt hàng",
+        cancelText: "Hủy",
+        showCancel: true,
+        confirmClass: "btn btn-primary",
+        cancelClass: "btn btn-outline-secondary",
+      });
+      if (!confirmPlaceOrder) {
+        return;
+      }
+
+      isCheckoutSubmitting = true;
       const originalText = checkoutButton.textContent;
       checkoutButton.disabled = true;
       checkoutButton.textContent = "Đang gửi đơn...";
@@ -724,10 +753,15 @@
             ? `\nVoucher ${appliedVoucher.code} đã giảm ${formatMoney(voucherMeta.amount)}.`
             : "";
 
-        const askOpenOrderPage = await showConfirmCenter(
-          `Đặt hàng thành công. Mã đơn: ${orderId}.\nTrạng thái hiện tại: Chờ duyệt.\nThanh toán: ${paymentMethod === "qr" ? "QR chuyển khoản" : "COD"}.${voucherHint}\n\nBạn có muốn mở trang "Đơn hàng của tôi" để theo dõi ngay không?`,
-          "Đặt hàng thành công",
-        );
+        const askOpenOrderPage = await showDialog({
+          title: "Đặt hàng thành công",
+          message: `Đặt hàng thành công. Mã đơn: ${orderId}.\nTrạng thái hiện tại: Chờ duyệt.\nThanh toán: ${paymentMethod === "qr" ? "QR chuyển khoản" : "COD"}.${voucherHint}\n\nBạn có muốn mở trang "Đơn hàng của tôi" để theo dõi ngay không?`,
+          confirmText: "Mở đơn hàng",
+          cancelText: "Ở lại giỏ hàng",
+          showCancel: true,
+          confirmClass: "btn btn-primary",
+          cancelClass: "btn btn-outline-secondary",
+        });
 
         if (askOpenOrderPage) {
           window.location.href = "don-hang-cua-toi.php";
@@ -740,6 +774,7 @@
           error.message || "Không thể kết nối máy chủ. Vui lòng thử lại sau.",
         );
       } finally {
+        isCheckoutSubmitting = false;
         checkoutButton.disabled = false;
         checkoutButton.textContent = originalText;
       }

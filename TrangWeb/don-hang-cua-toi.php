@@ -64,6 +64,69 @@ function ensureOrderPaymentMetaTable(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureVoucherUsageTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_dung (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_key VARCHAR(100) NOT NULL,
+        id_voucher INT NOT NULL,
+        ma_voucher VARCHAR(100) NOT NULL,
+        ma_don_hang VARCHAR(100) DEFAULT NULL,
+        thoi_gian_su_dung DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_voucher (user_key, id_voucher),
+        INDEX idx_user_key (user_key),
+        INDEX idx_id_voucher (id_voucher),
+        INDEX idx_ma_don_hang (ma_don_hang)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function restoreVoucherForCancelledOrder(PDO $pdo, string $orderId): bool {
+    $orderId = trim($orderId);
+    if ($orderId === '') {
+        return false;
+    }
+
+    $selectStmt = $pdo->prepare(
+        'SELECT id, id_voucher
+         FROM voucher_nguoi_dung_da_dung
+         WHERE ma_don_hang = :order_id
+         LIMIT 1
+         FOR UPDATE'
+    );
+    $selectStmt->execute([':order_id' => $orderId]);
+    $usageRow = $selectStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    if (!is_array($usageRow)) {
+        return false;
+    }
+
+    $usageId = (int) ($usageRow['id'] ?? 0);
+    $voucherId = (int) ($usageRow['id_voucher'] ?? 0);
+    if ($usageId <= 0) {
+        return false;
+    }
+
+    $deleteStmt = $pdo->prepare('DELETE FROM voucher_nguoi_dung_da_dung WHERE id = :id LIMIT 1');
+    $deleteStmt->execute([':id' => $usageId]);
+
+    if ($deleteStmt->rowCount() <= 0) {
+        return false;
+    }
+
+    if ($voucherId > 0) {
+        $decStmt = $pdo->prepare(
+            'UPDATE voucher
+             SET so_luong_da_su_dung = CASE
+                 WHEN so_luong_da_su_dung > 0 THEN so_luong_da_su_dung - 1
+                 ELSE 0
+             END
+             WHERE id_voucher = :id_voucher'
+        );
+        $decStmt->execute([':id_voucher' => $voucherId]);
+    }
+
+    return true;
+}
+
 function upsertOrderPaymentMeta(PDO $pdo, string $orderId, string $method, string $status): void {
     if (trim($orderId) === '') {
         return;
@@ -81,6 +144,69 @@ function upsertOrderPaymentMeta(PDO $pdo, string $orderId, string $method, strin
         ':method' => $method,
         ':status' => $status,
     ]);
+}
+
+function restoreStockForCancelledOrder(
+    PDO $pdo,
+    string $orderId,
+    ?string $detailOrderIdCol,
+    ?string $detailProductCol,
+    ?string $detailQtyCol,
+    ?string $hangIdCol,
+    ?string $hangStockCol
+): int {
+    if (
+        trim($orderId) === ''
+        || $detailOrderIdCol === null
+        || $detailProductCol === null
+        || $detailQtyCol === null
+        || $hangIdCol === null
+        || $hangStockCol === null
+    ) {
+        return 0;
+    }
+
+    $detailStmt = $pdo->prepare(
+        "SELECT `{$detailProductCol}` AS product_id, SUM(`{$detailQtyCol}`) AS total_qty
+         FROM chitietphieuxuat
+         WHERE `{$detailOrderIdCol}` = :order_id
+         GROUP BY `{$detailProductCol}`"
+    );
+    $detailStmt->execute([':order_id' => $orderId]);
+    $detailRows = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!is_array($detailRows) || count($detailRows) === 0) {
+        return 0;
+    }
+
+    $restoreStmt = $pdo->prepare(
+        "UPDATE hanghoa
+         SET `{$hangStockCol}` = `{$hangStockCol}` + :qty
+         WHERE `{$hangIdCol}` = :product_id"
+    );
+
+    $restoredItems = 0;
+    foreach ($detailRows as $detailRow) {
+        $productId = trim((string) ($detailRow['product_id'] ?? ''));
+        $qty = (int) ($detailRow['total_qty'] ?? 0);
+
+        if ($productId === '' || $qty <= 0) {
+            continue;
+        }
+
+        $restoreStmt->execute([
+            ':qty' => $qty,
+            ':product_id' => $productId,
+        ]);
+
+        if ($restoreStmt->rowCount() <= 0) {
+            throw new RuntimeException('Không thể hoàn kho cho sản phẩm ' . $productId . '.');
+        }
+
+        $restoredItems++;
+    }
+
+    return $restoredItems;
 }
 
 function normalizeOrderStatus(string $rawStatus): array {
@@ -122,6 +248,41 @@ function normalizeOrderStatus(string $rawStatus): array {
     ];
 }
 
+function orderStatusPriority(string $statusKey): int {
+    return match ($statusKey) {
+        'cancelled' => 100,
+        'completed' => 90,
+        'near_delivery' => 80,
+        'shipping' => 70,
+        'approved' => 60,
+        'pending' => 50,
+        'pending_payment' => 40,
+        default => 10,
+    };
+}
+
+function resolveStatusMetaFromOrderRow(array $orderRow): array {
+    $statusCandidates = ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'];
+    $bestMeta = normalizeOrderStatus('');
+    $bestScore = orderStatusPriority((string) ($bestMeta['key'] ?? 'other'));
+
+    foreach ($statusCandidates as $statusColumn) {
+        $rawStatus = trim((string) pickOrderValue($orderRow, [$statusColumn], ''));
+        if ($rawStatus === '') {
+            continue;
+        }
+
+        $meta = normalizeOrderStatus($rawStatus);
+        $score = orderStatusPriority((string) ($meta['key'] ?? 'other'));
+        if ($score > $bestScore) {
+            $bestMeta = $meta;
+            $bestScore = $score;
+        }
+    }
+
+    return $bestMeta;
+}
+
 $userName = trim((string) ($_SESSION['user_name'] ?? 'Khách hàng'));
 $userEmail = strtolower(trim((string) ($_SESSION['user_email'] ?? '')));
 
@@ -153,6 +314,7 @@ try {
     );
 
     ensureOrderPaymentMetaTable($pdo);
+    ensureVoucherUsageTable($pdo);
 
     $khColumns = getExistingColumns($pdo, 'khachhang');
     $khIdCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
@@ -200,6 +362,7 @@ try {
 
     $pxColumns = getExistingColumns($pdo, 'phieuxuat');
     $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
+    $hhColumns = getExistingColumns($pdo, 'hanghoa');
 
     $orderIdCol = pickExistingColumn($pxColumns, ['maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'idphieuxuat', 'id_phieu_xuat', 'madon', 'id']);
     $orderCustomerCol = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'idkhachhang']);
@@ -215,6 +378,8 @@ try {
     $detailPriceCol = pickExistingColumn($ctpxColumns, ['giaban', 'gia_ban', 'giaxuat', 'gia_xuat', 'dongia', 'don_gia', 'gia']);
     $detailQtyCol = pickExistingColumn($ctpxColumns, ['soluongpx', 'so_luong_px', 'soluong', 'so_luong']);
     $detailTotalCol = pickExistingColumn($ctpxColumns, ['thanhtienpx', 'thanh_tien_px', 'thanhtien', 'thanh_tien', 'tongtien', 'tong_tien']);
+    $hangIdCol = pickExistingColumn($hhColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $hangStockCol = pickExistingColumn($hhColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho', 'soluong', 'so_luong']);
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confirm_received') {
         $confirmOrderId = trim((string) ($_POST['order_id'] ?? ''));
@@ -322,67 +487,93 @@ try {
             $flashType = 'warning';
         } else if ($orderIdCol !== null && $orderCustomerCol !== null && $orderStatusCol !== null && count($customerIds) > 0) {
             $placeholders = implode(', ', array_fill(0, count($customerIds), '?'));
-            $selectParams = array_merge([$cancelOrderId], $customerIds);
 
-            $sqlCheckCancelable = "SELECT `{$orderStatusCol}` AS current_status
-                                 FROM phieuxuat
-                                 WHERE `{$orderIdCol}` = ?
-                                 AND `{$orderCustomerCol}` IN ({$placeholders})
-                                 LIMIT 1";
-            $checkStmt = $pdo->prepare($sqlCheckCancelable);
-            $checkStmt->execute($selectParams);
-            $checkRow = $checkStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            try {
+                $pdo->beginTransaction();
 
-            if (!is_array($checkRow)) {
-                $flashMessage = 'Không tìm thấy đơn hàng cần hủy.';
-                $flashType = 'danger';
-            } else {
+                $selectParams = array_merge([$cancelOrderId], $customerIds);
+                $sqlCheckCancelable = "SELECT `{$orderStatusCol}` AS current_status
+                                     FROM phieuxuat
+                                     WHERE `{$orderIdCol}` = ?
+                                     AND `{$orderCustomerCol}` IN ({$placeholders})
+                                     LIMIT 1
+                                     FOR UPDATE";
+                $checkStmt = $pdo->prepare($sqlCheckCancelable);
+                $checkStmt->execute($selectParams);
+                $checkRow = $checkStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+                if (!is_array($checkRow)) {
+                    throw new RuntimeException('Không tìm thấy đơn hàng cần hủy.');
+                }
+
                 $statusMeta = normalizeOrderStatus((string) ($checkRow['current_status'] ?? ''));
                 $statusKey = (string) ($statusMeta['key'] ?? 'other');
 
                 if (!in_array($statusKey, ['pending', 'pending_payment'], true)) {
-                    $flashMessage = 'Đơn đã được duyệt hoặc đang giao, không thể hủy từ phía khách hàng.';
-                    $flashType = 'warning';
-                } else {
-                    $reasonText = 'Khách hủy: ' . $cancelReason;
-                    if ($cancelNoteExtra !== '') {
-                        $reasonText .= ' | Ghi chú: ' . mb_substr($cancelNoteExtra, 0, 250);
-                    }
-
-                    $setParts = ["`{$orderStatusCol}` = ?"];
-                    $updateParams = ['Đã hủy'];
-
-                    if ($orderPaymentStatusCol !== null) {
-                        $setParts[] = "`{$orderPaymentStatusCol}` = ?";
-                        $updateParams[] = 'Đã hủy';
-                    }
-
-                    if ($orderCancelReasonCol !== null) {
-                        $setParts[] = "`{$orderCancelReasonCol}` = ?";
-                        $updateParams[] = $reasonText;
-                    }
-
-                    $updateParams[] = $cancelOrderId;
-                    $updateParams = array_merge($updateParams, $customerIds);
-
-                    $sqlCancel = "UPDATE phieuxuat
-                                SET " . implode(', ', $setParts) . "
-                                WHERE `{$orderIdCol}` = ?
-                                AND `{$orderCustomerCol}` IN ({$placeholders})";
-
-                    $cancelStmt = $pdo->prepare($sqlCancel);
-                    $cancelStmt->execute($updateParams);
-
-                    if ($cancelStmt->rowCount() > 0) {
-                        $cancelMethod = $statusKey === 'pending_payment' ? 'QR chuyển khoản' : 'Thanh toán khi nhận hàng';
-                        upsertOrderPaymentMeta($pdo, $cancelOrderId, $cancelMethod, 'Đã hủy');
-                        $flashMessage = 'Đã hủy đơn ' . $cancelOrderId . ' thành công.';
-                        $flashType = 'success';
-                    } else {
-                        $flashMessage = 'Không thể hủy đơn. Vui lòng thử lại.';
-                        $flashType = 'warning';
-                    }
+                    throw new RuntimeException('Đơn đã được duyệt hoặc đang giao, không thể hủy từ phía khách hàng.');
                 }
+
+                $reasonText = 'Khách hủy: ' . $cancelReason;
+                if ($cancelNoteExtra !== '') {
+                    $reasonText .= ' | Ghi chú: ' . mb_substr($cancelNoteExtra, 0, 250);
+                }
+
+                $setParts = ["`{$orderStatusCol}` = ?"];
+                $updateParams = ['Đã hủy'];
+
+                if ($orderPaymentStatusCol !== null) {
+                    $setParts[] = "`{$orderPaymentStatusCol}` = ?";
+                    $updateParams[] = 'Đã hủy';
+                }
+
+                if ($orderCancelReasonCol !== null) {
+                    $setParts[] = "`{$orderCancelReasonCol}` = ?";
+                    $updateParams[] = $reasonText;
+                }
+
+                $updateParams[] = $cancelOrderId;
+                $updateParams = array_merge($updateParams, $customerIds);
+
+                $sqlCancel = "UPDATE phieuxuat
+                            SET " . implode(', ', $setParts) . "
+                            WHERE `{$orderIdCol}` = ?
+                            AND `{$orderCustomerCol}` IN ({$placeholders})";
+
+                $cancelStmt = $pdo->prepare($sqlCancel);
+                $cancelStmt->execute($updateParams);
+
+                if ($cancelStmt->rowCount() <= 0) {
+                    throw new RuntimeException('Không thể hủy đơn. Vui lòng thử lại.');
+                }
+
+                restoreStockForCancelledOrder(
+                    $pdo,
+                    $cancelOrderId,
+                    $detailOrderIdCol,
+                    $detailProductCol,
+                    $detailQtyCol,
+                    $hangIdCol,
+                    $hangStockCol
+                );
+
+                $voucherRestored = restoreVoucherForCancelledOrder($pdo, $cancelOrderId);
+
+                $cancelMethod = $statusKey === 'pending_payment' ? 'QR chuyển khoản' : 'Thanh toán khi nhận hàng';
+                upsertOrderPaymentMeta($pdo, $cancelOrderId, $cancelMethod, 'Đã hủy');
+
+                $pdo->commit();
+                $flashMessage = 'Đã hủy đơn ' . $cancelOrderId . ' thành công và hoàn lại tồn kho.';
+                if ($voucherRestored) {
+                    $flashMessage .= ' Voucher đã được hoàn về tài khoản của bạn.';
+                }
+                $flashType = 'success';
+            } catch (Throwable $cancelError) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+
+                $flashMessage = $cancelError->getMessage();
+                $flashType = 'warning';
             }
         } else {
             $flashMessage = 'Không thể hủy đơn với cấu trúc dữ liệu hiện tại.';
@@ -487,8 +678,7 @@ try {
                 }
             }
 
-            $rawStatus = $orderStatusCol !== null ? (string) pickOrderValue($orderRow, [$orderStatusCol], '') : '';
-            $statusMeta = normalizeOrderStatus($rawStatus);
+            $statusMeta = resolveStatusMetaFromOrderRow($orderRow);
 
             $metaPaymentMethod = trim((string) (($paymentMetaMap[$orderId]['method'] ?? '')));
             $metaPaymentStatus = trim((string) (($paymentMetaMap[$orderId]['status'] ?? '')));
@@ -578,6 +768,8 @@ try {
 } catch (Throwable $e) {
     $dbError = $e->getMessage();
 }
+
+$hasOrders = count($orders) > 0;
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -603,6 +795,23 @@ try {
         background: radial-gradient(circle at 12% 0%, #eef2ff 0%, var(--bg-main) 40%, #eef3fb 100%);
         font-family: 'Segoe UI', sans-serif;
         color: var(--text-main);
+    }
+
+    body.orders-static-layout {
+        overflow: hidden;
+    }
+
+    .orders-page-container {
+        min-height: 0;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    body.orders-static-layout .orders-page-container {
+        height: calc(100vh - var(--orders-header-offset, 130px));
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
 
     /* Header đồng bộ trang hàng hóa */
@@ -666,46 +875,28 @@ try {
         font-style: italic;
     }
 
-    .orders-hero {
-        border-radius: 18px;
-        background: linear-gradient(130deg, #60a5fa 0%, #38bdf8 50%, #22d3ee 100%);
-        color: #fff;
-        padding: 22px 22px;
-        box-shadow: 0 18px 35px rgba(14, 165, 233, .28);
-        margin-bottom: 16px;
-    }
-
-    .orders-hero .title {
-        font-size: clamp(1.25rem, 2.2vw, 1.9rem);
-        font-weight: 800;
-        margin: 0;
-    }
-
-    .orders-hero .subtitle {
-        margin: 6px 0 0;
-        color: rgba(255, 255, 255, .82);
-        font-size: .95rem;
-    }
-
-    .hero-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(255, 255, 255, .18);
-        border: 1px solid rgba(255, 255, 255, .24);
-        color: #fff;
-        padding: 7px 12px;
-        border-radius: 999px;
-        font-size: .82rem;
-        font-weight: 600;
-    }
 
     .panel {
         border: 1px solid rgba(148, 163, 184, .22);
         border-radius: 18px;
         background: rgba(255, 255, 255, .92);
         backdrop-filter: blur(10px);
-        box-shadow: var(--panel-shadow);
+        box-shadow: none;
+    }
+
+    .orders-page-panel {
+        min-height: 0;
+    }
+
+    body.orders-static-layout .orders-page-panel {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .orders-static-top {
+        flex: 0 0 auto;
     }
 
     .status-badge {
@@ -868,6 +1059,24 @@ try {
         transition: background-color .18s ease;
     }
 
+    .orders-table-scroll {
+        max-height: 52vh;
+        overflow-y: auto;
+        overflow-x: auto;
+        border: 1px solid #e7ebf5;
+        border-radius: 12px;
+    }
+
+    body.orders-static-layout .orders-table-scroll {
+        flex: 1 1 auto;
+        max-height: none;
+        min-height: 220px;
+    }
+
+    .orders-table-scroll .table {
+        margin-bottom: 0;
+    }
+
     .table thead th {
         background: #f8fafc;
         border-bottom: 1px solid var(--line);
@@ -876,6 +1085,9 @@ try {
         text-transform: uppercase;
         letter-spacing: .02em;
         font-weight: 700;
+        position: sticky;
+        top: 0;
+        z-index: 2;
     }
 
     .table tbody tr.order-row:hover {
@@ -928,8 +1140,21 @@ try {
     }
 
     @media (max-width: 768px) {
-        .orders-hero {
-            padding: 18px 16px;
+        body.orders-static-layout {
+            overflow: auto;
+        }
+
+        body.orders-static-layout .orders-page-container {
+            height: auto;
+            overflow: visible;
+        }
+
+        body.orders-static-layout .orders-page-panel {
+            display: block;
+        }
+
+        body.orders-static-layout .orders-table-scroll {
+            max-height: 52vh;
         }
 
         .order-toolbar {
@@ -944,7 +1169,7 @@ try {
     </style>
 </head>
 
-<body>
+<body class="<?php echo $hasOrders ? 'orders-static-layout' : ''; ?>">
     <header class="sticky-top bg-white">
         <div class="top-bar">
             <div class="container d-flex align-items-center justify-content-between">
@@ -994,23 +1219,7 @@ try {
         </div>
     </header>
 
-    <div class="container py-4 py-md-5">
-        <div class="orders-hero">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-                <div>
-                    <h4 class="title">Đơn hàng của tôi</h4>
-                    <p class="subtitle mb-0">Theo dõi trạng thái đơn theo thời gian thực, lọc nhanh và tìm kiếm tức thì.
-                    </p>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                    <a href="tai-khoan.php?tab=manage" class="hero-chip text-decoration-none"><i
-                            class="fas fa-user"></i>Tài khoản</a>
-                    <a href="trangchu.php" class="hero-chip text-decoration-none"><i class="fas fa-house"></i>Trang
-                        chủ</a>
-                </div>
-            </div>
-        </div>
-
+    <div class="container orders-page-container">
         <?php if ($dbError !== ''): ?>
         <div class="alert alert-danger">Không thể tải đơn hàng: <?php echo htmlspecialchars($dbError); ?></div>
         <?php endif; ?>
@@ -1020,7 +1229,7 @@ try {
             <?php echo htmlspecialchars($flashMessage); ?></div>
         <?php endif; ?>
 
-        <div class="panel p-3 p-md-4">
+        <div class="panel p-3 p-md-4 orders-page-panel">
             <?php if (count($orders) === 0): ?>
             <div class="text-center py-4">
                 <div class="mb-2"><i class="fas fa-receipt fa-2x text-muted"></i></div>
@@ -1029,83 +1238,87 @@ try {
                 <a href="trangchu.php" class="btn btn-primary btn-sm">Mua sắm ngay</a>
             </div>
             <?php else: ?>
-            <div class="row g-2 g-md-3 mb-3">
-                <div class="col-6 col-lg-3">
-                    <div class="order-stat">
-                        <span class="icon"><i class="fas fa-receipt"></i></span>
-                        <div>
-                            <div class="label">Tổng đơn</div>
-                            <div class="value"><?php echo (int) ($orderStats['total'] ?? 0); ?></div>
+            <div class="orders-static-top">
+                <div class="row g-2 g-md-3 mb-3">
+                    <div class="col-6 col-lg-3">
+                        <div class="order-stat">
+                            <span class="icon"><i class="fas fa-receipt"></i></span>
+                            <div>
+                                <div class="label">Tổng đơn</div>
+                                <div class="value"><?php echo (int) ($orderStats['total'] ?? 0); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="order-stat">
+                            <span class="icon" style="background:#fff7e6;color:#d97706;"><i
+                                    class="fas fa-hourglass-half"></i></span>
+                            <div>
+                                <div class="label">Đang xử lý</div>
+                                <div class="value text-warning"><?php echo (int) ($orderStats['pending'] ?? 0); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="order-stat">
+                            <span class="icon" style="background:#ecfeff;color:#0891b2;"><i
+                                    class="fas fa-truck-fast"></i></span>
+                            <div>
+                                <div class="label">Đang giao</div>
+                                <div class="value text-primary"><?php echo (int) ($orderStats['shipping'] ?? 0); ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="order-stat">
+                            <span class="icon" style="background:#ecfdf5;color:#16a34a;"><i
+                                    class="fas fa-circle-check"></i></span>
+                            <div>
+                                <div class="label">Hoàn tất</div>
+                                <div class="value text-success"><?php echo (int) ($orderStats['completed'] ?? 0); ?>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-lg-3">
-                    <div class="order-stat">
-                        <span class="icon" style="background:#fff7e6;color:#d97706;"><i
-                                class="fas fa-hourglass-half"></i></span>
-                        <div>
-                            <div class="label">Đang xử lý</div>
-                            <div class="value text-warning"><?php echo (int) ($orderStats['pending'] ?? 0); ?></div>
+
+                <div class="order-toolbar mb-3">
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                            <input type="text" id="orderSearchInput" class="form-control"
+                                placeholder="Tìm mã đơn, ngày đặt, ghi chú vận chuyển...">
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <select id="orderStatusFilter" class="form-select">
+                                <option value="all">Tất cả trạng thái</option>
+                                <option value="pending">Đang xử lý</option>
+                                <option value="shipping">Đang giao</option>
+                                <option value="completed">Đã nhận</option>
+                                <option value="cancelled">Đã hủy</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <select id="orderSortSelect" class="form-select">
+                                <option value="date_desc">Mới nhất</option>
+                                <option value="date_asc">Cũ nhất</option>
+                                <option value="total_desc">Giá trị cao → thấp</option>
+                                <option value="total_asc">Giá trị thấp → cao</option>
+                            </select>
                         </div>
                     </div>
-                </div>
-                <div class="col-6 col-lg-3">
-                    <div class="order-stat">
-                        <span class="icon" style="background:#ecfeff;color:#0891b2;"><i
-                                class="fas fa-truck-fast"></i></span>
-                        <div>
-                            <div class="label">Đang giao</div>
-                            <div class="value text-primary"><?php echo (int) ($orderStats['shipping'] ?? 0); ?></div>
-                        </div>
+                    <div class="filter-chip-wrap" id="statusChipWrap">
+                        <button type="button" class="filter-chip active" data-status-chip="all">Tất cả</button>
+                        <button type="button" class="filter-chip" data-status-chip="pending">Đang xử lý</button>
+                        <button type="button" class="filter-chip" data-status-chip="shipping">Đang giao</button>
+                        <button type="button" class="filter-chip" data-status-chip="completed">Đã nhận</button>
+                        <button type="button" class="filter-chip" data-status-chip="cancelled">Đã hủy</button>
                     </div>
-                </div>
-                <div class="col-6 col-lg-3">
-                    <div class="order-stat">
-                        <span class="icon" style="background:#ecfdf5;color:#16a34a;"><i
-                                class="fas fa-circle-check"></i></span>
-                        <div>
-                            <div class="label">Hoàn tất</div>
-                            <div class="value text-success"><?php echo (int) ($orderStats['completed'] ?? 0); ?></div>
-                        </div>
-                    </div>
+                    <div class="order-result-hint">Mẹo: bấm <kbd>/</kbd> để focus ô tìm kiếm nhanh.</div>
                 </div>
             </div>
 
-            <div class="order-toolbar mb-3">
-                <div class="row g-2">
-                    <div class="col-12 col-md-6">
-                        <input type="text" id="orderSearchInput" class="form-control"
-                            placeholder="Tìm mã đơn, ngày đặt, ghi chú vận chuyển...">
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <select id="orderStatusFilter" class="form-select">
-                            <option value="all">Tất cả trạng thái</option>
-                            <option value="pending">Đang xử lý</option>
-                            <option value="shipping">Đang giao</option>
-                            <option value="completed">Đã nhận</option>
-                            <option value="cancelled">Đã hủy</option>
-                        </select>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <select id="orderSortSelect" class="form-select">
-                            <option value="date_desc">Mới nhất</option>
-                            <option value="date_asc">Cũ nhất</option>
-                            <option value="total_desc">Giá trị cao → thấp</option>
-                            <option value="total_asc">Giá trị thấp → cao</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="filter-chip-wrap" id="statusChipWrap">
-                    <button type="button" class="filter-chip active" data-status-chip="all">Tất cả</button>
-                    <button type="button" class="filter-chip" data-status-chip="pending">Đang xử lý</button>
-                    <button type="button" class="filter-chip" data-status-chip="shipping">Đang giao</button>
-                    <button type="button" class="filter-chip" data-status-chip="completed">Đã nhận</button>
-                    <button type="button" class="filter-chip" data-status-chip="cancelled">Đã hủy</button>
-                </div>
-                <div class="order-result-hint">Mẹo: bấm <kbd>/</kbd> để focus ô tìm kiếm nhanh.</div>
-            </div>
-
-            <div class="table-responsive">
+            <div class="table-responsive orders-table-scroll">
                 <table class="table align-middle">
                     <thead>
                         <tr>
@@ -1239,6 +1452,40 @@ try {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+        const body = document.body;
+        if (!body || !body.classList.contains('orders-static-layout')) {
+            return;
+        }
+
+        function updateHeaderOffset() {
+            const header = document.querySelector('header.sticky-top');
+            const offset = header ? Math.ceil(header.getBoundingClientRect().height) : 130;
+            body.style.setProperty('--orders-header-offset', `${offset + 8}px`);
+        }
+
+        updateHeaderOffset();
+        window.addEventListener('resize', updateHeaderOffset);
+    })();
+    </script>
+    <script>
+    (function() {
+        const blocks = Array.from(document.querySelectorAll('section, div'));
+        blocks.forEach((node) => {
+            const text = (node.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!text.includes('đơn hàng của tôi') || !text.includes('theo dõi trạng thái đơn')) {
+                return;
+            }
+
+            const hasAccountLink = !!node.querySelector('a[href*="tai-khoan.php"]');
+            const hasHomeLink = !!node.querySelector('a[href*="trangchu.php"]');
+            if (hasAccountLink && hasHomeLink) {
+                node.remove();
+            }
+        });
+    })();
+    </script>
     <script>
     (function() {
         const rows = Array.from(document.querySelectorAll('tr.order-row'));

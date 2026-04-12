@@ -1,6 +1,11 @@
 <?php
 require_once __DIR__ . '/../Login/admin_auth.php';
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Cache-Control: post-check=0, pre-check=0', false);
+header('Pragma: no-cache');
+header('Expires: 0');
+
 function pickOrderValue(array $row, array $keys, $default = '') {
     foreach ($keys as $key) {
         if (array_key_exists($key, $row)) {
@@ -47,6 +52,14 @@ function pickExistingColumn(array $existingColumns, array $candidates): ?string 
 
 function normalizeOrderStatus(string $rawStatus): array {
     $status = mb_strtolower(trim($rawStatus));
+
+    if (str_contains($status, 'hủy') || str_contains($status, 'huy') || str_contains($status, 'cancel') || str_contains($status, 'void')) {
+        return [
+            'key' => 'cancelled',
+            'label' => 'Đã hủy',
+            'class' => 'status-cancelled',
+        ];
+    }
 
     if (str_contains($status, 'chờ thanh toán') || str_contains($status, 'cho thanh toan') || str_contains($status, 'qr')) {
         return [
@@ -183,6 +196,13 @@ try {
                         $phieuXuatColumnsForApprove,
                         ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']
                     );
+                    $statusColumnsToSync = [];
+                    foreach (['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'] as $candidate) {
+                        $resolved = pickExistingColumn($phieuXuatColumnsForApprove, [$candidate]);
+                        if ($resolved !== null && !in_array($resolved, $statusColumnsToSync, true)) {
+                            $statusColumnsToSync[] = $resolved;
+                        }
+                    }
                     $paymentMethodColumn = pickExistingColumn(
                         $phieuXuatColumnsForApprove,
                         ['hinhthucthanhtoan', 'hinh_thuc_thanh_toan', 'phuongthucthanhtoan', 'phuong_thuc_thanh_toan', 'ptthanhtoan', 'payment_method', 'thanhtoan']
@@ -192,7 +212,7 @@ try {
                         ['trangthaithanhtoan', 'trang_thai_thanh_toan', 'ttthanhtoan', 'payment_status']
                     );
 
-                    if ($orderIdColumn === null || $statusColumn === null) {
+                    if ($orderIdColumn === null || $statusColumn === null || count($statusColumnsToSync) === 0) {
                         $crudError = 'Không tìm thấy cột cần thiết để duyệt đơn hàng.';
                     } else {
                         $selectParts = ["`{$statusColumn}` AS order_status"];
@@ -233,9 +253,14 @@ try {
                     }
 
                     if ($crudError === '') {
+                        $setParts = [];
+                        foreach ($statusColumnsToSync as $statusColSync) {
+                            $setParts[] = "`{$statusColSync}` = :approved_status";
+                        }
+
                         $approveStmt = $pdo->prepare(
                             "UPDATE phieuxuat
-                             SET `{$statusColumn}` = :approved_status
+                             SET " . implode(', ', $setParts) . "
                              WHERE `{$orderIdColumn}` = :order_id"
                         );
                         $approveStmt->execute([
@@ -277,6 +302,13 @@ try {
                         $phieuXuatColumnsForUpdate,
                         ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']
                     );
+                    $statusColumnsToSync = [];
+                    foreach (['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'] as $candidate) {
+                        $resolved = pickExistingColumn($phieuXuatColumnsForUpdate, [$candidate]);
+                        if ($resolved !== null && !in_array($resolved, $statusColumnsToSync, true)) {
+                            $statusColumnsToSync[] = $resolved;
+                        }
+                    }
                     $paymentMethodColumn = pickExistingColumn(
                         $phieuXuatColumnsForUpdate,
                         ['hinhthucthanhtoan', 'hinh_thuc_thanh_toan', 'phuongthucthanhtoan', 'phuong_thuc_thanh_toan', 'ptthanhtoan', 'payment_method', 'thanhtoan']
@@ -286,7 +318,7 @@ try {
                         ['trangthaithanhtoan', 'trang_thai_thanh_toan', 'ttthanhtoan', 'payment_status']
                     );
 
-                    if ($orderIdColumn === null || $statusColumn === null) {
+                    if ($orderIdColumn === null || $statusColumn === null || count($statusColumnsToSync) === 0) {
                         $crudError = 'Không tìm thấy cột cần thiết để cập nhật trạng thái.';
                     } else {
                         $selectParts = ["`{$statusColumn}` AS order_status"];
@@ -327,9 +359,14 @@ try {
                     }
 
                     if ($crudError === '') {
+                        $setParts = [];
+                        foreach ($statusColumnsToSync as $statusColSync) {
+                            $setParts[] = "`{$statusColSync}` = :next_status";
+                        }
+
                         $updateStatusStmt = $pdo->prepare(
                             "UPDATE phieuxuat
-                             SET `{$statusColumn}` = :next_status
+                             SET " . implode(', ', $setParts) . "
                              WHERE `{$orderIdColumn}` = :order_id"
                         );
                         $updateStatusStmt->execute([
@@ -586,8 +623,8 @@ try {
     }
 
     usort($orders, static function (array $a, array $b): int {
-        $scoreA = ($a['status_key'] ?? '') === 'pending' ? 0 : 1;
-        $scoreB = ($b['status_key'] ?? '') === 'pending' ? 0 : 1;
+        $scoreA = in_array(($a['status_key'] ?? ''), ['pending', 'pending_payment'], true) ? 0 : 1;
+        $scoreB = in_array(($b['status_key'] ?? ''), ['pending', 'pending_payment'], true) ? 0 : 1;
         if ($scoreA !== $scoreB) {
             return $scoreA <=> $scoreB;
         }
@@ -626,7 +663,9 @@ foreach ($orders as $order) {
         $ordersToday++;
     }
 
-    $totalRevenue += (float) $order['total_number'];
+    if (($order['status_key'] ?? '') !== 'cancelled') {
+        $totalRevenue += (float) $order['total_number'];
+    }
 }
 ?>
 
@@ -896,10 +935,15 @@ foreach ($orders as $order) {
         border: 1px solid #fdba74;
     }
 
+    .status-cancelled {
+        background: #fff1f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+    }
+
     .payment-warning {
         font-size: 0.9rem;
     }
-
     </style>
     <link rel="stylesheet" href="admin-unified-ui.css">
 </head>
@@ -1067,8 +1111,12 @@ foreach ($orders as $order) {
                         <td><?php echo htmlspecialchars((string) $o['customer']); ?></td>
                         <td class="fw-bold"><?php echo htmlspecialchars((string) $o['total']); ?></td>
                         <td>
-                            <div class="small fw-semibold"><?php echo htmlspecialchars((string) (($o['payment_method'] ?? '') !== '' ? $o['payment_method'] : 'QR chuyển khoản')); ?></div>
-                            <div class="small text-muted"><?php echo htmlspecialchars((string) (($o['payment_status'] ?? '') !== '' ? $o['payment_status'] : 'Đang cập nhật thanh toán')); ?></div>
+                            <div class="small fw-semibold">
+                                <?php echo htmlspecialchars((string) (($o['payment_method'] ?? '') !== '' ? $o['payment_method'] : 'QR chuyển khoản')); ?>
+                            </div>
+                            <div class="small text-muted">
+                                <?php echo htmlspecialchars((string) (($o['payment_status'] ?? '') !== '' ? $o['payment_status'] : 'Đang cập nhật thanh toán')); ?>
+                            </div>
                         </td>
                         <td>
                             <span
@@ -1114,12 +1162,12 @@ foreach ($orders as $order) {
                                         id="detailOrderDate">--</span></div>
                             </div>
                             <div class="col-md-6">
-                                <div class="border rounded-3 p-2 bg-light-subtle"><strong>Phương thức thanh toán:</strong> <span
-                                        id="detailOrderPaymentMethod">--</span></div>
+                                <div class="border rounded-3 p-2 bg-light-subtle"><strong>Phương thức thanh
+                                        toán:</strong> <span id="detailOrderPaymentMethod">--</span></div>
                             </div>
                             <div class="col-md-6">
-                                <div class="border rounded-3 p-2 bg-light-subtle"><strong>Trạng thái thanh toán:</strong> <span
-                                        id="detailOrderPaymentStatus">--</span></div>
+                                <div class="border rounded-3 p-2 bg-light-subtle"><strong>Trạng thái thanh
+                                        toán:</strong> <span id="detailOrderPaymentStatus">--</span></div>
                             </div>
                         </div>
 
@@ -1341,7 +1389,8 @@ foreach ($orders as $order) {
             if (orderPaymentHint) {
                 if (!paymentReady) {
                     const orderId = this.getAttribute('data-id') || '';
-                    orderPaymentHint.textContent = `Đơn ${orderId} chưa được khách xác nhận chuyển khoản QR. Chưa thể duyệt hoặc chuyển sang giao.`;
+                    orderPaymentHint.textContent =
+                        `Đơn ${orderId} chưa được khách xác nhận chuyển khoản QR. Chưa thể duyệt hoặc chuyển sang giao.`;
                     orderPaymentHint.classList.remove('d-none');
                 } else {
                     orderPaymentHint.classList.add('d-none');
