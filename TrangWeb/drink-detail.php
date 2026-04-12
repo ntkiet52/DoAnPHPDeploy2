@@ -1,5 +1,94 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/catalog_data.php';
+
+$isAdminUser = isset($_SESSION['user_role']) && strtolower((string) $_SESSION['user_role']) === 'admin';
+$adminEditError = '';
+$adminEditSuccess = '';
+
+if ($isAdminUser && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['admin_action'] ?? '') === 'update_detail_product') {
+    $editProductId = trim((string) ($_POST['product_id'] ?? ''));
+    $editName = trim((string) ($_POST['ten_hang'] ?? ''));
+    $editDvt = trim((string) ($_POST['dvt'] ?? ''));
+    $editImage = trim((string) ($_POST['hinh_anh'] ?? ''));
+    $editVat = (float) ($_POST['vat'] ?? 0);
+    $editPrice = (float) ($_POST['don_gia'] ?? 0);
+    $editDescription = trim((string) ($_POST['mo_ta_chi_tiet'] ?? ''));
+
+    if ($editProductId === '' || $editName === '' || $editDvt === '' || $editPrice <= 0) {
+        $adminEditError = 'Vui lòng nhập đầy đủ thông tin hợp lệ (tên, đơn vị tính, đơn giá).';
+    } else {
+        try {
+            $pdo = new PDO(
+                'mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4',
+                'root',
+                '',
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ]
+            );
+
+            $soTienCoThue = $editPrice * (1 + ($editVat / 100));
+
+            $stmt = $pdo->prepare(
+                'UPDATE hanghoa
+                 SET TenHang = :tenhang,
+                     DVT = :dvt,
+                     DonGia = :dongia,
+                     VAT = :vat,
+                     SoTienCoThue = :sotiencothue,
+                     HinhAnh = :hinhanh
+                 WHERE MaHang = :mahang'
+            );
+
+            $stmt->execute([
+                ':tenhang' => $editName,
+                ':dvt' => $editDvt,
+                ':dongia' => $editPrice,
+                ':vat' => (string) $editVat,
+                ':sotiencothue' => $soTienCoThue,
+                ':hinhanh' => $editImage,
+                ':mahang' => $editProductId,
+            ]);
+
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS hanghoa_mota_chitiet (
+                    MaHang VARCHAR(10) NOT NULL,
+                    MoTaChiTiet TEXT NOT NULL,
+                    NgayCapNhat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (MaHang),
+                    CONSTRAINT fk_hanghoa_mota_chitiet_mahang FOREIGN KEY (MaHang)
+                        REFERENCES hanghoa (MaHang) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+            );
+
+            if ($editDescription !== '') {
+                $descStmt = $pdo->prepare(
+                    'INSERT INTO hanghoa_mota_chitiet (MaHang, MoTaChiTiet)
+                     VALUES (:mahang, :mota)
+                     ON DUPLICATE KEY UPDATE MoTaChiTiet = VALUES(MoTaChiTiet), NgayCapNhat = CURRENT_TIMESTAMP'
+                );
+                $descStmt->execute([
+                    ':mahang' => $editProductId,
+                    ':mota' => $editDescription,
+                ]);
+            }
+
+            header('Location: drink-detail.php?id=' . urlencode($editProductId) . '&admin_saved=1');
+            exit;
+        } catch (Throwable $e) {
+            $adminEditError = 'Không thể lưu thông tin sản phẩm: ' . $e->getMessage();
+        }
+    }
+}
+
+if ($isAdminUser && (string)($_GET['admin_saved'] ?? '') === '1') {
+    $adminEditSuccess = 'Đã cập nhật thông tin sản phẩm thành công.';
+}
 
 $products = [
     'trasua' => [
@@ -329,6 +418,55 @@ $productDataName = htmlspecialchars((string)($product['name'] ?? 'Sản phẩm')
 $productDataImage = htmlspecialchars((string)($product['image'] ?? '../TrangUser/ack.png'), ENT_QUOTES, 'UTF-8');
 $productDataPrice = (int)($product['price'] ?? 0);
 $productDataOldPrice = (int)($product['old_price'] ?? 0);
+$adminDescriptionText = '';
+$adminFormUnit = 'Cai';
+$adminFormVat = 10;
+$adminFormDonGia = max(0, (int) round(((float)($product['price'] ?? 0)) / 1.1));
+
+if (function_exists('catalogFetchDetailFromView')) {
+    $detailViewData = catalogFetchDetailFromView((string) ($product['id'] ?? ''));
+    if (is_array($detailViewData)) {
+        $adminFormUnit = trim((string) ($detailViewData['unit'] ?? $adminFormUnit)) !== ''
+            ? (string) ($detailViewData['unit'] ?? $adminFormUnit)
+            : $adminFormUnit;
+        $adminFormVat = (float) ($detailViewData['vat'] ?? $adminFormVat);
+        $vatRate = max(0.0, $adminFormVat) / 100;
+        $divisor = 1 + $vatRate;
+        if ($divisor <= 0) {
+            $divisor = 1;
+        }
+        $adminFormDonGia = (int) round((float) ($detailViewData['price_raw'] ?? $adminFormDonGia) / $divisor);
+    }
+}
+
+if (function_exists('catalogFetchDetailedDescriptionText')) {
+    $adminDescriptionText = trim((string) catalogFetchDetailedDescriptionText((string) ($product['id'] ?? '')));
+}
+if ($adminDescriptionText === '' && !empty($product['desc_list']) && is_array($product['desc_list'])) {
+    $adminDescriptionText = implode("\n", array_map(static function ($line) {
+        return trim((string) $line);
+    }, $product['desc_list']));
+}
+
+$productListForLink = catalogFetchProducts();
+$currentCategoryPageLink = 'trangchu.php';
+
+if ($productId !== '') {
+    foreach ($productListForLink as $item) {
+        if (strcasecmp((string)($item['id'] ?? ''), $productId) !== 0) {
+            continue;
+        }
+
+        $currentSlug = (string)($item['slug'] ?? '');
+        foreach (catalogCategoryItems() as $cat) {
+            if ((string)($cat['slug'] ?? '') === $currentSlug) {
+                $currentCategoryPageLink = (string)($cat['link'] ?? 'trangchu.php');
+                break;
+            }
+        }
+        break;
+    }
+}
 
 $reviews = [
     ['name' => 'Phạm Chi Hiếu', 'rating' => 5, 'content' => 'Sản phẩm ngon, đúng vị, giao hàng nhanh.'],
@@ -340,6 +478,7 @@ $reviews = [
 ?>
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -347,151 +486,378 @@ $reviews = [
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { background-color: #f5f5f5; font-family: 'Segoe UI', sans-serif; color: #333; }
-        .top-header { background: white; padding: 10px 0; }
-        .logo { font-size: 24px; font-weight: 800; color: #007bff; text-decoration: none; }
-        .search-box { border-radius: 20px; background: #f0f2f5; border: none; padding-left: 20px; }
-        .nav-blue { background-color: #0099ff; color: white; font-weight: 500; }
-        .nav-blue a { color: white; text-decoration: none; padding: 10px 15px; display: inline-block; font-size: 14px; }
-        .nav-blue a:hover { background: rgba(255,255,255,0.2); }
-        .product-container { background: white; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); padding: 20px; margin-top: 20px; }
-        .main-img { width: 100%; border-radius: 8px; object-fit: cover; }
-        .product-title { font-size: 24px; font-weight: 700; margin-bottom: 10px; }
-        .price-section { margin: 15px 0; }
-        .current-price { color: #ee4d2d; font-size: 30px; font-weight: bold; }
-        .old-price { text-decoration: line-through; color: #888; font-size: 16px; margin-left: 10px; }
-        .discount-tag { background: #ffebeb; color: #ee4d2d; padding: 2px 5px; font-size: 12px; font-weight: bold; border-radius: 2px; }
-        .shipping-box { border: 1px solid #eee; padding: 10px; border-radius: 5px; font-size: 13px; color: #555; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-        .btn-add-cart { background: #d6f0ff; color: #007bff; border: 1px solid #007bff; font-weight: 600; padding: 10px 20px; }
-        .btn-buy-now { background: #007bff; color: white; font-weight: 600; padding: 10px 75px; border: none; }
-        .review-header-box { background: #e8f2fc; border: 1px solid #f9ede5; padding: 30px; border-radius: 5px; display: flex; align-items: center; gap: 40px; margin-bottom: 20px; }
-        .score-big { font-size: 36px; color: #007bff; font-weight: bold; }
-        .filter-btn { border: 1px solid #ddd; background: white; padding: 5px 15px; margin-right: 5px; border-radius: 2px; color: #555; font-size: 14px; }
-        .filter-btn.active { border-color: #007bff; color: #007bff; }
-        .user-review { border-bottom: 1px solid #eee; padding: 20px 0; }
-        .avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; }
-        .review-content { color: #333; margin-top: 8px; font-size: 14px; line-height: 1.5; }
+    body {
+        background-color: #f5f5f5;
+        font-family: 'Segoe UI', sans-serif;
+        color: #333;
+    }
+
+    .top-header {
+        background: white;
+        padding: 10px 0;
+    }
+
+    .logo {
+        font-size: 24px;
+        font-weight: 800;
+        color: #007bff;
+        text-decoration: none;
+    }
+
+    .search-box {
+        border-radius: 20px;
+        background: #f0f2f5;
+        border: none;
+        padding-left: 20px;
+    }
+
+    .nav-blue {
+        background-color: #0099ff;
+        color: white;
+        font-weight: 500;
+    }
+
+    .nav-blue a {
+        color: white;
+        text-decoration: none;
+        padding: 10px 15px;
+        display: inline-block;
+        font-size: 14px;
+    }
+
+    .nav-blue a:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .product-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-top: 20px;
+    }
+
+    .main-img {
+        width: 100%;
+        border-radius: 8px;
+        object-fit: cover;
+    }
+
+    .product-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+
+    .price-section {
+        margin: 15px 0;
+    }
+
+    .current-price {
+        color: #ee4d2d;
+        font-size: 30px;
+        font-weight: bold;
+    }
+
+    .old-price {
+        text-decoration: line-through;
+        color: #888;
+        font-size: 16px;
+        margin-left: 10px;
+    }
+
+    .discount-tag {
+        background: #ffebeb;
+        color: #ee4d2d;
+        padding: 2px 5px;
+        font-size: 12px;
+        font-weight: bold;
+        border-radius: 2px;
+    }
+
+    .shipping-box {
+        border: 1px solid #eee;
+        padding: 10px;
+        border-radius: 5px;
+        font-size: 13px;
+        color: #555;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .btn-add-cart {
+        background: #d6f0ff;
+        color: #007bff;
+        border: 1px solid #007bff;
+        font-weight: 600;
+        padding: 10px 20px;
+    }
+
+    .btn-buy-now {
+        background: #007bff;
+        color: white;
+        font-weight: 600;
+        padding: 10px 75px;
+        border: none;
+    }
+
+    .review-header-box {
+        background: #e8f2fc;
+        border: 1px solid #f9ede5;
+        padding: 30px;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        margin-bottom: 20px;
+    }
+
+    .score-big {
+        font-size: 36px;
+        color: #007bff;
+        font-weight: bold;
+    }
+
+    .filter-btn {
+        border: 1px solid #ddd;
+        background: white;
+        padding: 5px 15px;
+        margin-right: 5px;
+        border-radius: 2px;
+        color: #555;
+        font-size: 14px;
+    }
+
+    .filter-btn.active {
+        border-color: #007bff;
+        color: #007bff;
+    }
+
+    .user-review {
+        border-bottom: 1px solid #eee;
+        padding: 20px 0;
+    }
+
+    .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 15px;
+    }
+
+    .review-content {
+        color: #333;
+        margin-top: 8px;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .admin-edit-wrap {
+        background: #fffbe8;
+        border: 1px solid #ffe58f;
+        border-radius: 10px;
+        padding: 14px;
+        margin-top: 16px;
+    }
+
+    .admin-edit-wrap .form-label {
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
     </style>
 </head>
+
 <body>
-<header class="top-header sticky-top shadow-sm">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-3 col-6">
-                <a href="Trangdouong.php" class="logo"><span style="color:#003366">ACK</span></a>
-            </div>
-            <div class="col-md-6 d-none d-md-block">
-                <div class="input-group">
-                    <input type="text" class="form-control search-box" placeholder="Tìm kiếm sản phẩm...">
-                    <button class="btn btn-light border-0" style="background:#f0f2f5"><i class="fas fa-search"></i></button>
+    <header class="top-header sticky-top shadow-sm">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-3 col-6">
+                    <a href="<?php echo htmlspecialchars($currentCategoryPageLink); ?>" class="logo"><span
+                            style="color:#003366">ACK</span></a>
                 </div>
-            </div>
-            <div class="col-md-3 col-6 text-end">
-                <i class="fas fa-headset fs-5 me-3 text-secondary"></i>
-                <i class="fas fa-globe fs-5 me-3 text-secondary"></i>
-                <i class="fas fa-user-circle fs-4 text-warning"></i>
-            </div>
-        </div>
-    </div>
-</header>
-<div class="nav-blue">
-    <div class="container">
-        <a href="Trangdouong.php">Sản phẩm</a>
-        <a href="#">Tin tức</a>
-        <a href="#">Tuyển dụng</a>
-        <a href="#">Chuyển nhượng</a>
-        <span class="float-end py-2 d-none d-md-inline"><i class="fas fa-bullhorn me-2"></i>Cơ hội cho nhà đầu tư</span>
-    </div>
-</div>
-<div class="container">
-    <div class="py-2">
-        <a href="Trangdouong.php" class="text-decoration-none text-dark"><i class="fas fa-chevron-left"></i> Quay lại</a>
-    </div>
-    <div
-        class="product-container"
-        data-product-id="<?php echo $productDataId; ?>"
-        data-product-name="<?php echo $productDataName; ?>"
-        data-product-price="<?php echo $productDataPrice; ?>"
-        data-product-old-price="<?php echo $productDataOldPrice; ?>"
-        data-product-img="<?php echo $productDataImage; ?>"
-    >
-        <div class="row">
-            <div class="col-md-5">
-                <img src="<?php echo htmlspecialchars($product['image']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" class="main-img img-fluid">
-            </div>
-            <div class="col-md-7">
-                <h1 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h1>
-                <div class="mb-2">
-                    <span class="text-warning">
-                        <?php echo number_format($product['rating'], 1); ?> <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="far fa-star"></i>
-                    </span>
-                    <span class="text-secondary mx-2">|</span>
-                    <span><?php echo htmlspecialchars($product['sold']); ?> đánh giá</span>
-                </div>
-                <div class="price-section bg-light p-3 rounded">
-                    <span class="current-price"><?php echo number_format($product['price'], 0, ',', '.'); ?>đ</span>
-                    <span class="old-price"><?php echo number_format($product['old_price'], 0, ',', '.'); ?>đ</span>
-                    <span class="discount-tag">-40%</span>
-                </div>
-                <div class="shipping-box">
-                    <i class="fas fa-truck text-success fs-5"></i>
-                    <div>
-                        <strong>Vận chuyển:</strong> Giao hàng trong 2 giờ. Freeship 0đ<br>
-                        <small class="text-muted">Nhận hàng trong vòng 2 giờ (nội thành)</small>
+                <div class="col-md-6 d-none d-md-block">
+                    <div class="input-group">
+                        <input type="text" class="form-control search-box" placeholder="Tìm kiếm sản phẩm...">
+                        <button class="btn btn-light border-0" style="background:#f0f2f5"><i
+                                class="fas fa-search"></i></button>
                     </div>
                 </div>
-                <div class="mb-4">
-                    <a href="#" class="text-decoration-none text-secondary"><i class="far fa-heart me-1"></i> Thêm vào yêu thích</a>
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-add-cart"><i class="fas fa-cart-plus me-2"></i>Thêm vào giỏ hàng</button>
-                    <button class="btn btn-buy-now">Mua ngay</button>
-                </div>
-                <div class="mt-4">
-                    <h5 class="fw-bold">Mô tả</h5>
-                    <ul class="list-unstyled text-secondary" style="font-size: 14px;">
-                        <?php foreach($product['desc_list'] as $desc): ?>
-                            <li class="mb-1">• <?php echo htmlspecialchars($desc); ?></li>
-                        <?php endforeach; ?>
-                    </ul>
+                <div class="col-md-3 col-6 text-end">
+                    <i class="fas fa-headset fs-5 me-3 text-secondary"></i>
+                    <i class="fas fa-globe fs-5 me-3 text-secondary"></i>
+                    <i class="fas fa-user-circle fs-4 text-warning"></i>
                 </div>
             </div>
+        </div>
+    </header>
+    <div class="nav-blue">
+        <div class="container">
+            <a href="<?php echo htmlspecialchars($currentCategoryPageLink); ?>">Sản phẩm</a>
+            <a href="#">Tin tức</a>
+            <a href="#">Tuyển dụng</a>
+            <a href="#">Chuyển nhượng</a>
+            <span class="float-end py-2 d-none d-md-inline"><i class="fas fa-bullhorn me-2"></i>Cơ hội cho nhà đầu
+                tư</span>
         </div>
     </div>
-    <div class="product-container">
-        <h4 class="fw-bold mb-3">Đánh giá (100)</h4>
-        <div class="review-header-box d-flex flex-wrap">
-            <div class="score-circle">
-                <div class="score-big"><?php echo number_format($product['rating'], 1); ?></div>
-                <div class="text-warning"><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="far fa-star"></i></div>
-            </div>
-            <div class="filters">
-                <button class="filter-btn active">Tất cả (100)</button>
-                <button class="filter-btn">5 sao (80)</button>
-                <button class="filter-btn">4 sao (10)</button>
-                <button class="filter-btn">3 sao (10)</button>
-                <button class="filter-btn">Có bình luận (50)</button>
-            </div>
-        </div>
-        <div class="review-list">
-            <?php foreach($reviews as $rv): ?>
-            <div class="user-review">
-                <div class="d-flex">
-                    <img src="https://via.placeholder.com/40" class="avatar" alt="User">
-                    <div>
-                        <div class="fw-bold"><?php echo htmlspecialchars($rv['name']); ?> <span class="text-success" style="font-size:12px;"><i class="fas fa-check-circle"></i> Đã mua hàng</span></div>
-                        <div class="text-warning" style="font-size: 12px;">
-                            <?php for($i = 0; $i < $rv['rating']; $i++) echo '<i class="fas fa-star"></i>'; ?>
+    <div class="container">
+        <div class="product-container" data-product-id="<?php echo $productDataId; ?>"
+            data-product-name="<?php echo $productDataName; ?>" data-product-price="<?php echo $productDataPrice; ?>"
+            data-product-old-price="<?php echo $productDataOldPrice; ?>"
+            data-product-img="<?php echo $productDataImage; ?>">
+            <div class="row">
+                <div class="col-md-5">
+                    <img src="<?php echo htmlspecialchars($product['image']); ?>"
+                        alt="<?php echo htmlspecialchars($product['name']); ?>" class="main-img img-fluid">
+                </div>
+                <div class="col-md-7">
+                    <h1 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h1>
+                    <?php if ($isAdminUser): ?>
+                    <div class="mb-3 d-flex gap-2 flex-wrap">
+                        <a href="../TrangAdmin/admin-sanpham.php?edit=<?php echo urlencode((string)($product['id'] ?? '')); ?>"
+                            class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-pen-to-square me-1"></i>Sửa ở trang Admin
+                        </a>
+                    </div>
+                    <?php endif; ?>
+                    <div class="mb-2">
+                        <span class="text-warning">
+                            <?php echo number_format($product['rating'], 1); ?> <i class="fas fa-star"></i><i
+                                class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
+                                class="far fa-star"></i>
+                        </span>
+                        <span class="text-secondary mx-2">|</span>
+                        <span><?php echo htmlspecialchars($product['sold']); ?> đánh giá</span>
+                    </div>
+                    <div class="price-section bg-light p-3 rounded">
+                        <span class="current-price"><?php echo number_format($product['price'], 0, ',', '.'); ?>đ</span>
+                        <span class="old-price"><?php echo number_format($product['old_price'], 0, ',', '.'); ?>đ</span>
+                        <span class="discount-tag">-40%</span>
+                    </div>
+                    <div class="shipping-box">
+                        <i class="fas fa-truck text-success fs-5"></i>
+                        <div>
+                            <strong>Vận chuyển:</strong> Giao hàng trong 2 giờ. Freeship 0đ<br>
+                            <small class="text-muted">Nhận hàng trong vòng 2 giờ (nội thành)</small>
                         </div>
-                        <p class="review-content"><?php echo htmlspecialchars($rv['content']); ?></p>
                     </div>
+                    <div class="mb-4">
+                        <a href="#" class="text-decoration-none text-secondary"><i class="far fa-heart me-1"></i> Thêm
+                            vào yêu thích</a>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-add-cart"><i class="fas fa-cart-plus me-2"></i>Thêm vào giỏ hàng</button>
+                        <button class="btn btn-buy-now">Mua ngay</button>
+                    </div>
+                    <div class="mt-4">
+                        <h5 class="fw-bold">Mô tả</h5>
+                        <ul class="list-unstyled text-secondary" style="font-size: 14px;">
+                            <?php foreach($product['desc_list'] as $desc): ?>
+                            <li class="mb-1">• <?php echo htmlspecialchars($desc); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+
+                    <?php if ($isAdminUser): ?>
+                    <div class="admin-edit-wrap">
+                        <h6 class="fw-bold mb-3 text-primary"><i class="fas fa-user-shield me-2"></i>Chỉnh thông tin
+                            sản phẩm (Admin)</h6>
+
+                        <?php if ($adminEditSuccess !== ''): ?>
+                        <div class="alert alert-success py-2 mb-3"><?php echo htmlspecialchars($adminEditSuccess); ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php if ($adminEditError !== ''): ?>
+                        <div class="alert alert-danger py-2 mb-3"><?php echo htmlspecialchars($adminEditError); ?></div>
+                        <?php endif; ?>
+
+                        <form method="post">
+                            <input type="hidden" name="admin_action" value="update_detail_product">
+                            <input type="hidden" name="product_id"
+                                value="<?php echo htmlspecialchars((string)($product['id'] ?? '')); ?>">
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label">Tên hàng</label>
+                                    <input type="text" class="form-control" name="ten_hang"
+                                        value="<?php echo htmlspecialchars((string)($product['name'] ?? '')); ?>"
+                                        required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Đơn vị tính</label>
+                                    <input type="text" class="form-control" name="dvt"
+                                        value="<?php echo htmlspecialchars((string)$adminFormUnit); ?>" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">VAT (%)</label>
+                                    <input type="number" min="0" max="100" step="0.01" class="form-control" name="vat"
+                                        value="<?php echo htmlspecialchars((string)$adminFormVat); ?>">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Đơn giá (trước thuế)</label>
+                                    <input type="number" min="0" step="1" class="form-control" name="don_gia"
+                                        value="<?php echo max(0, (int)$adminFormDonGia); ?>" required>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label">Link ảnh</label>
+                                    <input type="text" class="form-control" name="hinh_anh"
+                                        value="<?php echo htmlspecialchars((string)($product['image'] ?? '')); ?>">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Mô tả chi tiết (mỗi dòng 1 ý)</label>
+                                    <textarea class="form-control" name="mo_ta_chi_tiet"
+                                        rows="5"><?php echo htmlspecialchars($adminDescriptionText); ?></textarea>
+                                </div>
+                                <div class="col-12 d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-floppy-disk me-2"></i>Lưu thay đổi
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
-            <?php endforeach; ?>
+        </div>
+        <div class="product-container">
+            <h4 class="fw-bold mb-3">Đánh giá (100)</h4>
+            <div class="review-header-box d-flex flex-wrap">
+                <div class="score-circle">
+                    <div class="score-big"><?php echo number_format($product['rating'], 1); ?></div>
+                    <div class="text-warning"><i class="fas fa-star"></i><i class="fas fa-star"></i><i
+                            class="fas fa-star"></i><i class="fas fa-star"></i><i class="far fa-star"></i></div>
+                </div>
+                <div class="filters">
+                    <button class="filter-btn active">Tất cả (100)</button>
+                    <button class="filter-btn">5 sao (80)</button>
+                    <button class="filter-btn">4 sao (10)</button>
+                    <button class="filter-btn">3 sao (10)</button>
+                    <button class="filter-btn">Có bình luận (50)</button>
+                </div>
+            </div>
+            <div class="review-list">
+                <?php foreach($reviews as $rv): ?>
+                <div class="user-review">
+                    <div class="d-flex">
+                        <img src="../TrangUser/ack.png" class="avatar" alt="User">
+                        <div>
+                            <div class="fw-bold"><?php echo htmlspecialchars($rv['name']); ?> <span class="text-success"
+                                    style="font-size:12px;"><i class="fas fa-check-circle"></i> Đã mua hàng</span></div>
+                            <div class="text-warning" style="font-size: 12px;">
+                                <?php for($i = 0; $i < $rv['rating']; $i++) echo '<i class="fas fa-star"></i>'; ?>
+                            </div>
+                            <p class="review-content"><?php echo htmlspecialchars($rv['content']); ?></p>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
-</div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js"></script>
+    <script src="web-events.js?v=20260412-2"></script>
 </body>
+
 </html>

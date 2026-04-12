@@ -1190,6 +1190,6 @@ try {
             applyFilterAndSort();
         })();
     </script>
-    <script src="web-events.js"></script>
+    <script src="web-events.js?v=20260412-2"></script>
 </body>
 </html>

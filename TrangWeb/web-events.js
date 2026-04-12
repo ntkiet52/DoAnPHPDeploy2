@@ -876,6 +876,168 @@
     });
   }
 
+  function normalizeTextForMatch(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function normalizePathForMatch(rawPath) {
+    try {
+      const url = new URL(String(rawPath || ""), window.location.href);
+      return decodeURIComponent(url.pathname || "")
+        .replace(/\\/g, "/")
+        .replace(/\/+/g, "/")
+        .toLowerCase();
+    } catch (_) {
+      return String(rawPath || "")
+        .replace(/\\/g, "/")
+        .replace(/\/+/g, "/")
+        .toLowerCase();
+    }
+  }
+
+  function extractBaseName(pathValue) {
+    const normalized = normalizePathForMatch(pathValue);
+    if (!normalized) return "";
+    const parts = normalized.split("/");
+    return parts[parts.length - 1] || "";
+  }
+
+  async function fetchProductLinksMap() {
+    try {
+      const res = await fetch(`product-links.php?_=${Date.now()}`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok !== true || !Array.isArray(data?.products)) {
+        return null;
+      }
+
+      const byId = new Map();
+      const byName = new Map();
+      const byPath = new Map();
+      const byBase = new Map();
+
+      data.products.forEach((item) => {
+        const link = String(item?.link || "").trim();
+        if (!link) return;
+
+        const idKey = String(item?.id || "")
+          .trim()
+          .toUpperCase();
+        if (idKey && !byId.has(idKey)) byId.set(idKey, link);
+
+        const nameKey = normalizeTextForMatch(item?.name || "");
+        if (nameKey && !byName.has(nameKey)) byName.set(nameKey, link);
+
+        const pathKey = normalizePathForMatch(item?.img || "");
+        if (pathKey && !byPath.has(pathKey)) byPath.set(pathKey, link);
+
+        const baseKey = extractBaseName(item?.img || "");
+        if (baseKey && !byBase.has(baseKey)) byBase.set(baseKey, link);
+      });
+
+      return { byId, byName, byPath, byBase };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function bindProductCardNavigation() {
+    const cards = Array.from(document.querySelectorAll(".product-card"));
+    if (!cards.length) return;
+
+    const linkMaps = await fetchProductLinksMap();
+    if (!linkMaps) return;
+
+    cards.forEach((card) => {
+      if (card.dataset.navBound === "1") return;
+      if (card.closest(".admin-home-toolbar")) return;
+
+      const linkInside = card.querySelector(
+        'a[href*="drink-detail.php"], a[href*="id="]',
+      );
+      const inlineLink = String(card.getAttribute("data-link") || "").trim();
+
+      let resolvedLink = inlineLink;
+      if (!resolvedLink && linkInside) {
+        resolvedLink = String(linkInside.getAttribute("href") || "").trim();
+      }
+
+      if (!resolvedLink) {
+        const imgEl = card.querySelector("img");
+        const titleEl = card.querySelector(".product-title");
+        const idFromCard = String(card.getAttribute("data-product-id") || "")
+          .trim()
+          .toUpperCase();
+        const idFromChild = String(
+          card
+            .querySelector("[data-product-id]")
+            ?.getAttribute("data-product-id") || "",
+        )
+          .trim()
+          .toUpperCase();
+        const idKey = idFromCard || idFromChild;
+
+        const titleKey = normalizeTextForMatch(titleEl?.textContent || "");
+        const imgSrc = imgEl?.getAttribute("src") || "";
+        const imgPathKey = normalizePathForMatch(imgSrc);
+        const imgBaseKey = extractBaseName(imgSrc);
+
+        resolvedLink =
+          (idKey && linkMaps.byId.get(idKey)) ||
+          (titleKey && linkMaps.byName.get(titleKey)) ||
+          (imgPathKey && linkMaps.byPath.get(imgPathKey)) ||
+          (imgBaseKey && linkMaps.byBase.get(imgBaseKey)) ||
+          "";
+      }
+
+      if (!resolvedLink) return;
+
+      card.dataset.link = resolvedLink;
+      card.dataset.navBound = "1";
+      card.style.cursor = "pointer";
+      card.setAttribute("role", "link");
+      if (!card.hasAttribute("tabindex")) {
+        card.setAttribute("tabindex", "0");
+      }
+
+      const navigate = () => {
+        if (!card.dataset.link) return;
+        window.location.href = card.dataset.link;
+      };
+
+      card.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        if (
+          target.closest("button") ||
+          target.closest("a") ||
+          target.closest("input") ||
+          target.closest("textarea") ||
+          target.closest("select")
+        ) {
+          return;
+        }
+
+        navigate();
+      });
+
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          navigate();
+        }
+      });
+    });
+  }
+
   function normalizeFooterPaymentLogos() {
     const replacements = [
       {
@@ -934,6 +1096,7 @@
     normalizeFooterPaymentLogos();
     syncProductStockStates();
     bindAddToCartButtons();
+    bindProductCardNavigation();
     bindSearchFilter();
     updateCartBadge();
     bindPromotionForms();

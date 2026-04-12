@@ -1126,6 +1126,8 @@ foreach ($products as $p) {
             <a href="admin-nhanvien.php" class="nav-item"><i class="fas fa-user-tie"></i> Nhân viên</a>
             <a href="admin-khachhang.php" class="nav-item"><i class="fas fa-users"></i> Khách hàng</a>
             <a href="admin-voucher.php" class="nav-item"><i class="fas fa-ticket-alt"></i> Voucher</a>
+            <a href="../TrangWeb/trangchu.php?admin_mode=1" class="nav-item"><i class="fas fa-store"></i> Xem
+                Trang chủ</a>
             <a href="admin-caidat.php" class="nav-item"><i class="fas fa-cog"></i> Cài đặt</a>
         </nav>
         <a href="../Login/logout.php" class="logout-btn">Đăng xuất</a>
@@ -1135,7 +1137,12 @@ foreach ($products as $p) {
         <div class="product-top-sticky">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
-                <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="../TrangWeb/trangchu.php?admin_mode=1" class="btn btn-primary fw-semibold">
+                        <i class="fas fa-store me-2"></i>Trang chủ (Admin)
+                    </a>
+                    <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
+                </div>
             </div>
 
             <div class="d-flex justify-content-between align-items-end mb-4">
@@ -1999,6 +2006,33 @@ foreach ($products as $p) {
     window.addEventListener('resize', syncFixedTopOffset);
     window.addEventListener('load', syncFixedTopOffset);
     syncFixedTopOffset();
+
+    window.addEventListener('load', function() {
+        const params = new URLSearchParams(window.location.search);
+        const productIdFromUrl = (params.get('edit') || '').trim();
+        if (!productIdFromUrl) {
+            return;
+        }
+
+        const rows = Array.from(document.querySelectorAll('.product-row'));
+        const targetRow = rows.find((row) => (row.getAttribute('data-id') || '').trim() === productIdFromUrl);
+        if (!targetRow) {
+            return;
+        }
+
+        targetRow.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+        targetRow.click();
+
+        setTimeout(() => {
+            const editButton = document.getElementById('btnEditProduct');
+            if (editButton && !editButton.disabled) {
+                editButton.click();
+            }
+        }, 220);
+    });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="admin-search.js"></script>

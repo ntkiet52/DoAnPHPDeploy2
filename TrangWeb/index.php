@@ -668,7 +668,7 @@ $feedbacks = [
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js"></script>
+    <script src="web-events.js?v=20260412-2"></script>
 </body>
 
 </html>

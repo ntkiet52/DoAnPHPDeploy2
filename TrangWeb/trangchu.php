@@ -18,6 +18,7 @@ $roleLabelMap = [
 ];
 
 $currentUserRoleLabel = $roleLabelMap[$currentUserRole] ?? 'Người dùng';
+$isAdminUser = $isLoggedIn && $currentUserRole === 'admin';
 
 if ($currentUserName === '') {
     $currentUserName = 'Khách hàng';
@@ -52,6 +53,9 @@ $categories = $__catalogData['categories'];
         /* Màu nền xanh nhạt cho các block */
         --header-blue: #f8f9fa;
         --text-red: #dc3545;
+        --page-bg-custom: #f5f5f5;
+        --section-bg-custom: #e0f2fe;
+        --main-nav-custom: #007bff;
     }
 
     html,
@@ -59,12 +63,12 @@ $categories = $__catalogData['categories'];
         margin: 0;
         padding: 0;
         width: 100%;
-        background-color: #f5f5f5;
+        background-color: var(--page-bg-custom);
     }
 
     body {
         font-family: 'Roboto', sans-serif;
-        background-color: #f5f5f5;
+        background-color: var(--page-bg-custom);
         min-height: 100vh;
     }
 
@@ -196,7 +200,7 @@ $categories = $__catalogData['categories'];
     }
 
     .main-nav {
-        background-color: var(--primary-blue);
+        background-color: var(--main-nav-custom);
         color: white;
         padding: 0;
     }
@@ -286,11 +290,72 @@ $categories = $__catalogData['categories'];
 
     /* SECTIONS & PRODUCT CARDS */
     .section-container {
-        background-color: var(--light-bg-blue);
+        background-color: var(--section-bg-custom);
         border-radius: 15px;
         padding: 20px;
         margin-bottom: 30px;
         border: 1px solid #cce5ff;
+    }
+
+    .admin-home-toolbar {
+        background: #fffbe8;
+        border: 1px solid #ffe58f;
+        border-radius: 12px;
+        padding: 12px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .admin-theme-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .admin-theme-controls label {
+        font-size: 0.82rem;
+        color: #334155;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .admin-theme-controls input[type="color"] {
+        width: 36px;
+        height: 28px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .admin-edit-btn {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 1px solid #fff;
+        background: #0b74e5;
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        z-index: 2;
+        box-shadow: 0 4px 8px rgba(11, 116, 229, 0.3);
+    }
+
+    .admin-edit-btn:hover {
+        background: #095cb6;
+        color: #fff;
     }
 
     .section-header {
@@ -340,6 +405,7 @@ $categories = $__catalogData['categories'];
         height: 100%;
         position: relative;
         transition: transform 0.2s;
+        cursor: pointer;
     }
 
     .product-card:hover {
@@ -932,6 +998,26 @@ $categories = $__catalogData['categories'];
         </div>
     </header>
 
+    <?php if ($isAdminUser): ?>
+    <div class="container mt-3">
+        <div class="admin-home-toolbar">
+            <div class="fw-semibold text-dark">
+                <i class="fas fa-shield-halved text-primary me-2"></i>Chế độ Admin trên trang chủ
+            </div>
+            <div class="admin-theme-controls">
+                <a href="../TrangAdmin/admin.php" class="btn btn-sm btn-outline-primary"><i
+                        class="fas fa-gauge-high me-1"></i>Về Admin</a>
+                <a href="../TrangAdmin/admin-sanpham.php" class="btn btn-sm btn-primary"><i
+                        class="fas fa-pen-to-square me-1"></i>Sửa sản phẩm</a>
+                <label>BG trang <input type="color" id="adminPageBgPicker" value="#f5f5f5"></label>
+                <label>BG khối <input type="color" id="adminSectionBgPicker" value="#e0f2fe"></label>
+                <label>BG menu <input type="color" id="adminNavBgPicker" value="#007bff"></label>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="adminResetThemeBtn">Mặc định</button>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <div class="container pb-5 mt-4">
         <div class="row">
 
@@ -996,7 +1082,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($soft_drinks as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-10%</span>
                                 <div class="card-img-wrapper">
                                     <img src="<?php echo $prod['img']; ?>" class="product-img" alt="Product">
@@ -1007,7 +1095,8 @@ $categories = $__catalogData['categories'];
                                 </div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1028,7 +1117,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($beers as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-10%</span>
                                 <div class="card-img-wrapper">
                                     <img src="<?php echo $prod['img']; ?>" class="product-img" alt="Product">
@@ -1037,7 +1128,8 @@ $categories = $__catalogData['categories'];
                                 <div><span class="price-current"><?php echo $prod['price']; ?></span></div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1052,7 +1144,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($gifts as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-10%</span>
                                 <div class="card-img-wrapper"><img src="<?php echo $prod['img']; ?>" class="product-img"
                                         alt="Product"></div>
@@ -1060,7 +1154,8 @@ $categories = $__catalogData['categories'];
                                 <div><span class="price-current"><?php echo $prod['price']; ?></span></div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1075,7 +1170,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($fresh_foods as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-15%</span>
                                 <div class="card-img-wrapper"><img src="<?php echo $prod['img']; ?>" class="product-img"
                                         alt="Product"></div>
@@ -1083,7 +1180,8 @@ $categories = $__catalogData['categories'];
                                 <div><span class="price-current"><?php echo $prod['price']; ?></span></div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1104,7 +1202,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($beers as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-10%</span>
                                 <div class="card-img-wrapper">
                                     <img src="<?php echo $prod['img']; ?>" class="product-img" alt="Product">
@@ -1113,7 +1213,8 @@ $categories = $__catalogData['categories'];
                                 <div><span class="price-current"><?php echo $prod['price']; ?></span></div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1128,7 +1229,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($gifts as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-10%</span>
                                 <div class="card-img-wrapper">
                                     <img src="<?php echo $prod['img']; ?>" class="product-img" alt="Product">
@@ -1137,7 +1240,8 @@ $categories = $__catalogData['categories'];
                                 <div><span class="price-current"><?php echo $prod['price']; ?></span></div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1152,7 +1256,9 @@ $categories = $__catalogData['categories'];
                     <div class="row g-3">
                         <?php foreach($fresh_foods as $prod): ?>
                         <div class="col-6 col-md-3">
-                            <div class="product-card">
+                            <div class="product-card" role="link" tabindex="0"
+                                onclick='window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>'
+                                onkeypress='if(event.key === "Enter" || event.key === " "){ event.preventDefault(); window.location.href=<?php echo json_encode($prod["link"] ?? "#"); ?>; }'>
                                 <span class="badge-sale">-15%</span>
                                 <div class="card-img-wrapper">
                                     <img src="<?php echo $prod['img']; ?>" class="product-img" alt="Product">
@@ -1161,7 +1267,8 @@ $categories = $__catalogData['categories'];
                                 <div><span class="price-current"><?php echo $prod['price']; ?></span></div>
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span class="price-old"><?php echo $prod['old']; ?></span>
-                                    <button class="btn-add"><i class="fas fa-plus"></i></button>
+                                    <button class="btn-add" type="button" onclick="event.stopPropagation();"><i
+                                            class="fas fa-plus"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -1332,8 +1439,128 @@ $categories = $__catalogData['categories'];
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js"></script>
+    <script src="web-events.js?v=20260412-2"></script>
     <script>
+    const isAdminUser = <?php echo $isAdminUser ? 'true' : 'false'; ?>;
+    const adminThemeStorageKey = 'ack_home_admin_theme_v1';
+
+    function adminApplyTheme(themeConfig) {
+        if (!themeConfig || typeof themeConfig !== 'object') {
+            return;
+        }
+
+        const root = document.documentElement;
+        if (themeConfig.pageBg) {
+            root.style.setProperty('--page-bg-custom', themeConfig.pageBg);
+        }
+        if (themeConfig.sectionBg) {
+            root.style.setProperty('--section-bg-custom', themeConfig.sectionBg);
+        }
+        if (themeConfig.navBg) {
+            root.style.setProperty('--main-nav-custom', themeConfig.navBg);
+        }
+    }
+
+    function adminSaveTheme(themeConfig) {
+        try {
+            localStorage.setItem(adminThemeStorageKey, JSON.stringify(themeConfig));
+        } catch (e) {}
+    }
+
+    function adminReadStoredTheme() {
+        try {
+            const raw = localStorage.getItem(adminThemeStorageKey);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function attachAdminEditButtons() {
+        if (!isAdminUser) {
+            return;
+        }
+
+        document.querySelectorAll('.product-card').forEach((card) => {
+            if (card.querySelector('.admin-edit-btn')) {
+                return;
+            }
+
+            const onclickContent = card.getAttribute('onclick') || '';
+            const match = onclickContent.match(/id=([^"'&\s]+)/);
+            if (!match || !match[1]) {
+                return;
+            }
+
+            const productId = decodeURIComponent(match[1]);
+            const editLink = document.createElement('a');
+            editLink.className = 'admin-edit-btn';
+            editLink.href = `../TrangAdmin/admin-sanpham.php?edit=${encodeURIComponent(productId)}`;
+            editLink.title = 'Sửa sản phẩm này';
+            editLink.innerHTML = '<i class="fas fa-pen"></i>';
+            editLink.addEventListener('click', function(event) {
+                event.stopPropagation();
+            });
+
+            card.appendChild(editLink);
+        });
+    }
+
+    function initAdminThemeControls() {
+        if (!isAdminUser) {
+            return;
+        }
+
+        const pageBgPicker = document.getElementById('adminPageBgPicker');
+        const sectionBgPicker = document.getElementById('adminSectionBgPicker');
+        const navBgPicker = document.getElementById('adminNavBgPicker');
+        const resetBtn = document.getElementById('adminResetThemeBtn');
+
+        if (!pageBgPicker || !sectionBgPicker || !navBgPicker || !resetBtn) {
+            return;
+        }
+
+        const defaultTheme = {
+            pageBg: '#f5f5f5',
+            sectionBg: '#e0f2fe',
+            navBg: '#007bff'
+        };
+
+        const stored = adminReadStoredTheme();
+        const currentTheme = {
+            pageBg: stored?.pageBg || defaultTheme.pageBg,
+            sectionBg: stored?.sectionBg || defaultTheme.sectionBg,
+            navBg: stored?.navBg || defaultTheme.navBg,
+        };
+
+        adminApplyTheme(currentTheme);
+        pageBgPicker.value = currentTheme.pageBg;
+        sectionBgPicker.value = currentTheme.sectionBg;
+        navBgPicker.value = currentTheme.navBg;
+
+        const onThemeChange = () => {
+            const theme = {
+                pageBg: pageBgPicker.value,
+                sectionBg: sectionBgPicker.value,
+                navBg: navBgPicker.value,
+            };
+            adminApplyTheme(theme);
+            adminSaveTheme(theme);
+        };
+
+        pageBgPicker.addEventListener('input', onThemeChange);
+        sectionBgPicker.addEventListener('input', onThemeChange);
+        navBgPicker.addEventListener('input', onThemeChange);
+
+        resetBtn.addEventListener('click', () => {
+            localStorage.removeItem(adminThemeStorageKey);
+            adminApplyTheme(defaultTheme);
+            pageBgPicker.value = defaultTheme.pageBg;
+            sectionBgPicker.value = defaultTheme.sectionBg;
+            navBgPicker.value = defaultTheme.navBg;
+        });
+    }
+
     // JS tạo hiệu ứng đếm ngược thời gian giả lập
     function startTimer(duration, displayElement) {
         let timer = duration,
@@ -1361,6 +1588,8 @@ $categories = $__catalogData['categories'];
 
     // Chạy timer: 11 ngày, 6 giờ, 50 phút = 975000 giây (ví dụ)
     window.onload = function() {
+        attachAdminEditButtons();
+        initAdminThemeControls();
         startTimer(975000, 'timer1');
         startTimer(975010, 'timer2');
     };

@@ -1,6 +1,13 @@
 /* Admin Search & Scroll Management */
 
 const SCROLL_POSITION_KEY = "ack_main_scroll_pos";
+const SIDEBAR_SCROLL_POSITION_KEY = "ack_sidebar_scroll_pos";
+
+function getSidebarScrollContainer() {
+  return (
+    document.querySelector(".sidebar nav") || document.querySelector(".sidebar")
+  );
+}
 
 function saveMainScroll() {
   const mainContent = document.querySelector(".main-content");
@@ -10,6 +17,16 @@ function saveMainScroll() {
       String(mainContent.scrollTop || 0),
     );
   }
+}
+
+function saveSidebarScroll() {
+  const sidebar = getSidebarScrollContainer();
+  if (!sidebar) return;
+
+  sessionStorage.setItem(
+    SIDEBAR_SCROLL_POSITION_KEY,
+    String(sidebar.scrollTop || 0),
+  );
 }
 
 function restoreMainScroll() {
@@ -23,6 +40,25 @@ function restoreMainScroll() {
       mainContent.scrollTop = top;
     }
     sessionStorage.removeItem(SCROLL_POSITION_KEY);
+  }
+}
+
+function restoreSidebarScroll() {
+  const sidebar = getSidebarScrollContainer();
+  if (!sidebar) return;
+
+  const savedPos = sessionStorage.getItem(SIDEBAR_SCROLL_POSITION_KEY);
+  if (savedPos !== null) {
+    const top = Number.parseInt(savedPos, 10);
+    if (Number.isFinite(top)) {
+      sidebar.scrollTop = top;
+    }
+    sessionStorage.removeItem(SIDEBAR_SCROLL_POSITION_KEY);
+  }
+
+  const activeItem = sidebar.querySelector(".nav-item.active");
+  if (activeItem && typeof activeItem.scrollIntoView === "function") {
+    activeItem.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 }
 
@@ -160,18 +196,28 @@ function initAdminSearch() {
 }
 
 (function setupScrollPersistence() {
-  window.addEventListener("beforeunload", saveMainScroll);
+  window.addEventListener("beforeunload", () => {
+    saveMainScroll();
+    saveSidebarScroll();
+  });
 
   document.addEventListener("DOMContentLoaded", () => {
     restoreMainScroll();
+    restoreSidebarScroll();
     initAdminSearch();
   });
 
   document.querySelectorAll("a[href*='admin']").forEach((link) => {
-    link.addEventListener("click", saveMainScroll);
+    link.addEventListener("click", () => {
+      saveMainScroll();
+      saveSidebarScroll();
+    });
   });
 
   document.querySelectorAll("form").forEach((form) => {
-    form.addEventListener("submit", saveMainScroll);
+    form.addEventListener("submit", () => {
+      saveMainScroll();
+      saveSidebarScroll();
+    });
   });
 })();
