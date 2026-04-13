@@ -226,6 +226,9 @@ if ($result_cart->num_rows > 0) {
         margin-bottom: 5px;
         text-decoration: none;
         display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .product-desc {
@@ -237,6 +240,16 @@ if ($result_cart->num_rows > 0) {
     .action-links {
         font-size: 13px;
         color: #0b74e5;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .action-links .delete-item-btn {
+        background: transparent;
+        border: none;
+        padding: 0;
+        color: #dc3545;
+        font: inherit;
         cursor: pointer;
     }
 
@@ -317,6 +330,9 @@ if ($result_cart->num_rows > 0) {
         display: flex;
         align-items: center;
         font-size: 13px;
+        white-space: nowrap;
+        overflow-x: auto;
+        gap: 6px;
     }
 
     /* Dòng 1: Shop Voucher (Icon đỏ) */
@@ -344,6 +360,7 @@ if ($result_cart->num_rows > 0) {
 
     .ship-text {
         color: #333;
+        white-space: nowrap;
     }
 
     .learn-more {
@@ -644,8 +661,9 @@ if ($result_cart->num_rows > 0) {
                         <div class="action-links">
                             <i class="far fa-heart me-1"></i> <span>Thêm Vào Yêu Thích</span>
                             <span class="text-secondary mx-2">|</span>
-                            <span class="text-danger cursor-pointer"
-                                onclick="deleteFromCart(<?php echo (int)$item['chi_tiet_id']; ?>, this)">Xóa</span>
+                            <button type="button" class="delete-item-btn"
+                                data-delete-id="<?php echo (int)$item['chi_tiet_id']; ?>"
+                                onclick="deleteFromCart(<?php echo (int)$item['chi_tiet_id']; ?>, this)">Xóa</button>
                         </div>
                     </div>
 
@@ -784,7 +802,7 @@ if ($result_cart->num_rows > 0) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="cart-events.js?v=20260412-4"></script>
+    <script src="cart-events.js?v=<?php echo urlencode((string) (@filemtime(__DIR__ . '/cart-events.js') ?: time())); ?>"></script>
     <script src="web-events.js?v=20260412-3"></script>
 </body>
 

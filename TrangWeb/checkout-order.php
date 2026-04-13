@@ -75,7 +75,7 @@ function generateNextCode(PDO $pdo, string $table, string $idColumn, string $pre
     return $prefix . str_pad((string) $next, $padLength, '0', STR_PAD_LEFT);
 }
 
-function resolveCustomerId(PDO $pdo, string $userName, string $userEmail): ?string
+function resolveCustomerId(PDO $pdo, string $userName, string $userEmail, string $sessionCustomerId = ''): ?string
 {
     $khColumns = getExistingColumns($pdo, 'khachhang');
     $idCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
@@ -84,6 +84,21 @@ function resolveCustomerId(PDO $pdo, string $userName, string $userEmail): ?stri
 
     if ($idCol === null || $nameCol === null) {
         return null;
+    }
+
+    $sessionCustomerId = trim($sessionCustomerId);
+    if ($sessionCustomerId !== '') {
+        $findBySessionStmt = $pdo->prepare(
+            "SELECT `{$idCol}`
+             FROM khachhang
+             WHERE `{$idCol}` = :session_customer_id
+             LIMIT 1"
+        );
+        $findBySessionStmt->execute([':session_customer_id' => $sessionCustomerId]);
+        $foundSessionId = $findBySessionStmt->fetchColumn();
+        if ($foundSessionId !== false && trim((string) $foundSessionId) !== '') {
+            return trim((string) $foundSessionId);
+        }
     }
 
     if ($taxCol !== null && $userEmail !== '') {
@@ -154,6 +169,27 @@ function resolveCustomerId(PDO $pdo, string $userName, string $userEmail): ?stri
     }
 
     return $newId;
+}
+
+function fetchCustomerProfileById(PDO $pdo, string $customerId): array
+{
+    $customerId = trim($customerId);
+    if ($customerId === '') {
+        return [];
+    }
+
+    $khColumns = getExistingColumns($pdo, 'khachhang');
+    $idCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
+
+    if ($idCol === null) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare("SELECT * FROM khachhang WHERE `{$idCol}` = :id LIMIT 1");
+    $stmt->execute([':id' => $customerId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return is_array($row) ? $row : [];
 }
 
 function resolveProductId(PDO $pdo, string $rawId, string $rawName): ?string
@@ -446,9 +482,53 @@ try {
 
     $customerId = null;
     if ($orderCustomerCol !== null) {
-        $customerId = resolveCustomerId($pdo, $userName, $userEmail);
+        $customerId = resolveCustomerId(
+            $pdo,
+            $userName,
+            $userEmail,
+            (string) ($_SESSION['ma_khach_hang'] ?? '')
+        );
         if ($customerId === null || $customerId === '') {
             respondCheckout(false, 'Không thể xác định khách hàng cho đơn hàng này.');
+        }
+
+        $customerProfile = fetchCustomerProfileById($pdo, $customerId);
+        $phoneValue = '';
+        $addressValue = '';
+
+        if (is_array($customerProfile) && count($customerProfile) > 0) {
+            $lowerCustomerProfile = array_change_key_case($customerProfile, CASE_LOWER);
+            $phoneCandidates = ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone'];
+            foreach ($phoneCandidates as $candidate) {
+                if (array_key_exists($candidate, $lowerCustomerProfile)) {
+                    $phoneValue = trim((string) $lowerCustomerProfile[$candidate]);
+                    break;
+                }
+            }
+
+            $addressCandidates = ['diachi', 'dia_chi', 'address'];
+            foreach ($addressCandidates as $candidate) {
+                if (array_key_exists($candidate, $lowerCustomerProfile)) {
+                    $addressValue = trim((string) $lowerCustomerProfile[$candidate]);
+                    break;
+                }
+            }
+        }
+
+        $missingFields = [];
+        if ($phoneValue === '') {
+            $missingFields[] = 'Số điện thoại';
+        }
+        if ($addressValue === '') {
+            $missingFields[] = 'Địa chỉ';
+        }
+
+        if (count($missingFields) > 0) {
+            respondCheckout(false, 'Vui lòng cập nhật hồ sơ trước khi đặt hàng: thiếu ' . implode(', ', $missingFields) . '.', [
+                'needs_profile_completion' => true,
+                'missing_fields' => $missingFields,
+                'profile_url' => 'tai-khoan.php?tab=settings',
+            ], 400);
         }
     }
 

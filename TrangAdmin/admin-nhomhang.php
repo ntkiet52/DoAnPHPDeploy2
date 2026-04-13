@@ -576,7 +576,7 @@ $totalCategories = count($categories);
     }
 
     .table-header {
-        background-color: #f8f9fa;
+        background-color: #ffffff;
         padding: 15px 20px;
         display: flex;
         justify-content: space-between;
@@ -611,7 +611,7 @@ $totalCategories = count($categories);
         position: sticky;
         top: 0;
         z-index: 6;
-        background: #ffffff;
+        background: #F8F9FA;
     }
 
     .table tbody td {
@@ -880,7 +880,7 @@ $totalCategories = count($categories);
                     <i class="fas fa-plus me-1"></i> Thêm nhóm hàng
                 </button>
                 <button class="btn btn-warning fw-semibold" id="btnEditCategory" disabled>
-                    <i class="fas fa-pen me-1"></i> Sửa nhóm hàng                           chi
+                    <i class="fas fa-pen me-1"></i> Sửa nhóm hàng chi
                 </button>
                 <button class="btn btn-info fw-semibold text-white" id="btnViewCategory" disabled>
                     <i class="fas fa-eye me-1"></i> Xem chi tiết
@@ -1301,7 +1301,7 @@ $totalCategories = count($categories);
         }
 
         const topHeight = Math.ceil(fixedTop.getBoundingClientRect().height);
-        contentOffset.style.top = `${topHeight + 10}px`;
+        contentOffset.style.top = `${topHeight}px`;
     }
 
     window.addEventListener('resize', syncFixedTopOffset);

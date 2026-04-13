@@ -500,7 +500,7 @@ foreach ($vouchers as $voucher) {
         position: fixed;
         left: calc(var(--sidebar-width) + 15px);
         right: 15px;
-        top: 360px;
+        top: 0px;
         bottom: 20px;
         overflow: hidden;
     }
@@ -627,6 +627,7 @@ foreach ($vouchers as $voucher) {
         border-radius: 15px;
         overflow: hidden;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+
         height: 100%;
         display: flex;
         flex-direction: column;
@@ -1213,7 +1214,7 @@ foreach ($vouchers as $voucher) {
         }
 
         const topHeight = Math.ceil(fixedTop.getBoundingClientRect().height);
-        contentOffset.style.top = `${topHeight + 10}px`;
+        contentOffset.style.top = `${topHeight}px`;
     }
 
     window.addEventListener('resize', syncVoucherFixedTopOffset);

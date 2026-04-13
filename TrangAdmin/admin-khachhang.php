@@ -67,6 +67,18 @@ function normalizeCustomerDate(?string $value): ?string {
     return date('Y-m-d', $ts);
 }
 
+function isCancelledOrderStatus(string $rawStatus): bool {
+    $status = mb_strtolower(trim($rawStatus));
+    if ($status === '') {
+        return false;
+    }
+
+    return str_contains($status, 'hủy')
+        || str_contains($status, 'huy')
+        || str_contains($status, 'cancel')
+        || str_contains($status, 'void');
+}
+
 function generateNextCustomerId(PDO $pdo): string {
     $rows = $pdo->query("SELECT MaKhachHang FROM khachhang")->fetchAll(PDO::FETCH_COLUMN);
     $usedNumbers = [];
@@ -263,16 +275,77 @@ try {
     }
 
     $totalByCustomer = [];
+    $orderCountByCustomer = [];
     try {
+        $phieuXuatColumns = getExistingColumns($pdo, 'phieuxuat');
+        $pxOrderIdCol = pickExistingColumn($phieuXuatColumns, ['maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'idphieuxuat', 'id_phieu_xuat', 'madon', 'id']);
+        $pxCustomerCol = pickExistingColumn($phieuXuatColumns, ['makhachhang', 'ma_khach_hang', 'makh']);
+        $pxStatusCol = pickExistingColumn($phieuXuatColumns, ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']);
+
+        $detailTotalByOrder = [];
+        try {
+            $detailColumns = getExistingColumns($pdo, 'chitietphieuxuat');
+            $detailOrderIdCol = pickExistingColumn($detailColumns, ['maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'idphieuxuat', 'id_phieu_xuat', 'madon', 'id']);
+
+            if ($detailOrderIdCol !== null) {
+                $detailRows = $pdo->query("SELECT * FROM chitietphieuxuat")->fetchAll();
+                foreach ($detailRows as $detailRow) {
+                    $orderId = (string) pickCustomerValue($detailRow, [$detailOrderIdCol], '');
+                    if ($orderId === '') {
+                        continue;
+                    }
+
+                    $lineTotal = (float) pickCustomerValue($detailRow, ['thanhtien', 'thanh_tien', 'tongtien', 'tong_tien', 'thanhtienpx', 'thanh_tien_px'], 0);
+                    if ($lineTotal <= 0) {
+                        $quantity = (float) pickCustomerValue($detailRow, ['soluong', 'so_luong', 'soluongpx', 'so_luong_px'], 0);
+                        $unitPrice = (float) pickCustomerValue($detailRow, ['giaxuat', 'gia_xuat', 'dongia', 'don_gia', 'gia', 'giaban', 'gia_ban'], 0);
+                        $lineTotal = $quantity * $unitPrice;
+                    }
+
+                    if (!isset($detailTotalByOrder[$orderId])) {
+                        $detailTotalByOrder[$orderId] = 0;
+                    }
+                    $detailTotalByOrder[$orderId] += $lineTotal;
+                }
+            }
+        } catch (Throwable $ignored) {
+        }
+
         $pxRows = $pdo->query("SELECT * FROM phieuxuat")->fetchAll();
         foreach ($pxRows as $px) {
-            $maKh = (string) pickCustomerValue($px, ['makhachhang', 'ma_khach_hang', 'makh'], '');
+            $maKh = $pxCustomerCol !== null
+                ? (string) pickCustomerValue($px, [$pxCustomerCol], '')
+                : (string) pickCustomerValue($px, ['makhachhang', 'ma_khach_hang', 'makh'], '');
+
+            $statusRaw = $pxStatusCol !== null
+                ? (string) pickCustomerValue($px, [$pxStatusCol], '')
+                : (string) pickCustomerValue($px, ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'], '');
+
+            if (isCancelledOrderStatus($statusRaw)) {
+                continue;
+            }
+
+            $orderId = $pxOrderIdCol !== null
+                ? (string) pickCustomerValue($px, [$pxOrderIdCol], '')
+                : (string) pickCustomerValue($px, ['maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'idphieuxuat', 'id_phieu_xuat', 'madon', 'id'], '');
+
             $tongTien = (float) pickCustomerValue($px, ['tongtien', 'tong_tien', 'thanhtien', 'thanh_tien', 'total'], 0);
+            if ($tongTien <= 0 && $orderId !== '' && isset($detailTotalByOrder[$orderId])) {
+                $tongTien = (float) $detailTotalByOrder[$orderId];
+            }
+
             if ($maKh !== '') {
                 if (!isset($totalByCustomer[$maKh])) {
                     $totalByCustomer[$maKh] = 0;
                 }
                 $totalByCustomer[$maKh] += $tongTien;
+
+                if ($tongTien > 0) {
+                    if (!isset($orderCountByCustomer[$maKh])) {
+                        $orderCountByCustomer[$maKh] = 0;
+                    }
+                    $orderCountByCustomer[$maKh]++;
+                }
             }
         }
     } catch (Throwable $ignored) {
@@ -299,10 +372,13 @@ try {
         $customers[] = [
             'id' => $maKh,
             'name' => $name,
+            'gender' => (string) pickCustomerValue($row, ['gioitinh', 'gioi_tinh', 'gender'], ''),
             'email' => $taxCode,
             'phone' => $phone,
             'birthday' => (string) pickCustomerValue($row, ['sotaikhoankh', 'so_tai_khoan_kh', 'ngaysinh', 'ngay_sinh', 'birthday', 'dob'], ''),
             'address' => (string) pickCustomerValue($row, ['diachi', 'dia_chi', 'address'], ''),
+            'orders' => (int) ($orderCountByCustomer[$maKh] ?? 0),
+            'total_number' => $total,
             'total' => number_format($total, 0, ',', '.') . ' đ',
         ];
     }
@@ -335,6 +411,8 @@ try {
     body {
         font-family: 'Roboto', sans-serif;
         background-color: var(--bg-light);
+        height: 100vh;
+        overflow: hidden;
     }
 
     /* --- SIDEBAR --- */
@@ -426,6 +504,17 @@ try {
     .main-content {
         margin-left: calc(var(--sidebar-width) + 20px);
         padding: 20px 20px;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .customer-table-shell {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
     }
 
     /* --- SEARCH BAR --- */
@@ -436,72 +525,66 @@ try {
         width: 250px;
     }
 
-    /* --- CUSTOMER ROW (Dạng ngang) --- */
-    .customer-row {
+    /* --- TABLE --- */
+    .table-container {
         background: white;
         border-radius: 15px;
-        padding: 15px 25px;
-        margin-bottom: 15px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        margin-top: 8px;
+    }
+
+    .table-header {
+        background-color: #ffffff;
+        padding: 16px 20px;
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-        border: 1px solid #f0f2f5;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .customer-row:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-    }
-
-    .customer-row.selected {
-        background: #ffffff;
-        box-shadow: inset 4px 0 0 #5a5cff, 0 4px 15px rgba(0, 0, 0, 0.06);
-        border-color: #e8ebff;
-    }
-
-    .customer-info {
-        display: flex;
         align-items: center;
-        gap: 15px;
-        flex: 1;
-        /* Chiếm không gian còn lại để đẩy các phần tử khác sang phải */
+        border-bottom: 1px solid #f0f2f5;
     }
 
-    .avatar-circle {
-        width: 50px;
-        height: 50px;
-        background-color: #19bdad;
-        border-radius: 50%;
-        flex-shrink: 0;
+    .customer-table-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
     }
 
-    .customer-details {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .customer-name {
+    .table thead th {
+        background: #F8F9FA;
+        color: #344767;
         font-weight: 700;
-        color: #344767;
-        margin-bottom: 2px;
-        font-size: 1.05rem;
+        border-bottom: 1px solid #eee;
+        padding: 14px 16px;
+        position: sticky;
+        top: 0;
+        z-index: 6;
     }
 
-    .customer-email {
-        color: #67748e;
-        font-size: 0.85rem;
-        margin-bottom: 0;
+    .table tbody td {
+        padding: 14px 16px;
+        vertical-align: middle;
+        color: #344767;
+        border-bottom: 1px solid #f0f2f5;
     }
 
-    .customer-total {
-        color: #344767;
-        font-size: 0.95rem;
-        font-weight: 600;
-        margin: 0;
-        min-width: 150px;
-        text-align: left;
+    .table tbody tr.customer-row {
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+
+    .table tbody tr.customer-row:hover {
+        background-color: #f8f9fa;
+    }
+
+    .table tbody tr.customer-row.selected {
+        background-color: #cce3ff;
+        font-weight: 500;
+        border-left: 4px solid #007bff;
+        box-shadow: inset 0 0 8px rgba(0, 123, 255, 0.1);
+    }
+
+    .table tbody tr.customer-row.selected td:first-child {
+        padding-left: 12px;
     }
 
     .btn-view-detail {
@@ -709,6 +792,15 @@ try {
                                         placeholder="VD: MST01" name="email">
                                 </div>
                                 <div class="col-md-6">
+                                    <label for="customerGender" class="form-label">Giới tính</label>
+                                    <select class="form-select" id="customerGender" name="gender">
+                                        <option value="">Chưa chọn</option>
+                                        <option value="Nam">Nam</option>
+                                        <option value="Nữ">Nữ</option>
+                                        <option value="Khác">Khác</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
                                     <label for="customerPhone" class="form-label">Số điện thoại</label>
                                     <input type="text" class="form-control" id="customerPhone" name="phone" placeholder="0xxxxxxxxx">
                                 </div>
@@ -752,6 +844,12 @@ try {
                                 <div class="detail-item">
                                     <span class="detail-label">Họ và tên</span>
                                     <span class="detail-value" id="detailCustomerName">--</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="detail-item">
+                                    <span class="detail-label">Giới tính</span>
+                                    <span class="detail-value" id="detailCustomerGender">--</span>
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -812,6 +910,15 @@ try {
                                 <div class="col-md-6">
                                     <label for="editCustomerName" class="form-label">Tên khách hàng</label>
                                     <input type="text" class="form-control" id="editCustomerName" name="name" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="editCustomerGender" class="form-label">Giới tính</label>
+                                    <select class="form-select" id="editCustomerGender" name="gender">
+                                        <option value="">Chưa chọn</option>
+                                        <option value="Nam">Nam</option>
+                                        <option value="Nữ">Nữ</option>
+                                        <option value="Khác">Khác</option>
+                                    </select>
                                 </div>
                                 <div class="col-md-6">
                                     <label for="editCustomerEmail" class="form-label">Mã số thuế</label>
@@ -886,31 +993,55 @@ try {
             <input type="hidden" name="customer_id" id="deleteCustomerId">
         </form>
 
-        <div class="customer-list">
-            <?php if (count($customers) === 0): ?>
-            <div class="text-center text-muted py-4">Chưa có khách hàng nào.</div>
-            <?php endif; ?>
-            <?php foreach($customers as $c): ?>
-            <div class="customer-row" data-customer-id="<?php echo htmlspecialchars($c['id'] ?? '', ENT_QUOTES); ?>"
-                data-customer-name="<?php echo htmlspecialchars($c['name'] ?? '', ENT_QUOTES); ?>"
-                data-customer-email="<?php echo htmlspecialchars($c['email'] ?? '', ENT_QUOTES); ?>"
-                data-customer-phone="<?php echo htmlspecialchars($c['phone'] ?? '', ENT_QUOTES); ?>"
-                data-customer-birthday="<?php echo htmlspecialchars($c['birthday'] ?? '', ENT_QUOTES); ?>"
-                data-customer-address="<?php echo htmlspecialchars($c['address'] ?? '', ENT_QUOTES); ?>"
-                data-customer-total="<?php echo htmlspecialchars($c['total'] ?? '', ENT_QUOTES); ?>">
-
-                <div class="customer-info">
-                    <div class="avatar-circle"></div>
-                    <div class="customer-details">
-                        <span class="customer-name"><?php echo htmlspecialchars((string) ($c['name'] ?? '')); ?></span>
-                        <span class="customer-email"><?php echo htmlspecialchars((string) ($c['email'] ?? '')); ?></span>
-                    </div>
-                </div>
-
-                <p class="customer-total">Tổng chi: <?php echo htmlspecialchars((string) ($c['total'] ?? '0 đ')); ?></p>
-
+        <div class="table-container customer-table-shell">
+            <div class="table-header">
+                <h5 class="fw-bold mb-0">Danh sách khách hàng</h5>
+                <i class="fas fa-download text-muted"></i>
             </div>
-            <?php endforeach; ?>
+            <div class="customer-table-scroll">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Mã KH</th>
+                            <th>Tên khách hàng</th>
+                            <th>Giới tính</th>
+                            <th>Mã số thuế</th>
+                            <th>SĐT</th>
+                            <th>Số tài khoản</th>
+                            <th class="text-end">Số đơn</th>
+                            <th class="text-end">Tổng chi tiêu</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($customers) === 0): ?>
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">Chưa có khách hàng nào.</td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php foreach($customers as $c): ?>
+                        <tr class="customer-row"
+                            data-customer-id="<?php echo htmlspecialchars($c['id'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-name="<?php echo htmlspecialchars($c['name'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-gender="<?php echo htmlspecialchars($c['gender'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-email="<?php echo htmlspecialchars($c['email'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-phone="<?php echo htmlspecialchars($c['phone'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-birthday="<?php echo htmlspecialchars($c['birthday'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-address="<?php echo htmlspecialchars($c['address'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-orders="<?php echo (int) ($c['orders'] ?? 0); ?>"
+                            data-customer-total="<?php echo htmlspecialchars($c['total'] ?? '', ENT_QUOTES); ?>">
+                            <td class="fw-bold"><?php echo htmlspecialchars((string) ($c['id'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($c['name'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($c['gender'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($c['email'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($c['phone'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($c['birthday'] ?? '')); ?></td>
+                            <td class="text-end"><?php echo (int) ($c['orders'] ?? 0); ?></td>
+                            <td class="text-end fw-bold"><?php echo htmlspecialchars((string) ($c['total'] ?? '0 đ')); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
     </div>
@@ -920,7 +1051,6 @@ try {
     let selectedCustomerRow = null;
     let pendingDeleteCustomerRow = null;
 
-    const customerList = document.querySelector('.customer-list');
     const btnEditCustomer = document.getElementById('btnEditCustomer');
     const btnViewCustomer = document.getElementById('btnViewCustomer');
     const btnDeleteCustomer = document.getElementById('btnDeleteCustomer');
@@ -959,6 +1089,8 @@ try {
             'data-customer-id') || '';
         document.getElementById('editCustomerName').value = selectedCustomerRow.getAttribute(
             'data-customer-name') || '';
+        document.getElementById('editCustomerGender').value = selectedCustomerRow.getAttribute(
+            'data-customer-gender') || '';
         document.getElementById('editCustomerEmail').value = selectedCustomerRow.getAttribute(
             'data-customer-email') || '';
         document.getElementById('editCustomerPhone').value = selectedCustomerRow.getAttribute(
@@ -983,6 +1115,8 @@ try {
             '--';
         document.getElementById('detailCustomerName').textContent = selectedCustomerRow.getAttribute(
             'data-customer-name') || '--';
+        document.getElementById('detailCustomerGender').textContent = selectedCustomerRow.getAttribute(
+            'data-customer-gender') || '--';
         document.getElementById('detailCustomerEmail').textContent = selectedCustomerRow.getAttribute(
             'data-customer-email') || '--';
         document.getElementById('detailCustomerPhone').textContent = selectedCustomerRow.getAttribute(

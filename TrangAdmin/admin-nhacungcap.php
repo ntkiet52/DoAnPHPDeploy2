@@ -476,7 +476,7 @@ $totalSuppliers = count($suppliers);
     }
 
     .table-header {
-        background-color: #f8f9fa;
+        background-color: #ffffff;
         padding: 15px 20px;
         display: flex;
         justify-content: space-between;
@@ -505,7 +505,7 @@ $totalSuppliers = count($suppliers);
         position: sticky;
         top: 0;
         z-index: 6;
-        background: #fff;
+        background: #F8F9FA;
     }
 
     .table tbody td {
@@ -1284,7 +1284,7 @@ $totalSuppliers = count($suppliers);
         }
 
         const topHeight = Math.ceil(fixedTop.getBoundingClientRect().height);
-        contentOffset.style.top = `${topHeight + 10}px`;
+        contentOffset.style.top = `${topHeight }px`;
     }
 
     window.addEventListener('resize', syncFixedTopOffset);

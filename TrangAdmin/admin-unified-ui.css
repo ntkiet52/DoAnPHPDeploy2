@@ -142,3 +142,22 @@ h3.fw-bold.mb-0 {
     min-height: 40px;
   }
 }
+
+/* Đồng bộ 2 tông màu cho toàn bộ bảng trong khu vực Admin */
+.main-content .table-container,
+.main-content .product-table-container {
+  background: #ffffff !important;
+}
+
+.main-content .table-container > .table-header,
+.main-content .table-container > .p-3,
+.main-content .product-table-container > .table-header,
+.main-content .product-table-container > .p-3 {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e9edf3 !important;
+}
+
+.main-content .table thead th {
+  background: #f8f9fa !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}

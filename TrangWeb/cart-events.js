@@ -344,8 +344,6 @@
   };
 
   window.deleteFromCart = async function deleteFromCart(chiTietId, element) {
-    const id = Number(chiTietId || 0);
-    if (id <= 0) return;
     const allowDelete = await showConfirmCenter(
       "Bạn có chắc chắn muốn xóa sản phẩm này khỏi giỏ hàng?",
       "Xác nhận xóa",
@@ -355,8 +353,28 @@
     }
 
     try {
-      await postCartAction("remove_item", { id_chi_tiet: id });
-      const card = element?.closest(".cart-item-card") || getRowByDetailId(id);
+      const id = Number(chiTietId || 0);
+      const cardFromElement = element?.closest(".cart-item-card") || null;
+
+      if (id > 0) {
+        await postCartAction("remove_item", { id_chi_tiet: id });
+      } else {
+        const productId = String(
+          cardFromElement?.dataset?.productId ||
+            element?.dataset?.productId ||
+            "",
+        ).trim();
+
+        if (!productId) {
+          throw new Error("Không xác định được sản phẩm cần xóa.");
+        }
+
+        await postCartAction("remove_item_by_product", {
+          ma_san_pham: productId,
+        });
+      }
+
+      const card = cardFromElement || getRowByDetailId(id);
       if (card) card.remove();
       ensureEmptyCartView();
       calculateTotal();
@@ -616,6 +634,49 @@
     if (iconBtn) iconBtn.addEventListener("click", removeSelectedItems);
   }
 
+  function bindCartItemActions() {
+    const cartList = document.getElementById("cart-list");
+    if (!cartList) return;
+
+    cartList.addEventListener("click", function (event) {
+      const deleteBtn = event.target.closest(".delete-item-btn");
+      if (!deleteBtn) return;
+
+      event.preventDefault();
+      const detailId = Number(deleteBtn.getAttribute("data-delete-id") || 0);
+      if (detailId <= 0) return;
+
+      window.deleteFromCart(detailId, deleteBtn);
+    });
+
+    cartList.addEventListener("change", function (event) {
+      const checkbox = event.target.closest(".item-checkbox");
+      if (!checkbox) return;
+      calculateTotal();
+    });
+  }
+
+  function normalizeInitialSelection() {
+    const itemCheckboxes = Array.from(
+      document.querySelectorAll(".item-checkbox"),
+    );
+    if (itemCheckboxes.length === 0) {
+      return;
+    }
+
+    const hasChecked = itemCheckboxes.some((cb) => !!cb.checked);
+    if (!hasChecked) {
+      itemCheckboxes.forEach((cb) => {
+        cb.checked = true;
+      });
+    }
+
+    const checkAllTop = document.getElementById("checkAllTop");
+    if (checkAllTop) {
+      checkAllTop.checked = itemCheckboxes.every((cb) => !!cb.checked);
+    }
+  }
+
   function tryApplyVoucherFromQuery() {
     const params = new URLSearchParams(window.location.search || "");
     const code = String(params.get("voucher") || "")
@@ -638,7 +699,7 @@
       const detailId = Number(checkbox?.dataset?.id || 0);
       const productId = String(checkbox?.dataset?.productId || "").trim();
       const productName = String(checkbox?.dataset?.productName || "").trim();
-      if (detailId <= 0) return;
+      if (!productId) return;
 
       const qtyInput = document.getElementById(`qty-${detailId}`);
       const qty = Math.max(1, parseInt(qtyInput?.value || "1", 10) || 1);
@@ -659,6 +720,71 @@
     return selectedItems;
   }
 
+  function getAllCheckoutItems() {
+    const allItems = [];
+
+    document.querySelectorAll(".item-checkbox").forEach((checkbox) => {
+      const detailId = Number(checkbox?.dataset?.id || 0);
+      const productId = String(checkbox?.dataset?.productId || "").trim();
+      const productName = String(checkbox?.dataset?.productName || "").trim();
+      if (!productId) return;
+
+      const qtyInput = document.getElementById(`qty-${detailId}`);
+      const qty = Math.max(1, parseInt(qtyInput?.value || "1", 10) || 1);
+      const price = Math.max(
+        0,
+        parseFloat(checkbox?.dataset?.price || "0") || 0,
+      );
+
+      allItems.push({
+        id: productId,
+        chi_tiet_id: detailId,
+        qty,
+        price,
+        name: productName,
+      });
+    });
+
+    return allItems;
+  }
+
+  function collectItemsFromDomFallback() {
+    const rows = Array.from(document.querySelectorAll(".cart-item-card"));
+    const items = [];
+
+    rows.forEach((row, index) => {
+      const productId = String(row?.dataset?.productId || "").trim();
+      const productName = String(row?.dataset?.productName || "").trim();
+      if (!productId) return;
+
+      const qtyInput = row.querySelector(".qty-input");
+      const qty = Math.max(1, parseInt(qtyInput?.value || "1", 10) || 1);
+
+      const checkbox = row.querySelector(".item-checkbox");
+      const dataPrice = Number.parseFloat(checkbox?.dataset?.price || "0") || 0;
+      const priceFromTotal = parseMoneyText(
+        row.querySelector(".total-price-col span")?.textContent || "0",
+      );
+      const price = Math.max(
+        0,
+        dataPrice || (qty > 0 ? priceFromTotal / qty : 0),
+      );
+
+      const rawDetailId = Number(checkbox?.dataset?.id || 0);
+      const detailId = rawDetailId > 0 ? rawDetailId : index + 1;
+
+      items.push({
+        id: productId,
+        chi_tiet_id: detailId,
+        qty,
+        price,
+        name: productName,
+      });
+    });
+
+    return items;
+  }
+
   function bindCheckoutButton() {
     const checkoutButton = document.querySelector(".btn-checkout-big");
     if (!checkoutButton) return;
@@ -673,10 +799,43 @@
         return;
       }
 
-      const selectedItems = getSelectedCheckoutItems();
+      let selectedItems = getSelectedCheckoutItems();
       if (selectedItems.length === 0) {
-        await showAlertCenter("Vui lòng chọn ít nhất 1 sản phẩm để đặt hàng.");
-        return;
+        const allItems = getAllCheckoutItems();
+        if (allItems.length === 0) {
+          const fallbackItems = collectItemsFromDomFallback();
+          if (fallbackItems.length > 0) {
+            selectedItems = fallbackItems;
+          }
+        }
+
+        if (selectedItems.length === 0 && allItems.length === 0) {
+          await showAlertCenter("Giỏ hàng đang trống, chưa thể đặt hàng.");
+          return;
+        }
+
+        if (selectedItems.length === 0) {
+          const useAllItems = await showDialog({
+            title: "Chưa chọn sản phẩm",
+            message:
+              "Bạn chưa tick sản phẩm để đặt hàng. Dùng tất cả sản phẩm hiện có trong giỏ để đặt luôn không?",
+            confirmText: "Mua tất cả",
+            cancelText: "Để mình chọn lại",
+            showCancel: true,
+            confirmClass: "btn btn-primary",
+            cancelClass: "btn btn-outline-secondary",
+          });
+
+          if (!useAllItems) {
+            return;
+          }
+
+          document.querySelectorAll(".item-checkbox").forEach((cb) => {
+            cb.checked = true;
+          });
+          selectedItems = allItems;
+          calculateTotal();
+        }
       }
 
       const paymentMethod = getSelectedPaymentMethod();
@@ -739,6 +898,37 @@
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data?.ok !== true) {
+          if (data?.needs_profile_completion === true) {
+            const missingFields = Array.isArray(data?.missing_fields)
+              ? data.missing_fields.filter(Boolean)
+              : [];
+            const missingText =
+              missingFields.length > 0
+                ? `\nThông tin còn thiếu: ${missingFields.join(", ")}.`
+                : "";
+
+            const goProfile = await showDialog({
+              title: "Cần cập nhật hồ sơ",
+              message: `${data?.message || "Bạn cần cập nhật hồ sơ trước khi đặt hàng."}${missingText}\n\nBạn có muốn mở trang Cài đặt tài khoản ngay bây giờ không?`,
+              confirmText: "Đi đến cập nhật",
+              cancelText: "Để sau",
+              showCancel: true,
+              confirmClass: "btn btn-primary",
+              cancelClass: "btn btn-outline-secondary",
+            });
+
+            if (goProfile) {
+              const profileUrl =
+                String(
+                  data?.profile_url || "tai-khoan.php?tab=settings",
+                ).trim() || "tai-khoan.php?tab=settings";
+              window.location.href = profileUrl;
+              return;
+            }
+
+            return;
+          }
+
           throw new Error(
             data?.message || "Không thể đặt hàng. Vui lòng thử lại.",
           );
@@ -782,12 +972,14 @@
   }
 
   function init() {
+    bindCartItemActions();
     bindDeleteSelectedActions();
     bindVoucherActions();
     bindPaymentMethodActions();
     loadVoucherQuickList();
     bindCheckoutButton();
     refreshHeaderCartCount();
+    normalizeInitialSelection();
     calculateTotal();
     tryApplyVoucherFromQuery();
   }

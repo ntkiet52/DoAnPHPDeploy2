@@ -815,6 +815,9 @@ foreach ($orders as $order) {
         top: 360px;
         bottom: 20px;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
     }
 
     body.modal-open #orderContentOffset {
@@ -867,7 +870,10 @@ foreach ($orders as $order) {
         border-radius: 15px;
         overflow: hidden;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        margin-top: 2px;
+        flex: 1;
         height: 100%;
+        min-height: 0;
         display: flex;
         flex-direction: column;
     }
@@ -989,6 +995,7 @@ foreach ($orders as $order) {
 
     .order-table-scroll {
         flex: 1 1 auto;
+        max-height: 100%;
         overflow: auto;
         min-height: 220px;
     }
@@ -1035,8 +1042,8 @@ foreach ($orders as $order) {
         <div class="order-top-sticky">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
-                <button class="btn btn-light rounded-circle border shadow-sm btn-sm" style="width: 32px; height: 32px;"><i
-                        class="fas fa-times"></i></button>
+                <button class="btn btn-light rounded-circle border shadow-sm btn-sm"
+                    style="width: 32px; height: 32px;"><i class="fas fa-times"></i></button>
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -1045,19 +1052,19 @@ foreach ($orders as $order) {
             </div>
 
             <form method="post" id="approveOrderForm" class="d-none">
-            <input type="hidden" name="crud_action" value="approve_order">
-            <input type="hidden" name="order_id" id="approveOrderId" value="">
+                <input type="hidden" name="crud_action" value="approve_order">
+                <input type="hidden" name="order_id" id="approveOrderId" value="">
             </form>
 
             <form method="post" id="updateStatusForm" class="d-none">
-            <input type="hidden" name="crud_action" value="update_order_status">
-            <input type="hidden" name="order_id" id="updateStatusOrderId" value="">
-            <input type="hidden" name="next_status" id="updateStatusValue" value="">
+                <input type="hidden" name="crud_action" value="update_order_status">
+                <input type="hidden" name="order_id" id="updateStatusOrderId" value="">
+                <input type="hidden" name="next_status" id="updateStatusValue" value="">
             </form>
 
             <form method="post" id="deleteOrderForm" class="d-none">
-            <input type="hidden" name="crud_action" value="delete_order">
-            <input type="hidden" name="order_id" id="deleteOrderId" value="">
+                <input type="hidden" name="crud_action" value="delete_order">
+                <input type="hidden" name="order_id" id="deleteOrderId" value="">
             </form>
 
             <?php if ($dbError !== ''): ?>
@@ -1085,52 +1092,53 @@ foreach ($orders as $order) {
             <?php endif; ?>
 
             <div class="row g-3 mb-4">
-            <div class="col-md-3">
-                <div class="order-stat-card">
-                    <div class="stat-title">Đơn hàng hôm nay</div>
-                    <div class="stat-value"><?php echo $ordersToday; ?></div>
-                    <div class="stat-desc text-green">Dữ liệu theo ngày hiện tại</div>
+                <div class="col-md-3">
+                    <div class="order-stat-card">
+                        <div class="stat-title">Đơn hàng hôm nay</div>
+                        <div class="stat-value"><?php echo $ordersToday; ?></div>
+                        <div class="stat-desc text-green">Dữ liệu theo ngày hiện tại</div>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="order-stat-card">
-                    <div class="stat-title">Chờ xử lí</div>
-                    <div class="stat-value text-orange"><?php echo $pendingCount; ?></div>
-                    <div class="stat-desc fw-bold" style="color:#333">Cần xử lí ngay</div>
+                <div class="col-md-3">
+                    <div class="order-stat-card">
+                        <div class="stat-title">Chờ xử lí</div>
+                        <div class="stat-value text-orange"><?php echo $pendingCount; ?></div>
+                        <div class="stat-desc fw-bold" style="color:#333">Cần xử lí ngay</div>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="order-stat-card">
-                    <div class="stat-title">Đang giao</div>
-                    <div class="stat-value text-blue"><?php echo $shippingCount; ?></div>
-                    <div class="stat-desc fw-bold" style="color:#333">Theo dõi</div>
+                <div class="col-md-3">
+                    <div class="order-stat-card">
+                        <div class="stat-title">Đang giao</div>
+                        <div class="stat-value text-blue"><?php echo $shippingCount; ?></div>
+                        <div class="stat-desc fw-bold" style="color:#333">Theo dõi</div>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="order-stat-card">
-                    <div class="stat-title">Doanh thu</div>
-                    <div class="stat-value text-green"><?php echo number_format($totalRevenue, 0, ',', '.'); ?> ₫</div>
-                    <div class="stat-desc text-green">Tổng giá trị đơn hàng</div>
+                <div class="col-md-3">
+                    <div class="order-stat-card">
+                        <div class="stat-title">Doanh thu</div>
+                        <div class="stat-value text-green"><?php echo number_format($totalRevenue, 0, ',', '.'); ?> ₫
+                        </div>
+                        <div class="stat-desc text-green">Tổng giá trị đơn hàng</div>
+                    </div>
                 </div>
-            </div>
             </div>
 
             <div class="d-flex gap-2 mb-3">
-            <button type="button" class="btn btn-primary fw-semibold" id="btnViewOrderDetail" disabled>
-                <i class="fas fa-eye me-1"></i> Chi tiết
-            </button>
-            <button type="button" class="btn btn-add fw-semibold" id="btnApproveOrder" disabled>
-                <i class="fas fa-check-circle me-1"></i> Duyệt đơn
-            </button>
-            <button type="button" class="btn btn-info fw-semibold text-white" id="btnShipOrder" disabled>
-                <i class="fas fa-truck me-1"></i> Đang giao
-            </button>
-            <button type="button" class="btn btn-secondary fw-semibold" id="btnNearDeliveryOrder" disabled>
-                <i class="fas fa-location-dot me-1"></i> Gần giao
-            </button>
-            <button type="button" class="btn btn-danger fw-semibold" id="btnDeleteOrder" disabled>
-                <i class="fas fa-trash-alt me-1"></i> Xóa đơn
-            </button>
+                <button type="button" class="btn btn-primary fw-semibold" id="btnViewOrderDetail" disabled>
+                    <i class="fas fa-eye me-1"></i> Chi tiết
+                </button>
+                <button type="button" class="btn btn-add fw-semibold" id="btnApproveOrder" disabled>
+                    <i class="fas fa-check-circle me-1"></i> Duyệt đơn
+                </button>
+                <button type="button" class="btn btn-info fw-semibold text-white" id="btnShipOrder" disabled>
+                    <i class="fas fa-truck me-1"></i> Đang giao
+                </button>
+                <button type="button" class="btn btn-secondary fw-semibold" id="btnNearDeliveryOrder" disabled>
+                    <i class="fas fa-location-dot me-1"></i> Gần giao
+                </button>
+                <button type="button" class="btn btn-danger fw-semibold" id="btnDeleteOrder" disabled>
+                    <i class="fas fa-trash-alt me-1"></i> Xóa đơn
+                </button>
             </div>
 
             <div class="alert alert-warning payment-warning d-none" id="orderPaymentHint" role="alert"></div>
@@ -1162,33 +1170,34 @@ foreach ($orders as $order) {
                             </tr>
                             <?php endif; ?>
                             <?php foreach($orders as $o): ?>
-                            <tr class="order-row" data-id="<?php echo htmlspecialchars((string) $o['id'], ENT_QUOTES); ?>"
-                        data-customer="<?php echo htmlspecialchars((string) $o['customer'], ENT_QUOTES); ?>"
-                        data-total="<?php echo htmlspecialchars((string) $o['total'], ENT_QUOTES); ?>"
-                        data-status="<?php echo htmlspecialchars((string) $o['status'], ENT_QUOTES); ?>"
-                        data-status-key="<?php echo htmlspecialchars((string) $o['status_key'], ENT_QUOTES); ?>"
-                        data-payment-method="<?php echo htmlspecialchars((string) ($o['payment_method'] ?? ''), ENT_QUOTES); ?>"
-                        data-payment-status="<?php echo htmlspecialchars((string) ($o['payment_status'] ?? ''), ENT_QUOTES); ?>"
-                        data-payment-ready="<?php echo !empty($o['payment_ready']) ? '1' : '0'; ?>"
-                        data-date="<?php echo htmlspecialchars((string) $o['date'], ENT_QUOTES); ?>"
-                        data-customer-id="<?php echo htmlspecialchars((string) $o['ma_kh'], ENT_QUOTES); ?>">
-                        <td class="fw-bold"><?php echo htmlspecialchars((string) $o['id']); ?></td>
-                        <td><?php echo htmlspecialchars((string) $o['customer']); ?></td>
-                        <td class="fw-bold"><?php echo htmlspecialchars((string) $o['total']); ?></td>
-                        <td>
-                            <div class="small fw-semibold">
-                                <?php echo htmlspecialchars((string) (($o['payment_method'] ?? '') !== '' ? $o['payment_method'] : 'QR chuyển khoản')); ?>
-                            </div>
-                            <div class="small text-muted">
-                                <?php echo htmlspecialchars((string) (($o['payment_status'] ?? '') !== '' ? $o['payment_status'] : 'Đang cập nhật thanh toán')); ?>
-                            </div>
-                        </td>
-                        <td>
-                            <span
-                                class="order-status-badge <?php echo htmlspecialchars((string) $o['status_class']); ?>">
-                                <?php echo htmlspecialchars((string) $o['status']); ?>
-                            </span>
-                        </td>
+                            <tr class="order-row"
+                                data-id="<?php echo htmlspecialchars((string) $o['id'], ENT_QUOTES); ?>"
+                                data-customer="<?php echo htmlspecialchars((string) $o['customer'], ENT_QUOTES); ?>"
+                                data-total="<?php echo htmlspecialchars((string) $o['total'], ENT_QUOTES); ?>"
+                                data-status="<?php echo htmlspecialchars((string) $o['status'], ENT_QUOTES); ?>"
+                                data-status-key="<?php echo htmlspecialchars((string) $o['status_key'], ENT_QUOTES); ?>"
+                                data-payment-method="<?php echo htmlspecialchars((string) ($o['payment_method'] ?? ''), ENT_QUOTES); ?>"
+                                data-payment-status="<?php echo htmlspecialchars((string) ($o['payment_status'] ?? ''), ENT_QUOTES); ?>"
+                                data-payment-ready="<?php echo !empty($o['payment_ready']) ? '1' : '0'; ?>"
+                                data-date="<?php echo htmlspecialchars((string) $o['date'], ENT_QUOTES); ?>"
+                                data-customer-id="<?php echo htmlspecialchars((string) $o['ma_kh'], ENT_QUOTES); ?>">
+                                <td class="fw-bold"><?php echo htmlspecialchars((string) $o['id']); ?></td>
+                                <td><?php echo htmlspecialchars((string) $o['customer']); ?></td>
+                                <td class="fw-bold"><?php echo htmlspecialchars((string) $o['total']); ?></td>
+                                <td>
+                                    <div class="small fw-semibold">
+                                        <?php echo htmlspecialchars((string) (($o['payment_method'] ?? '') !== '' ? $o['payment_method'] : 'QR chuyển khoản')); ?>
+                                    </div>
+                                    <div class="small text-muted">
+                                        <?php echo htmlspecialchars((string) (($o['payment_status'] ?? '') !== '' ? $o['payment_status'] : 'Đang cập nhật thanh toán')); ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span
+                                        class="order-status-badge <?php echo htmlspecialchars((string) $o['status_class']); ?>">
+                                        <?php echo htmlspecialchars((string) $o['status']); ?>
+                                    </span>
+                                </td>
                                 <td><?php echo htmlspecialchars((string) $o['date']); ?></td>
                             </tr>
                             <?php endforeach; ?>

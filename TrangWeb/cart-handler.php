@@ -467,6 +467,22 @@ try {
             respondCart($affected > 0, $affected > 0 ? 'Xóa sản phẩm thành công.' : 'Không tìm thấy sản phẩm trong giỏ.');
         }
 
+        case 'remove_item_by_product': {
+            $maSanPham = trim((string) ($_POST['ma_san_pham'] ?? ''));
+            if ($maSanPham === '') {
+                respondCart(false, 'Thiếu mã sản phẩm.', [], 400);
+            }
+
+            $stmt = $conn->prepare('DELETE gct FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.ma_san_pham = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+            $active = 'active';
+            $stmt->bind_param('sss', $maSanPham, $maKhachHang, $active);
+            $stmt->execute();
+            $affected = $stmt->affected_rows;
+            $stmt->close();
+
+            respondCart($affected > 0, $affected > 0 ? 'Xóa sản phẩm thành công.' : 'Không tìm thấy sản phẩm trong giỏ.');
+        }
+
         case 'update_quantity': {
             $idChiTiet = max(0, (int) ($_POST['id_chi_tiet'] ?? 0));
             $soLuong = (int) ($_POST['so_luong'] ?? 0);

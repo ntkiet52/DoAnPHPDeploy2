@@ -622,6 +622,8 @@ foreach ($staff as $member) {
     body {
         font-family: 'Roboto', sans-serif;
         background-color: var(--bg-light);
+        height: 100vh;
+        overflow: hidden;
     }
 
     /* --- SIDEBAR --- */
@@ -713,6 +715,10 @@ foreach ($staff as $member) {
     .main-content {
         margin-left: calc(var(--sidebar-width) + 20px);
         padding: 20px 20px;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
 
     /* --- STAFF STAT CARDS --- */
@@ -794,7 +800,20 @@ foreach ($staff as $member) {
         border-radius: 15px;
         overflow: hidden;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-        margin-top: 25px;
+
+        display: flex;
+        flex-direction: column;
+    }
+
+    .staff-table-shell {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    .table-scroll-area {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
     }
 
     .table thead th {
@@ -803,6 +822,9 @@ foreach ($staff as $member) {
         font-weight: 700;
         border-bottom: 1px solid #eee;
         padding: 15px 20px;
+        position: sticky;
+        top: 0;
+        z-index: 2;
     }
 
     .table tbody td {
@@ -1414,60 +1436,62 @@ foreach ($staff as $member) {
             </div>
         </div>
 
-        <div class="table-container">
+        <div class="table-container staff-table-shell">
             <div class="p-3 d-flex justify-content-between align-items-center">
                 <h5 class="fw-bold mb-0">Danh sách nhân viên</h5>
                 <i class="fas fa-download text-muted"></i>
             </div>
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th>Tên nhân viên</th>
-                        <th>Ảnh</th>
-                        <th>Tên đăng nhập</th>
-                        <th>Chức vụ</th>
-                        <th>Bộ phận</th>
-                        <th>Điện thoại</th>
-                        <th>Giới tính</th>
-                        <th>Ngày sinh</th>
-                    </tr>
-                </thead>
-                <tbody id="staffTableBody">
-                    <?php if (count($staff) === 0): ?>
-                    <tr>
-                        <td colspan="8" class="text-center text-muted py-4">Chưa có nhân viên nào.</td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php foreach($staff as $index => $s): ?>
-                    <tr class="staff-row"
-                        data-id="<?php echo htmlspecialchars($s['id'] !== '' ? $s['id'] : ('NV' . str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT))); ?>"
-                        data-name="<?php echo htmlspecialchars($s['name'] ?? ''); ?>"
-                        data-email="<?php echo htmlspecialchars($s['email'] ?? ''); ?>"
-                        data-role-code="<?php echo htmlspecialchars((string) ($s['role_code'] ?? '')); ?>"
-                        data-role="<?php echo htmlspecialchars($s['role'] ?? ''); ?>"
-                        data-department-code="<?php echo htmlspecialchars((string) ($s['department_code'] ?? '')); ?>"
-                        data-department="<?php echo htmlspecialchars((string) ($s['department'] ?? '')); ?>"
-                        data-phone="<?php echo htmlspecialchars($s['phone'] ?? ''); ?>"
-                        data-status="<?php echo htmlspecialchars($s['status'] ?? 'Hoạt động'); ?>"
-                        data-birth-date="<?php echo htmlspecialchars((string) ($s['birth_date'] ?? '')); ?>"
-                        data-date="<?php echo htmlspecialchars($s['date'] ?? ''); ?>"
-                        data-image="<?php echo htmlspecialchars((string) ($s['image'] ?? ''), ENT_QUOTES); ?>">
-                        <td class="fw-bold"><?php echo htmlspecialchars((string) ($s['name'] ?? '')); ?></td>
-                        <td>
-                            <img src="<?php echo htmlspecialchars((string) ($s['image_display'] ?? '../TrangUser/ack.png'), ENT_QUOTES); ?>"
-                                alt="<?php echo htmlspecialchars((string) ($s['name'] ?? 'Nhân viên'), ENT_QUOTES); ?>"
-                                class="staff-avatar" onerror="this.src='../TrangUser/ack.png'">
-                        </td>
-                        <td><?php echo htmlspecialchars((string) ($s['email'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($s['role'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($s['department'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($s['phone'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($s['status'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($s['date'] ?? '')); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+            <div class="table-scroll-area">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Tên nhân viên</th>
+                            <th>Ảnh</th>
+                            <th>Tên đăng nhập</th>
+                            <th>Chức vụ</th>
+                            <th>Bộ phận</th>
+                            <th>Điện thoại</th>
+                            <th>Giới tính</th>
+                            <th>Ngày sinh</th>
+                        </tr>
+                    </thead>
+                    <tbody id="staffTableBody">
+                        <?php if (count($staff) === 0): ?>
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">Chưa có nhân viên nào.</td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php foreach($staff as $index => $s): ?>
+                        <tr class="staff-row"
+                            data-id="<?php echo htmlspecialchars($s['id'] !== '' ? $s['id'] : ('NV' . str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT))); ?>"
+                            data-name="<?php echo htmlspecialchars($s['name'] ?? ''); ?>"
+                            data-email="<?php echo htmlspecialchars($s['email'] ?? ''); ?>"
+                            data-role-code="<?php echo htmlspecialchars((string) ($s['role_code'] ?? '')); ?>"
+                            data-role="<?php echo htmlspecialchars($s['role'] ?? ''); ?>"
+                            data-department-code="<?php echo htmlspecialchars((string) ($s['department_code'] ?? '')); ?>"
+                            data-department="<?php echo htmlspecialchars((string) ($s['department'] ?? '')); ?>"
+                            data-phone="<?php echo htmlspecialchars($s['phone'] ?? ''); ?>"
+                            data-status="<?php echo htmlspecialchars($s['status'] ?? 'Hoạt động'); ?>"
+                            data-birth-date="<?php echo htmlspecialchars((string) ($s['birth_date'] ?? '')); ?>"
+                            data-date="<?php echo htmlspecialchars($s['date'] ?? ''); ?>"
+                            data-image="<?php echo htmlspecialchars((string) ($s['image'] ?? ''), ENT_QUOTES); ?>">
+                            <td class="fw-bold"><?php echo htmlspecialchars((string) ($s['name'] ?? '')); ?></td>
+                            <td>
+                                <img src="<?php echo htmlspecialchars((string) ($s['image_display'] ?? '../TrangUser/ack.png'), ENT_QUOTES); ?>"
+                                    alt="<?php echo htmlspecialchars((string) ($s['name'] ?? 'Nhân viên'), ENT_QUOTES); ?>"
+                                    class="staff-avatar" onerror="this.src='../TrangUser/ack.png'">
+                            </td>
+                            <td><?php echo htmlspecialchars((string) ($s['email'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($s['role'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($s['department'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($s['phone'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($s['status'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars((string) ($s['date'] ?? '')); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <form method="post" id="staffEditForm" class="d-none">

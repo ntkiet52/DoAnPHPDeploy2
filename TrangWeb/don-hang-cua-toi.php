@@ -805,6 +805,7 @@ $hasOrders = count($orders) > 0;
         min-height: 0;
         padding-top: 10px;
         padding-bottom: 10px;
+        max-width: 100%;
     }
 
     body.orders-static-layout .orders-page-container {
@@ -1075,6 +1076,26 @@ $hasOrders = count($orders) > 0;
 
     .orders-table-scroll .table {
         margin-bottom: 0;
+        width: 100%;
+    }
+
+    .orders-table-scroll .table th,
+    .orders-table-scroll .table td {
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    .orders-table-scroll .table th:nth-child(1),
+    .orders-table-scroll .table td:nth-child(1),
+    .orders-table-scroll .table th:nth-child(2),
+    .orders-table-scroll .table td:nth-child(2),
+    .orders-table-scroll .table th:nth-child(3),
+    .orders-table-scroll .table td:nth-child(3),
+    .orders-table-scroll .table th:nth-child(6),
+    .orders-table-scroll .table td:nth-child(6),
+    .status-badge,
+    details>summary {
+        white-space: nowrap;
     }
 
     .table thead th {
@@ -1219,7 +1240,7 @@ $hasOrders = count($orders) > 0;
         </div>
     </header>
 
-    <div class="container orders-page-container">
+    <div class="container-fluid px-3 px-md-4 orders-page-container">
         <?php if ($dbError !== ''): ?>
         <div class="alert alert-danger">Không thể tải đơn hàng: <?php echo htmlspecialchars($dbError); ?></div>
         <?php endif; ?>

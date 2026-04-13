@@ -187,6 +187,11 @@ try {
         --admin-content-inline-padding: 10px;
     }
 
+    html,
+    body {
+        overflow-x: hidden;
+    }
+
     body {
         font-family: 'Roboto', sans-serif;
         background-color: var(--bg-light);
@@ -282,6 +287,10 @@ try {
     .main-content {
         margin-left: calc(var(--sidebar-width) + 20px);
         padding: 20px 20px;
+        width: calc(100% - (var(--sidebar-width) + 20px));
+        max-width: calc(100% - (var(--sidebar-width) + 20px));
+        box-sizing: border-box;
+        overflow-x: hidden;
     }
 
     /* --- SETTINGS FORM --- */

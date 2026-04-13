@@ -58,6 +58,144 @@ function pickExistingColumn(array $existingColumns, array $candidates): ?string 
     return null;
 }
 
+function generateNextCustomerIdMysqli(mysqli $conn, string $idColumn): string {
+    $rows = [];
+    $result = $conn->query("SELECT `{$idColumn}` AS customer_id FROM khachhang");
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = (string) ($row['customer_id'] ?? '');
+        }
+        $result->free();
+    }
+
+    $usedNumbers = [];
+    foreach ($rows as $customerId) {
+        if (preg_match('/(\d+)$/', trim($customerId), $matches) !== 1) {
+            continue;
+        }
+
+        $usedNumbers[(int) $matches[1]] = true;
+    }
+
+    $next = 1;
+    while (isset($usedNumbers[$next])) {
+        $next++;
+    }
+
+    return 'KH' . str_pad((string) $next, 2, '0', STR_PAD_LEFT);
+}
+
+function loadOrCreateAccountCustomer(mysqli $conn, string $userName, string $userEmail, string $sessionCustomerId = ''): array {
+    $columns = getExistingColumnsMysqli($conn, 'khachhang');
+    $idCol = pickExistingColumn($columns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
+    $nameCol = pickExistingColumn($columns, ['tenkhachhang', 'ten_khach_hang', 'tenkh', 'hoten', 'name']);
+    $taxCol = pickExistingColumn($columns, ['masothue', 'ma_so_thue', 'email']);
+    $genderCol = pickExistingColumn($columns, ['gioitinh', 'gioi_tinh', 'gender']);
+    $addressCol = pickExistingColumn($columns, ['diachi', 'dia_chi', 'address']);
+    $phoneCol = pickExistingColumn($columns, ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone']);
+    $bankCol = pickExistingColumn($columns, ['sotaikhoankh', 'so_tai_khoan_kh', 'sotaikhoan', 'bank_account']);
+
+    if ($idCol === null || $nameCol === null) {
+        return [
+            'id' => '',
+            'name' => $userName,
+            'tax' => '',
+            'gender' => '',
+            'address' => '',
+            'phone' => '',
+            'bank' => '',
+            'id_col' => $idCol,
+            'name_col' => $nameCol,
+            'tax_col' => $taxCol,
+            'gender_col' => $genderCol,
+            'address_col' => $addressCol,
+            'phone_col' => $phoneCol,
+            'bank_col' => $bankCol,
+        ];
+    }
+
+    $customerRow = null;
+    $safeSessionCustomerId = $conn->real_escape_string(trim($sessionCustomerId));
+    $safeEmail = $conn->real_escape_string($userEmail);
+    $safeName = $conn->real_escape_string($userName);
+
+    if ($safeSessionCustomerId !== '') {
+        $result = $conn->query(
+            "SELECT * FROM khachhang WHERE `{$idCol}` = '{$safeSessionCustomerId}' LIMIT 1"
+        );
+        if ($result) {
+            $customerRow = $result->fetch_assoc() ?: null;
+            $result->free();
+        }
+    }
+
+    if ($taxCol !== null && $safeEmail !== '') {
+        $result = $conn->query(
+            "SELECT * FROM khachhang WHERE LOWER(`{$taxCol}`) = LOWER('{$safeEmail}') LIMIT 1"
+        );
+        if ($result) {
+            $customerRow = $result->fetch_assoc() ?: null;
+            $result->free();
+        }
+    }
+
+    if (!is_array($customerRow) && $safeName !== '') {
+        $result = $conn->query(
+            "SELECT * FROM khachhang WHERE LOWER(`{$nameCol}`) = LOWER('{$safeName}') LIMIT 1"
+        );
+        if ($result) {
+            $customerRow = $result->fetch_assoc() ?: null;
+            $result->free();
+        }
+    }
+
+    if (!is_array($customerRow)) {
+        $newId = generateNextCustomerIdMysqli($conn, $idCol);
+        $safeInsertName = mb_substr($userName !== '' ? $userName : 'Khách hàng', 0, 50);
+
+        $insertColumns = [$idCol, $nameCol];
+        $insertValues = [
+            "'" . $conn->real_escape_string($newId) . "'",
+            "'" . $conn->real_escape_string($safeInsertName) . "'",
+        ];
+
+        if ($taxCol !== null && $userEmail !== '') {
+            $insertColumns[] = $taxCol;
+            $insertValues[] = "'" . $conn->real_escape_string(mb_substr(strtolower($userEmail), 0, 30)) . "'";
+        }
+
+        $conn->query(
+            'INSERT INTO khachhang (' . implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) . ') VALUES (' . implode(', ', $insertValues) . ')'
+        );
+
+        $result = $conn->query("SELECT * FROM khachhang WHERE `{$idCol}` = '" . $conn->real_escape_string($newId) . "' LIMIT 1");
+        if ($result) {
+            $customerRow = $result->fetch_assoc() ?: null;
+            $result->free();
+        }
+    }
+
+    $customerRow = is_array($customerRow) ? $customerRow : [];
+    $customerId = (string) pickOrderValue($customerRow, [$idCol], '');
+
+    return [
+        'id' => $customerId,
+        'name' => (string) pickOrderValue($customerRow, [$nameCol], $userName),
+        'tax' => $taxCol !== null ? (string) pickOrderValue($customerRow, [$taxCol], '') : '',
+        'gender' => $genderCol !== null ? (string) pickOrderValue($customerRow, [$genderCol], '') : '',
+        'address' => $addressCol !== null ? (string) pickOrderValue($customerRow, [$addressCol], '') : '',
+        'phone' => $phoneCol !== null ? (string) pickOrderValue($customerRow, [$phoneCol], '') : '',
+        'bank' => $bankCol !== null ? (string) pickOrderValue($customerRow, [$bankCol], '') : '',
+        'id_col' => $idCol,
+        'name_col' => $nameCol,
+        'tax_col' => $taxCol,
+        'gender_col' => $genderCol,
+        'address_col' => $addressCol,
+        'phone_col' => $phoneCol,
+        'bank_col' => $bankCol,
+    ];
+}
+
 function currentVoucherUserKeyAccount(): string {
     $userId = (int) ($_SESSION['user_id'] ?? 0);
     if ($userId > 0) {
@@ -157,6 +295,22 @@ $roleLabel = $roleLabelMap[$userRole] ?? 'Người dùng';
 
 $flashMessage = '';
 $flashType = 'success';
+$customerProfile = [
+    'id' => '',
+    'name' => $userName,
+    'tax' => '',
+    'gender' => '',
+    'address' => '',
+    'phone' => '',
+    'bank' => '',
+    'id_col' => null,
+    'name_col' => null,
+    'tax_col' => null,
+    'gender_col' => null,
+    'address_col' => null,
+    'phone_col' => null,
+    'bank_col' => null,
+];
 
 $availableVouchers = [];
 $claimedVouchers = [];
@@ -183,12 +337,17 @@ if (isset($conn) && $conn instanceof mysqli) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_profile') {
     $newName = trim((string) ($_POST['display_name'] ?? ''));
+    $newPhone = trim((string) ($_POST['phone'] ?? ''));
+    $newAddress = trim((string) ($_POST['address'] ?? ''));
+    $newGender = trim((string) ($_POST['gender'] ?? ''));
+    $newBank = trim((string) ($_POST['bank_account'] ?? ''));
 
-    if ($newName === '') {
-        $flashMessage = 'Tên hiển thị không được để trống.';
+    if ($newName === '' || $newPhone === '' || $newAddress === '') {
+        $flashMessage = 'Tên hiển thị, số điện thoại và địa chỉ không được để trống.';
         $flashType = 'danger';
     } else {
         $updatedInDb = false;
+        $updatedCustomer = false;
 
         if (isset($conn) && $conn instanceof mysqli) {
             $stmt = $conn->prepare('UPDATE users SET name = ?, updated_at = NOW() WHERE id = ?');
@@ -197,21 +356,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
                 $updatedInDb = $stmt->execute();
                 $stmt->close();
             }
+
+            $customerProfile = loadOrCreateAccountCustomer(
+                $conn,
+                $newName,
+                $userEmail,
+                (string) ($_SESSION['ma_khach_hang'] ?? '')
+            );
+            $customerId = trim((string) ($customerProfile['id'] ?? ''));
+            $idCol = $customerProfile['id_col'] ?? null;
+            $nameCol = $customerProfile['name_col'] ?? null;
+
+            if ($customerId !== '' && $idCol !== null && $nameCol !== null) {
+                $updates = ["`{$nameCol}` = ?"];
+                $types = 's';
+                $values = [$newName];
+
+                if (($customerProfile['phone_col'] ?? null) !== null) {
+                    $updates[] = "`{$customerProfile['phone_col']}` = ?";
+                    $types .= 's';
+                    $values[] = $newPhone;
+                }
+
+                if (($customerProfile['address_col'] ?? null) !== null) {
+                    $updates[] = "`{$customerProfile['address_col']}` = ?";
+                    $types .= 's';
+                    $values[] = $newAddress;
+                }
+
+                if (($customerProfile['gender_col'] ?? null) !== null) {
+                    $updates[] = "`{$customerProfile['gender_col']}` = ?";
+                    $types .= 's';
+                    $values[] = $newGender;
+                }
+
+                if (($customerProfile['bank_col'] ?? null) !== null) {
+                    $updates[] = "`{$customerProfile['bank_col']}` = ?";
+                    $types .= 's';
+                    $values[] = $newBank;
+                }
+
+                if (($customerProfile['tax_col'] ?? null) !== null && $userEmail !== '') {
+                    $updates[] = "`{$customerProfile['tax_col']}` = ?";
+                    $types .= 's';
+                    $values[] = mb_substr(strtolower($userEmail), 0, 30);
+                }
+
+                $types .= 's';
+                $values[] = $customerId;
+
+                $customerStmt = $conn->prepare('UPDATE khachhang SET ' . implode(', ', $updates) . " WHERE `{$idCol}` = ?");
+                if ($customerStmt) {
+                    $bindArgs = [$types];
+                    foreach ($values as $key => $value) {
+                        $bindArgs[] = &$values[$key];
+                    }
+                    call_user_func_array([$customerStmt, 'bind_param'], $bindArgs);
+                    $updatedCustomer = $customerStmt->execute();
+                    $customerStmt->close();
+                }
+
+                $_SESSION['ma_khach_hang'] = $customerId;
+            }
         }
 
         $_SESSION['user_name'] = $newName;
         $userName = $newName;
 
-        if ($updatedInDb) {
-            $flashMessage = 'Đã cập nhật thông tin tài khoản.';
+        if ($updatedInDb || $updatedCustomer) {
+            $flashMessage = 'Đã cập nhật thông tin tài khoản và hồ sơ khách hàng.';
             $flashType = 'success';
         } else {
-            $flashMessage = 'Đã cập nhật tên hiển thị trong phiên làm việc.';
+            $flashMessage = 'Đã cập nhật thông tin trong phiên làm việc.';
             $flashType = 'warning';
         }
     }
 
     $tab = 'settings';
+}
+
+if (isset($conn) && $conn instanceof mysqli) {
+    $customerProfile = loadOrCreateAccountCustomer(
+        $conn,
+        $userName,
+        $userEmail,
+        (string) ($_SESSION['ma_khach_hang'] ?? '')
+    );
+    if (trim((string) ($customerProfile['id'] ?? '')) !== '') {
+        $_SESSION['ma_khach_hang'] = (string) $customerProfile['id'];
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_system_settings') {
@@ -815,6 +1048,34 @@ if (isset($conn) && $conn instanceof mysqli) {
                                     value="<?php echo htmlspecialchars($userEmail !== '' ? $userEmail : 'Chưa cập nhật'); ?>"
                                     readonly>
                             </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Số điện thoại</label>
+                                <input class="form-control"
+                                    value="<?php echo htmlspecialchars((string) ($customerProfile['phone'] ?? '')); ?>"
+                                    readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Giới tính</label>
+                                <input class="form-control"
+                                    value="<?php echo htmlspecialchars((string) ($customerProfile['gender'] ?? '')); ?>"
+                                    readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Số tài khoản</label>
+                                <input class="form-control"
+                                    value="<?php echo htmlspecialchars((string) ($customerProfile['bank'] ?? '')); ?>"
+                                    readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Mã khách hàng</label>
+                                <input class="form-control"
+                                    value="<?php echo htmlspecialchars((string) ($customerProfile['id'] ?? '')); ?>"
+                                    readonly>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label text-muted small">Địa chỉ</label>
+                                <textarea class="form-control" rows="2" readonly><?php echo htmlspecialchars((string) ($customerProfile['address'] ?? '')); ?></textarea>
+                            </div>
                         </div>
                     </div>
                     <?php elseif ($tab === 'manage'): ?>
@@ -931,6 +1192,31 @@ if (isset($conn) && $conn instanceof mysqli) {
                                 <label class="form-label">Email</label>
                                 <input type="email" class="form-control"
                                     value="<?php echo htmlspecialchars($userEmail); ?>" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Số điện thoại <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="phone"
+                                    value="<?php echo htmlspecialchars((string) ($customerProfile['phone'] ?? '')); ?>"
+                                    required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Địa chỉ <span class="text-danger">*</span></label>
+                                <textarea class="form-control" name="address" rows="2" required><?php echo htmlspecialchars((string) ($customerProfile['address'] ?? '')); ?></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Giới tính</label>
+                                <select class="form-select" name="gender">
+                                    <?php $currentGender = strtolower(trim((string) ($customerProfile['gender'] ?? ''))); ?>
+                                    <option value="" <?php echo $currentGender === '' ? 'selected' : ''; ?>>Chưa chọn</option>
+                                    <option value="Nam" <?php echo $currentGender === 'nam' ? 'selected' : ''; ?>>Nam</option>
+                                    <option value="Nữ" <?php echo in_array($currentGender, ['nữ', 'nu'], true) ? 'selected' : ''; ?>>Nữ</option>
+                                    <option value="Khác" <?php echo $currentGender === 'khác' ? 'selected' : ''; ?>>Khác</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Số tài khoản</label>
+                                <input type="text" class="form-control" name="bank_account"
+                                    value="<?php echo htmlspecialchars((string) ($customerProfile['bank'] ?? '')); ?>">
                             </div>
                             <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-1"></i>Lưu
                                 thay

@@ -254,9 +254,12 @@ $totalDepartments = count($departments);
         position: fixed;
         left: calc(var(--sidebar-width) + 40px);
         right: 40px;
-        top: 330px;
+        top: 325px;
         bottom: 20px;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
     }
 
     body.modal-open #departmentContentOffset {
@@ -338,6 +341,8 @@ $totalDepartments = count($departments);
         border: 1px solid #f0f0f0;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
         overflow: hidden;
+        margin-top: 2px;
+        flex: 1;
         height: 100%;
         min-height: 0;
         display: flex;
@@ -351,7 +356,7 @@ $totalDepartments = count($departments);
     }
 
     .table-header {
-        background-color: #f8f9fa;
+        background-color: #ffffff;
         padding: 15px 20px;
         display: flex;
         justify-content: space-between;
@@ -379,7 +384,7 @@ $totalDepartments = count($departments);
         position: sticky;
         top: 0;
         z-index: 6;
-        background: #fff;
+        background: #F8F9FA;
     }
 
     .table tbody td {
@@ -926,7 +931,7 @@ $totalDepartments = count($departments);
         }
 
         const topHeight = Math.ceil(fixedTop.getBoundingClientRect().height);
-        contentOffset.style.top = `${topHeight + 10}px`;
+        contentOffset.style.top = `${topHeight - 2}px`;
     }
 
     window.addEventListener('resize', syncFixedTopOffset);
