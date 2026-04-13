@@ -1206,8 +1206,6 @@ foreach ($products as $p) {
             <a href="admin-nhanvien.php" class="nav-item"><i class="fas fa-user-tie"></i> Nhân viên</a>
             <a href="admin-khachhang.php" class="nav-item"><i class="fas fa-users"></i> Khách hàng</a>
             <a href="admin-voucher.php" class="nav-item"><i class="fas fa-ticket-alt"></i> Voucher</a>
-            <a href="../TrangWeb/trangchu.php?admin_mode=1" class="nav-item"><i class="fas fa-store"></i> Xem
-                Trang chủ</a>
             <a href="admin-caidat.php" class="nav-item"><i class="fas fa-cog"></i> Cài đặt</a>
         </nav>
         <a href="../Login/logout.php" class="logout-btn">Đăng xuất</a>
@@ -1218,9 +1216,6 @@ foreach ($products as $p) {
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
                 <div class="d-flex align-items-center gap-2">
-                    <a href="../TrangWeb/trangchu.php?admin_mode=1" class="btn btn-primary fw-semibold">
-                        <i class="fas fa-store me-2"></i>Trang chủ (Admin)
-                    </a>
                     <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
                 </div>
             </div>

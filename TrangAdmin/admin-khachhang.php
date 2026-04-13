@@ -328,6 +328,8 @@ try {
         --bg-light: #f5f7fa;
         --text-dark: #344767;
         --sidebar-width: 260px;
+        --admin-layout-gap: 10px;
+        --admin-content-inline-padding: 10px;
     }
 
     body {
@@ -422,8 +424,8 @@ try {
 
     /* --- MAIN CONTENT --- */
     .main-content {
-        margin-left: var(--sidebar-width);
-        padding: 20px 30px;
+        margin-left: calc(var(--sidebar-width) + 20px);
+        padding: 20px 20px;
     }
 
     /* --- SEARCH BAR --- */

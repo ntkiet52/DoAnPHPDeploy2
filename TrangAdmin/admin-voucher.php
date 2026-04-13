@@ -381,6 +381,14 @@ foreach ($vouchers as $voucher) {
         --bg-light: #f5f7fa;
         --text-dark: #344767;
         --sidebar-width: 260px;
+        --admin-layout-gap: 20px;
+        --admin-content-inline-padding: 20px;
+    }
+
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
     }
 
     body {
@@ -467,7 +475,38 @@ foreach ($vouchers as $voucher) {
 
     .main-content {
         margin-left: var(--sidebar-width);
-        padding: 20px 30px;
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    .voucher-top-sticky {
+        position: fixed;
+        top: 0;
+        left: var(--sidebar-width);
+        right: 0;
+        z-index: 1030;
+        background: var(--bg-light);
+        padding: 20px 15px 12px;
+        border-bottom: none;
+        box-shadow: none;
+    }
+
+    .voucher-top-sticky .alert {
+        margin-bottom: 10px;
+    }
+
+    .voucher-content-offset {
+        position: fixed;
+        left: calc(var(--sidebar-width) + 15px);
+        right: 15px;
+        top: 360px;
+        bottom: 20px;
+        overflow: hidden;
+    }
+
+    body.modal-open #voucherContentOffset {
+        overflow: visible;
     }
 
     .stat-card {
@@ -527,7 +566,7 @@ foreach ($vouchers as $voucher) {
         width: 250px;
     }
 
-    .btn-add {
+    .btn-add-voucher {
         background-color: var(--primary-blue);
         color: white;
         border-radius: 8px;
@@ -536,12 +575,67 @@ foreach ($vouchers as $voucher) {
         font-weight: 500;
     }
 
+    .btn-add-voucher:hover {
+        background-color: #0069d9;
+        color: white;
+    }
+
+    .btn-edit-voucher {
+        background-color: #ffc107;
+        color: #212529;
+        border-radius: 8px;
+        padding: 10px 20px;
+        border: none;
+        font-weight: 500;
+    }
+
+    .btn-edit-voucher:hover {
+        background-color: #e0a800;
+        color: #212529;
+    }
+
+    .btn-view-voucher {
+        background-color: #0dcaf0;
+        color: #fff;
+        border-radius: 8px;
+        padding: 10px 20px;
+        border: none;
+        font-weight: 500;
+    }
+
+    .btn-view-voucher:hover {
+        background-color: #31d2f2;
+        color: #fff;
+    }
+
+    .btn-delete-voucher {
+        background-color: #dc3545;
+        color: #fff;
+        border-radius: 8px;
+        padding: 10px 20px;
+        border: none;
+        font-weight: 500;
+    }
+
+    .btn-delete-voucher:hover {
+        background-color: #c82333;
+        color: #fff;
+    }
+
     .table-container {
         background: white;
         border-radius: 15px;
         overflow: hidden;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-        margin-top: 25px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .voucher-table-scroll {
+        flex: 1 1 auto;
+        overflow: auto;
+        min-height: 220px;
     }
 
     .table thead th {
@@ -550,6 +644,9 @@ foreach ($vouchers as $voucher) {
         font-weight: 700;
         border-bottom: 1px solid #eee;
         padding: 15px 20px;
+        position: sticky;
+        top: 0;
+        z-index: 6;
     }
 
     .table tbody td {
@@ -598,6 +695,18 @@ foreach ($vouchers as $voucher) {
         background: #fee2e2;
         color: #991b1b;
     }
+
+    @media (max-width: 768px) {
+        .voucher-top-sticky {
+            padding: 20px 15px 10px;
+        }
+
+        .voucher-content-offset {
+            left: calc(var(--sidebar-width) + 15px);
+            right: 15px;
+            bottom: 16px;
+        }
+    }
     </style>
     <link rel="stylesheet" href="admin-unified-ui.css">
 </head>
@@ -626,291 +735,322 @@ foreach ($vouchers as $voucher) {
     </div>
 
     <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
-            <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
-        </div>
+        <div class="voucher-top-sticky">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
+                <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
+            </div>
 
-        <div class="d-flex justify-content-between align-items-end mb-4">
-            <h3 class="fw-bold mb-0">Quản lý voucher</h3>
-            <input type="text" class="search-input" placeholder="Tìm kiếm">
-        </div>
+            <div class="d-flex justify-content-between align-items-end mb-4">
+                <h3 class="fw-bold mb-0">Quản lý voucher</h3>
+                <input type="text" class="search-input" placeholder="Tìm kiếm">
+            </div>
 
-        <?php if ($dbError !== ''): ?>
-        <div class="alert alert-warning" role="alert">
-            Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($dbError !== ''): ?>
+            <div class="alert alert-warning" role="alert">
+                Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
+            </div>
+            <?php endif; ?>
 
-        <?php if ($crudError !== ''): ?>
-        <div class="alert alert-danger" role="alert">
-            <?php echo htmlspecialchars($crudError); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($crudError !== ''): ?>
+            <div class="alert alert-danger" role="alert">
+                <?php echo htmlspecialchars($crudError); ?>
+            </div>
+            <?php endif; ?>
 
-        <?php if ($crudMessage !== ''): ?>
-        <div class="alert alert-success" role="alert">
-            <?php echo htmlspecialchars($crudMessage); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($crudMessage !== ''): ?>
+            <div class="alert alert-success" role="alert">
+                <?php echo htmlspecialchars($crudMessage); ?>
+            </div>
+            <?php endif; ?>
 
-        <div class="row g-3 mb-4">
-            <div class="col-md-4">
-                <div class="stat-card d-flex align-items-center">
-                    <div class="icon-box bg-gradient-primary me-3"><i class="fas fa-ticket-alt"></i></div>
-                    <div>
-                        <div class="stat-label">Tổng voucher</div>
-                        <h4 class="stat-value"><?php echo $totalVouchers; ?></h4>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="stat-card d-flex align-items-center">
+                        <div class="icon-box bg-gradient-primary me-3"><i class="fas fa-ticket-alt"></i></div>
+                        <div>
+                            <div class="stat-label">Tổng voucher</div>
+                            <h4 class="stat-value"><?php echo $totalVouchers; ?></h4>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card d-flex align-items-center">
+                        <div class="icon-box bg-gradient-success me-3"><i class="fas fa-check-circle"></i></div>
+                        <div>
+                            <div class="stat-label">Đang áp dụng</div>
+                            <h4 class="stat-value"><?php echo $activeVouchers; ?></h4>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card d-flex align-items-center">
+                        <div class="icon-box bg-gradient-warning me-3"><i class="fas fa-calendar-times"></i></div>
+                        <div>
+                            <div class="stat-label">Đã hết hạn</div>
+                            <h4 class="stat-value"><?php echo $expiredVouchers; ?></h4>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="stat-card d-flex align-items-center">
-                    <div class="icon-box bg-gradient-success me-3"><i class="fas fa-check-circle"></i></div>
-                    <div>
-                        <div class="stat-label">Đang áp dụng</div>
-                        <h4 class="stat-value"><?php echo $activeVouchers; ?></h4>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="stat-card d-flex align-items-center">
-                    <div class="icon-box bg-gradient-warning me-3"><i class="fas fa-calendar-times"></i></div>
-                    <div>
-                        <div class="stat-label">Đã hết hạn</div>
-                        <h4 class="stat-value"><?php echo $expiredVouchers; ?></h4>
-                    </div>
-                </div>
+
+            <div class="d-flex gap-2 mb-4">
+                <button class="btn-add-voucher mb-0" data-bs-toggle="modal" data-bs-target="#addVoucherModal">
+                    <i class="fas fa-plus me-2"></i> Thêm voucher
+                </button>
+                <button class="btn-edit-voucher" id="btnEditVoucher" disabled>
+                    <i class="fas fa-pen me-1"></i> Sửa voucher
+                </button>
+                <button class="btn-view-voucher" id="btnViewVoucher" disabled>
+                    <i class="fas fa-eye me-1"></i> Xem chi tiết
+                </button>
+                <button class="btn-delete-voucher" id="btnDeleteVoucher" disabled>
+                    <i class="fas fa-trash me-1"></i> Xóa
+                </button>
             </div>
         </div>
 
-        <div class="d-flex gap-2 mb-4">
-            <button class="btn-add mb-0" data-bs-toggle="modal" data-bs-target="#addVoucherModal">
-                <i class="fas fa-plus me-2"></i> Thêm voucher
-            </button>
-            <button class="btn btn-warning fw-semibold" id="btnEditVoucher" disabled>
-                <i class="fas fa-pen me-1"></i> Sửa voucher
-            </button>
-            <button class="btn btn-info fw-semibold text-white" id="btnViewVoucher" disabled>
-                <i class="fas fa-eye me-1"></i> Xem chi tiết
-            </button>
-            <button class="btn btn-danger fw-semibold" id="btnDeleteVoucher" disabled>
-                <i class="fas fa-trash me-1"></i> Xóa
-            </button>
-        </div>
+        <div id="voucherContentOffset" class="voucher-content-offset">
 
-        <div class="modal fade" id="addVoucherModal" tabindex="-1" aria-labelledby="addVoucherModalLabel"
-            aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title fw-bold" id="addVoucherModalLabel">Thêm voucher</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <form method="post">
-                        <input type="hidden" name="crud_action" value="add_voucher">
-                        <div class="modal-body">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Mã voucher</label>
-                                    <input type="text" class="form-control" name="voucher_code"
-                                        value="<?php echo htmlspecialchars($nextVoucherCode); ?>" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Tên voucher</label>
-                                    <input type="text" class="form-control" name="voucher_name"
-                                        placeholder="Ví dụ: Giảm giá sinh nhật" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Kiểu giảm</label>
-                                    <select class="form-select" name="voucher_type" required>
-                                        <option value="fixed">Tiền mặt</option>
-                                        <option value="percent">Phần trăm</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Giá trị giảm</label>
-                                    <input type="number" class="form-control" name="voucher_value" min="1" step="0.01"
-                                        required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Đơn tối thiểu</label>
-                                    <input type="number" class="form-control" name="voucher_min_order" min="0"
-                                        step="0.01" value="0">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Số lượt tối đa</label>
-                                    <input type="number" class="form-control" name="voucher_max_use" min="0" value="0">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Ngày bắt đầu</label>
-                                    <input type="date" class="form-control" name="voucher_start_date" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Ngày kết thúc</label>
-                                    <input type="date" class="form-control" name="voucher_end_date" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Trạng thái</label>
-                                    <select class="form-select" name="voucher_status" required>
-                                        <option value="active">Đang áp dụng</option>
-                                        <option value="inactive">Tạm dừng</option>
-                                    </select>
+            <div class="modal fade" id="addVoucherModal" tabindex="-1" aria-labelledby="addVoucherModalLabel"
+                aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title fw-bold" id="addVoucherModalLabel">Thêm voucher</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form method="post">
+                            <input type="hidden" name="crud_action" value="add_voucher">
+                            <div class="modal-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Mã voucher</label>
+                                        <input type="text" class="form-control" name="voucher_code"
+                                            value="<?php echo htmlspecialchars($nextVoucherCode); ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Tên voucher</label>
+                                        <input type="text" class="form-control" name="voucher_name"
+                                            placeholder="Ví dụ: Giảm giá sinh nhật" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Kiểu giảm</label>
+                                        <select class="form-select" name="voucher_type" required>
+                                            <option value="fixed">Tiền mặt</option>
+                                            <option value="percent">Phần trăm</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Giá trị giảm</label>
+                                        <input type="number" class="form-control" name="voucher_value" min="1"
+                                            step="0.01" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Đơn tối thiểu</label>
+                                        <input type="number" class="form-control" name="voucher_min_order" min="0"
+                                            step="0.01" value="0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Số lượt tối đa</label>
+                                        <input type="number" class="form-control" name="voucher_max_use" min="0"
+                                            value="0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Ngày bắt đầu</label>
+                                        <input type="date" class="form-control" name="voucher_start_date" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Ngày kết thúc</label>
+                                        <input type="date" class="form-control" name="voucher_end_date" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Trạng thái</label>
+                                        <select class="form-select" name="voucher_status" required>
+                                            <option value="active">Đang áp dụng</option>
+                                            <option value="inactive">Tạm dừng</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                                <button type="submit" class="btn btn-primary">Lưu voucher</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="voucherDetailModal" tabindex="-1" aria-labelledby="voucherDetailModalLabel"
+                aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title fw-bold" id="voucherDetailModalLabel">Chi tiết voucher</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form method="post" id="voucherDetailForm">
+                            <input type="hidden" name="crud_action" value="update_voucher">
+                            <input type="hidden" name="voucher_id" id="detailVoucherId">
+                            <div class="modal-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Mã voucher</label>
+                                        <input type="text" class="form-control" name="voucher_code"
+                                            id="detailVoucherCode" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Tên voucher</label>
+                                        <input type="text" class="form-control" name="voucher_name"
+                                            id="detailVoucherName" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Kiểu giảm</label>
+                                        <select class="form-select" name="voucher_type" id="detailVoucherType" required>
+                                            <option value="fixed">Tiền mặt</option>
+                                            <option value="percent">Phần trăm</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Giá trị giảm</label>
+                                        <input type="number" class="form-control" name="voucher_value"
+                                            id="detailVoucherValue" min="1" step="0.01" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Đơn tối thiểu</label>
+                                        <input type="number" class="form-control" name="voucher_min_order"
+                                            id="detailVoucherMinOrder" min="0" step="0.01">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Số lượt tối đa</label>
+                                        <input type="number" class="form-control" name="voucher_max_use"
+                                            id="detailVoucherMaxUse" min="0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Ngày bắt đầu</label>
+                                        <input type="date" class="form-control" name="voucher_start_date"
+                                            id="detailVoucherStartDate" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Ngày kết thúc</label>
+                                        <input type="date" class="form-control" name="voucher_end_date"
+                                            id="detailVoucherEndDate" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Trạng thái</label>
+                                        <select class="form-select" name="voucher_status" id="detailVoucherStatus"
+                                            required>
+                                            <option value="active">Đang áp dụng</option>
+                                            <option value="inactive">Tạm dừng</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                                <button type="submit" class="btn btn-primary" id="btnSaveVoucherDetail">Lưu thay
+                                    đổi</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="deleteVoucherModal" tabindex="-1" aria-labelledby="deleteVoucherModalLabel"
+                aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="deleteVoucherModalLabel">Xác nhận xóa</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            Bạn có chắc chắn muốn xóa voucher <strong id="deleteVoucherCode">--</strong> không?
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                            <button type="submit" class="btn btn-primary">Lưu voucher</button>
+                            <button type="button" class="btn btn-danger" id="btnConfirmDeleteVoucher">Xóa</button>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="modal fade" id="voucherDetailModal" tabindex="-1" aria-labelledby="voucherDetailModalLabel"
-            aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title fw-bold" id="voucherDetailModalLabel">Chi tiết voucher</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-                    <form method="post" id="voucherDetailForm">
-                        <input type="hidden" name="crud_action" value="update_voucher">
-                        <input type="hidden" name="voucher_id" id="detailVoucherId">
-                        <div class="modal-body">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Mã voucher</label>
-                                    <input type="text" class="form-control" name="voucher_code" id="detailVoucherCode"
-                                        required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Tên voucher</label>
-                                    <input type="text" class="form-control" name="voucher_name" id="detailVoucherName"
-                                        required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Kiểu giảm</label>
-                                    <select class="form-select" name="voucher_type" id="detailVoucherType" required>
-                                        <option value="fixed">Tiền mặt</option>
-                                        <option value="percent">Phần trăm</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Giá trị giảm</label>
-                                    <input type="number" class="form-control" name="voucher_value"
-                                        id="detailVoucherValue" min="1" step="0.01" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Đơn tối thiểu</label>
-                                    <input type="number" class="form-control" name="voucher_min_order"
-                                        id="detailVoucherMinOrder" min="0" step="0.01">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Số lượt tối đa</label>
-                                    <input type="number" class="form-control" name="voucher_max_use"
-                                        id="detailVoucherMaxUse" min="0">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Ngày bắt đầu</label>
-                                    <input type="date" class="form-control" name="voucher_start_date"
-                                        id="detailVoucherStartDate" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Ngày kết thúc</label>
-                                    <input type="date" class="form-control" name="voucher_end_date"
-                                        id="detailVoucherEndDate" required>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Trạng thái</label>
-                                    <select class="form-select" name="voucher_status" id="detailVoucherStatus" required>
-                                        <option value="active">Đang áp dụng</option>
-                                        <option value="inactive">Tạm dừng</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
-                            <button type="submit" class="btn btn-primary" id="btnSaveVoucherDetail">Lưu thay
-                                đổi</button>
-                        </div>
-                    </form>
                 </div>
             </div>
-        </div>
 
-        <form method="post" id="voucherDeleteForm" class="d-none">
-            <input type="hidden" name="crud_action" value="delete_voucher">
-            <input type="hidden" name="voucher_id" id="deleteVoucherId">
-        </form>
+            <form method="post" id="voucherDeleteForm" class="d-none">
+                <input type="hidden" name="crud_action" value="delete_voucher">
+                <input type="hidden" name="voucher_id" id="deleteVoucherId">
+            </form>
 
-        <div class="table-container">
-            <div class="p-3 d-flex justify-content-between align-items-center">
-                <h5 class="fw-bold mb-0">Danh sách voucher</h5>
-                <i class="fas fa-download text-muted"></i>
-            </div>
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th>Mã voucher</th>
-                        <th>Tên voucher</th>
-                        <th>Kiểu giảm</th>
-                        <th>Giá trị</th>
-                        <th>Đơn tối thiểu</th>
-                        <th>Đã dùng / Tối đa</th>
-                        <th>Hiệu lực</th>
-                        <th>Trạng thái</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (count($vouchers) === 0): ?>
-                    <tr>
-                        <td colspan="8" class="text-center text-muted py-4">Chưa có voucher nào.</td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php foreach ($vouchers as $voucher): ?>
-                    <tr class="voucher-row" data-id="<?php echo (int) ($voucher['id'] ?? 0); ?>"
-                        data-code="<?php echo htmlspecialchars((string) ($voucher['code'] ?? ''), ENT_QUOTES); ?>"
-                        data-name="<?php echo htmlspecialchars((string) ($voucher['name'] ?? ''), ENT_QUOTES); ?>"
-                        data-type="<?php echo htmlspecialchars((string) ($voucher['type'] ?? 'fixed'), ENT_QUOTES); ?>"
-                        data-value="<?php echo htmlspecialchars((string) ($voucher['value'] ?? 0), ENT_QUOTES); ?>"
-                        data-min-order="<?php echo htmlspecialchars((string) ($voucher['min_order'] ?? 0), ENT_QUOTES); ?>"
-                        data-max-use="<?php echo htmlspecialchars((string) ($voucher['max_use'] ?? 0), ENT_QUOTES); ?>"
-                        data-start-date="<?php echo htmlspecialchars((string) ($voucher['start_date'] ?? ''), ENT_QUOTES); ?>"
-                        data-end-date="<?php echo htmlspecialchars((string) ($voucher['end_date'] ?? ''), ENT_QUOTES); ?>"
-                        data-status="<?php echo htmlspecialchars((string) ($voucher['status'] ?? 'inactive'), ENT_QUOTES); ?>">
-                        <td class="fw-bold"><?php echo htmlspecialchars((string) ($voucher['code'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($voucher['name'] ?? '')); ?></td>
-                        <td><?php echo htmlspecialchars((string) ($voucher['type_label'] ?? 'Tiền mặt')); ?></td>
-                        <td>
-                            <?php if (($voucher['type'] ?? 'fixed') === 'percent'): ?>
-                            <?php echo rtrim(rtrim(number_format((float) ($voucher['value'] ?? 0), 2, '.', ''), '0'), '.'); ?>%
-                            <?php else: ?>
-                            <?php echo number_format((float) ($voucher['value'] ?? 0), 0, ',', '.'); ?> ₫
+            <div class="table-container">
+                <div class="p-3 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0">Danh sách voucher</h5>
+                    <i class="fas fa-download text-muted"></i>
+                </div>
+                <div class="voucher-table-scroll">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Mã voucher</th>
+                                <th>Tên voucher</th>
+                                <th>Kiểu giảm</th>
+                                <th>Giá trị</th>
+                                <th>Đơn tối thiểu</th>
+                                <th>Đã dùng / Tối đa</th>
+                                <th>Hiệu lực</th>
+                                <th>Trạng thái</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (count($vouchers) === 0): ?>
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">Chưa có voucher nào.</td>
+                            </tr>
                             <?php endif; ?>
-                        </td>
-                        <td><?php echo number_format((float) ($voucher['min_order'] ?? 0), 0, ',', '.'); ?> ₫</td>
-                        <td>
-                            <?php echo (int) ($voucher['used'] ?? 0); ?> /
-                            <?php echo (int) ($voucher['max_use'] ?? 0); ?>
-                        </td>
-                        <td>
-                            <?php echo htmlspecialchars((string) ($voucher['start_date_display'] ?? '')); ?> -
-                            <?php echo htmlspecialchars((string) ($voucher['end_date_display'] ?? '')); ?>
-                        </td>
-                        <td>
-                            <span
-                                class="voucher-badge <?php echo (($voucher['status'] ?? 'inactive') === 'active') ? 'voucher-status-active' : 'voucher-status-inactive'; ?>">
-                                <?php echo htmlspecialchars((string) ($voucher['status_label'] ?? 'Tạm dừng')); ?>
-                            </span>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                            <?php foreach ($vouchers as $voucher): ?>
+                            <tr class="voucher-row" data-id="<?php echo (int) ($voucher['id'] ?? 0); ?>"
+                                data-code="<?php echo htmlspecialchars((string) ($voucher['code'] ?? ''), ENT_QUOTES); ?>"
+                                data-name="<?php echo htmlspecialchars((string) ($voucher['name'] ?? ''), ENT_QUOTES); ?>"
+                                data-type="<?php echo htmlspecialchars((string) ($voucher['type'] ?? 'fixed'), ENT_QUOTES); ?>"
+                                data-value="<?php echo htmlspecialchars((string) ($voucher['value'] ?? 0), ENT_QUOTES); ?>"
+                                data-min-order="<?php echo htmlspecialchars((string) ($voucher['min_order'] ?? 0), ENT_QUOTES); ?>"
+                                data-max-use="<?php echo htmlspecialchars((string) ($voucher['max_use'] ?? 0), ENT_QUOTES); ?>"
+                                data-start-date="<?php echo htmlspecialchars((string) ($voucher['start_date'] ?? ''), ENT_QUOTES); ?>"
+                                data-end-date="<?php echo htmlspecialchars((string) ($voucher['end_date'] ?? ''), ENT_QUOTES); ?>"
+                                data-status="<?php echo htmlspecialchars((string) ($voucher['status'] ?? 'inactive'), ENT_QUOTES); ?>">
+                                <td class="fw-bold"><?php echo htmlspecialchars((string) ($voucher['code'] ?? '')); ?>
+                                </td>
+                                <td><?php echo htmlspecialchars((string) ($voucher['name'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars((string) ($voucher['type_label'] ?? 'Tiền mặt')); ?>
+                                </td>
+                                <td>
+                                    <?php if (($voucher['type'] ?? 'fixed') === 'percent'): ?>
+                                    <?php echo rtrim(rtrim(number_format((float) ($voucher['value'] ?? 0), 2, '.', ''), '0'), '.'); ?>%
+                                    <?php else: ?>
+                                    <?php echo number_format((float) ($voucher['value'] ?? 0), 0, ',', '.'); ?> ₫
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo number_format((float) ($voucher['min_order'] ?? 0), 0, ',', '.'); ?> ₫
+                                </td>
+                                <td>
+                                    <?php echo (int) ($voucher['used'] ?? 0); ?> /
+                                    <?php echo (int) ($voucher['max_use'] ?? 0); ?>
+                                </td>
+                                <td>
+                                    <?php echo htmlspecialchars((string) ($voucher['start_date_display'] ?? '')); ?> -
+                                    <?php echo htmlspecialchars((string) ($voucher['end_date_display'] ?? '')); ?>
+                                </td>
+                                <td>
+                                    <span
+                                        class="voucher-badge <?php echo (($voucher['status'] ?? 'inactive') === 'active') ? 'voucher-status-active' : 'voucher-status-inactive'; ?>">
+                                        <?php echo htmlspecialchars((string) ($voucher['status_label'] ?? 'Tạm dừng')); ?>
+                                    </span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -918,6 +1058,21 @@ foreach ($vouchers as $voucher) {
     <script>
     let selectedVoucherRow = null;
     let voucherDetailReadOnly = false;
+
+    const addVoucherModalEl = document.getElementById('addVoucherModal');
+    if (addVoucherModalEl && addVoucherModalEl.parentElement !== document.body) {
+        document.body.appendChild(addVoucherModalEl);
+    }
+
+    const voucherDetailModalEl = document.getElementById('voucherDetailModal');
+    if (voucherDetailModalEl && voucherDetailModalEl.parentElement !== document.body) {
+        document.body.appendChild(voucherDetailModalEl);
+    }
+
+    const deleteVoucherModalEl = document.getElementById('deleteVoucherModal');
+    if (deleteVoucherModalEl && deleteVoucherModalEl.parentElement !== document.body) {
+        document.body.appendChild(deleteVoucherModalEl);
+    }
 
     function setVoucherDetailReadOnly(readOnly) {
         voucherDetailReadOnly = !!readOnly;
@@ -1006,13 +1161,17 @@ foreach ($vouchers as $voucher) {
         if (!voucherId) {
             return;
         }
+        document.getElementById('deleteVoucherId').value = voucherId;
+        document.getElementById('deleteVoucherCode').textContent = voucherCode || '--';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteVoucherModal')).show();
+    });
 
-        const ok = confirm(`Bạn có chắc chắn muốn xóa voucher ${voucherCode}?`);
-        if (!ok) {
+    document.getElementById('btnConfirmDeleteVoucher').addEventListener('click', function() {
+        const voucherId = document.getElementById('deleteVoucherId').value || '';
+        if (!voucherId) {
             return;
         }
 
-        document.getElementById('deleteVoucherId').value = voucherId;
         document.getElementById('voucherDeleteForm').submit();
     });
 
@@ -1045,6 +1204,21 @@ foreach ($vouchers as $voucher) {
             return;
         }
     });
+
+    function syncVoucherFixedTopOffset() {
+        const fixedTop = document.querySelector('.voucher-top-sticky');
+        const contentOffset = document.getElementById('voucherContentOffset');
+        if (!fixedTop || !contentOffset) {
+            return;
+        }
+
+        const topHeight = Math.ceil(fixedTop.getBoundingClientRect().height);
+        contentOffset.style.top = `${topHeight + 10}px`;
+    }
+
+    window.addEventListener('resize', syncVoucherFixedTopOffset);
+    window.addEventListener('load', syncVoucherFixedTopOffset);
+    syncVoucherFixedTopOffset();
     </script>
     <script src="admin-search.js"></script>
 </body>

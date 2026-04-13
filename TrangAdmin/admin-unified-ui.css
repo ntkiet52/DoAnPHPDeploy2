@@ -1,0 +1,144 @@
+:root {
+  --admin-page-bg: #f5f7fa;
+}
+
+html,
+body {
+  background-color: var(--admin-page-bg) !important;
+}
+
+.main-content,
+.product-top-sticky,
+.order-top-sticky,
+.department-top-sticky,
+.supplier-top-sticky,
+.voucher-top-sticky {
+  background-color: var(--admin-page-bg) !important;
+}
+
+/* Đồng bộ khoảng cách sidebar -> nội dung cho tất cả trang Admin */
+.main-content {
+  margin-left: calc(
+    var(--sidebar-width, 260px) + var(--admin-layout-gap, 20px)
+  ) !important;
+  padding: var(--admin-content-top, 20px)
+    var(--admin-content-inline-padding, var(--admin-layout-gap, 20px)) !important;
+}
+
+/* Đồng bộ vùng sticky đầu trang */
+.product-top-sticky,
+.order-top-sticky,
+.department-top-sticky,
+.supplier-top-sticky,
+.import-top-sticky,
+.voucher-top-sticky {
+  left: calc(
+    var(--sidebar-width, 260px) + var(--admin-layout-gap, 20px)
+  ) !important;
+  right: var(--admin-layout-gap, 20px) !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Đồng bộ vùng nội dung dưới sticky */
+.product-content-offset,
+.order-content-offset,
+.department-content-offset,
+.supplier-content-offset,
+.category-content-offset,
+.import-content-offset,
+.voucher-content-offset {
+  left: calc(
+    var(--sidebar-width, 260px) + var(--admin-layout-gap, 20px)
+  ) !important;
+  right: var(--admin-layout-gap, 20px) !important;
+}
+
+/* Đồng bộ ô tìm kiếm toàn bộ trang Admin */
+.search-input,
+.search-top {
+  width: 320px !important;
+  max-width: 100% !important;
+  height: 44px !important;
+  padding: 8px 18px !important;
+  border: 1px solid #d6d9df !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  color: #344767 !important;
+  margin-left: auto !important;
+  flex: 0 0 auto !important;
+}
+
+.search-input::placeholder,
+.search-top::placeholder {
+  color: #6c757d !important;
+}
+
+@media (max-width: 768px) {
+  .search-input,
+  .search-top {
+    width: 100% !important;
+  }
+}
+
+/* Đồng bộ tiêu đề chính và tiêu đề module trên tất cả form */
+h4.fw-bold.text-primary {
+  margin: 0 !important;
+  font-size: 2rem !important;
+  line-height: 1.2 !important;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+h3.fw-bold.mb-0 {
+  margin: 0 !important;
+  font-size: 2rem !important;
+  line-height: 1.2 !important;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+@media (max-width: 768px) {
+  h4.fw-bold.text-primary {
+    font-size: 1.75rem !important;
+    min-height: 40px;
+  }
+
+  h3.fw-bold.mb-0 {
+    font-size: 1.75rem !important;
+    min-height: 40px;
+  }
+}
+
+/* Đồng bộ tiêu đề cho nhóm hàng / nhà cung cấp / bộ phận */
+.top-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px;
+}
+
+.page-title {
+  margin: 0 !important;
+  font-size: 2rem !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  color: #1f2937 !important;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+@media (max-width: 768px) {
+  .top-header {
+    align-items: stretch !important;
+    gap: 10px;
+  }
+
+  .page-title {
+    font-size: 1.75rem !important;
+    min-height: 40px;
+  }
+}

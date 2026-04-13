@@ -880,7 +880,7 @@ $totalCategories = count($categories);
                     <i class="fas fa-plus me-1"></i> Thêm nhóm hàng
                 </button>
                 <button class="btn btn-warning fw-semibold" id="btnEditCategory" disabled>
-                    <i class="fas fa-pen me-1"></i> Sửa nhóm hàng
+                    <i class="fas fa-pen me-1"></i> Sửa nhóm hàng                           chi
                 </button>
                 <button class="btn btn-info fw-semibold text-white" id="btnViewCategory" disabled>
                     <i class="fas fa-eye me-1"></i> Xem chi tiết

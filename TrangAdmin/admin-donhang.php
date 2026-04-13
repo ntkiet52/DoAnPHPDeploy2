@@ -688,6 +688,12 @@ foreach ($orders as $order) {
         --sidebar-width: 260px;
     }
 
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+    }
+
     body {
         font-family: 'Roboto', sans-serif;
         background-color: var(--bg-light);
@@ -781,7 +787,38 @@ foreach ($orders as $order) {
     /* --- MAIN CONTENT --- */
     .main-content {
         margin-left: var(--sidebar-width);
-        padding: 20px 30px;
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    .order-top-sticky {
+        position: fixed;
+        top: 0;
+        left: var(--sidebar-width);
+        right: 0;
+        z-index: 1030;
+        background: #ffffff;
+        padding: 20px 30px 12px;
+        border-bottom: none;
+        box-shadow: none;
+    }
+
+    .order-top-sticky .alert {
+        margin-bottom: 10px;
+    }
+
+    .order-content-offset {
+        position: fixed;
+        left: calc(var(--sidebar-width) + 30px);
+        right: 30px;
+        top: 360px;
+        bottom: 20px;
+        overflow: hidden;
+    }
+
+    body.modal-open #orderContentOffset {
+        overflow: visible;
     }
 
     /* --- STAT CARDS --- */
@@ -830,7 +867,9 @@ foreach ($orders as $order) {
         border-radius: 15px;
         overflow: hidden;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-        margin-top: 30px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
     }
 
     .table-header {
@@ -846,6 +885,9 @@ foreach ($orders as $order) {
         font-weight: 700;
         border-bottom: 1px solid #eee;
         padding: 15px 20px;
+        position: sticky;
+        top: 0;
+        z-index: 6;
     }
 
     .table tbody td {
@@ -944,6 +986,24 @@ foreach ($orders as $order) {
     .payment-warning {
         font-size: 0.9rem;
     }
+
+    .order-table-scroll {
+        flex: 1 1 auto;
+        overflow: auto;
+        min-height: 220px;
+    }
+
+    @media (max-width: 768px) {
+        .order-top-sticky {
+            padding: 20px 16px 10px;
+        }
+
+        .order-content-offset {
+            left: calc(var(--sidebar-width) + 16px);
+            right: 16px;
+            bottom: 16px;
+        }
+    }
     </style>
     <link rel="stylesheet" href="admin-unified-ui.css">
 </head>
@@ -972,58 +1032,59 @@ foreach ($orders as $order) {
     </div>
 
     <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
-            <button class="btn btn-light rounded-circle border shadow-sm btn-sm" style="width: 32px; height: 32px;"><i
-                    class="fas fa-times"></i></button>
-        </div>
+        <div class="order-top-sticky">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold text-primary">Bảng điều khiển Admin</h4>
+                <button class="btn btn-light rounded-circle border shadow-sm btn-sm" style="width: 32px; height: 32px;"><i
+                        class="fas fa-times"></i></button>
+            </div>
 
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="fw-bold mb-0">Quản lí đơn hàng</h3>
-            <input type="text" class="search-input" placeholder="Tìm kiếm">
-        </div>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="fw-bold mb-0">Quản lí đơn hàng</h3>
+                <input type="text" class="search-input" placeholder="Tìm kiếm">
+            </div>
 
-        <form method="post" id="approveOrderForm" class="d-none">
+            <form method="post" id="approveOrderForm" class="d-none">
             <input type="hidden" name="crud_action" value="approve_order">
             <input type="hidden" name="order_id" id="approveOrderId" value="">
-        </form>
+            </form>
 
-        <form method="post" id="updateStatusForm" class="d-none">
+            <form method="post" id="updateStatusForm" class="d-none">
             <input type="hidden" name="crud_action" value="update_order_status">
             <input type="hidden" name="order_id" id="updateStatusOrderId" value="">
             <input type="hidden" name="next_status" id="updateStatusValue" value="">
-        </form>
+            </form>
 
-        <form method="post" id="deleteOrderForm" class="d-none">
+            <form method="post" id="deleteOrderForm" class="d-none">
             <input type="hidden" name="crud_action" value="delete_order">
             <input type="hidden" name="order_id" id="deleteOrderId" value="">
-        </form>
+            </form>
 
-        <?php if ($dbError !== ''): ?>
-        <div class="alert alert-warning" role="alert">
-            Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($dbError !== ''): ?>
+            <div class="alert alert-warning" role="alert">
+                Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
+            </div>
+            <?php endif; ?>
 
-        <?php if ($crudError !== ''): ?>
-        <div class="alert alert-danger" role="alert">
-            <?php echo htmlspecialchars($crudError); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($crudError !== ''): ?>
+            <div class="alert alert-danger" role="alert">
+                <?php echo htmlspecialchars($crudError); ?>
+            </div>
+            <?php endif; ?>
 
-        <?php if ($crudMessage !== ''): ?>
-        <div class="alert alert-success" role="alert">
-            <?php echo htmlspecialchars($crudMessage); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($crudMessage !== ''): ?>
+            <div class="alert alert-success" role="alert">
+                <?php echo htmlspecialchars($crudMessage); ?>
+            </div>
+            <?php endif; ?>
 
-        <?php if ($autoCleanupNotice !== ''): ?>
-        <div class="alert alert-info" role="alert">
-            <?php echo htmlspecialchars($autoCleanupNotice); ?>
-        </div>
-        <?php endif; ?>
+            <?php if ($autoCleanupNotice !== ''): ?>
+            <div class="alert alert-info" role="alert">
+                <?php echo htmlspecialchars($autoCleanupNotice); ?>
+            </div>
+            <?php endif; ?>
 
-        <div class="row g-3 mb-4">
+            <div class="row g-3 mb-4">
             <div class="col-md-3">
                 <div class="order-stat-card">
                     <div class="stat-title">Đơn hàng hôm nay</div>
@@ -1052,9 +1113,9 @@ foreach ($orders as $order) {
                     <div class="stat-desc text-green">Tổng giá trị đơn hàng</div>
                 </div>
             </div>
-        </div>
+            </div>
 
-        <div class="d-flex gap-2 mb-3">
+            <div class="d-flex gap-2 mb-3">
             <button type="button" class="btn btn-primary fw-semibold" id="btnViewOrderDetail" disabled>
                 <i class="fas fa-eye me-1"></i> Chi tiết
             </button>
@@ -1070,34 +1131,38 @@ foreach ($orders as $order) {
             <button type="button" class="btn btn-danger fw-semibold" id="btnDeleteOrder" disabled>
                 <i class="fas fa-trash-alt me-1"></i> Xóa đơn
             </button>
+            </div>
+
+            <div class="alert alert-warning payment-warning d-none" id="orderPaymentHint" role="alert"></div>
         </div>
 
-        <div class="alert alert-warning payment-warning d-none" id="orderPaymentHint" role="alert"></div>
+        <div id="orderContentOffset" class="order-content-offset">
 
-        <div class="table-container">
-            <div class="table-header">
-                <h5 class="fw-bold mb-0">Danh sách đơn hàng</h5>
-                <i class="fas fa-download text-muted"></i>
-            </div>
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th>Mã đơn</th>
-                        <th>Khách hàng</th>
-                        <th>Tổng tiền</th>
-                        <th>Thanh toán</th>
-                        <th>Trạng thái</th>
-                        <th>Ngày đặt</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (count($orders) === 0): ?>
-                    <tr>
-                        <td colspan="6" class="text-center text-muted py-4">Chưa có đơn hàng nào.</td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php foreach($orders as $o): ?>
-                    <tr class="order-row" data-id="<?php echo htmlspecialchars((string) $o['id'], ENT_QUOTES); ?>"
+            <div class="table-container">
+                <div class="table-header">
+                    <h5 class="fw-bold mb-0">Danh sách đơn hàng</h5>
+                    <i class="fas fa-download text-muted"></i>
+                </div>
+                <div class="order-table-scroll">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Mã đơn</th>
+                                <th>Khách hàng</th>
+                                <th>Tổng tiền</th>
+                                <th>Thanh toán</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày đặt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (count($orders) === 0): ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">Chưa có đơn hàng nào.</td>
+                            </tr>
+                            <?php endif; ?>
+                            <?php foreach($orders as $o): ?>
+                            <tr class="order-row" data-id="<?php echo htmlspecialchars((string) $o['id'], ENT_QUOTES); ?>"
                         data-customer="<?php echo htmlspecialchars((string) $o['customer'], ENT_QUOTES); ?>"
                         data-total="<?php echo htmlspecialchars((string) $o['total'], ENT_QUOTES); ?>"
                         data-status="<?php echo htmlspecialchars((string) $o['status'], ENT_QUOTES); ?>"
@@ -1124,11 +1189,13 @@ foreach ($orders as $order) {
                                 <?php echo htmlspecialchars((string) $o['status']); ?>
                             </span>
                         </td>
-                        <td><?php echo htmlspecialchars((string) $o['date']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                                <td><?php echo htmlspecialchars((string) $o['date']); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div class="modal fade" id="orderDetailModal" tabindex="-1" aria-labelledby="orderDetailModalLabel"
@@ -1525,6 +1592,21 @@ foreach ($orders as $order) {
         orderConfirmModalLabel.textContent = 'Xác nhận thao tác';
         orderConfirmMessage.textContent = 'Bạn có chắc chắn muốn thực hiện thao tác này không?';
     });
+
+    function syncOrderFixedTopOffset() {
+        const fixedTop = document.querySelector('.order-top-sticky');
+        const contentOffset = document.getElementById('orderContentOffset');
+        if (!fixedTop || !contentOffset) {
+            return;
+        }
+
+        const topHeight = Math.ceil(fixedTop.getBoundingClientRect().height);
+        contentOffset.style.top = `${topHeight + 10}px`;
+    }
+
+    window.addEventListener('resize', syncOrderFixedTopOffset);
+    window.addEventListener('load', syncOrderFixedTopOffset);
+    syncOrderFixedTopOffset();
     </script>
     <script src="admin-search.js"></script>
 </body>
