@@ -161,3 +161,119 @@ h3.fw-bold.mb-0 {
   background: #f8f9fa !important;
   border-bottom: 1px solid #e2e8f0 !important;
 }
+
+/* Đồng bộ UX/UI thẻ thống kê cho: Bộ phận/NCC/Nhập hàng/Nhóm hàng/Sản phẩm */
+.main-content .summary-cards {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px !important;
+}
+
+.main-content .summary-cards .card-box,
+.main-content .product-top-sticky .product-stat-card,
+.main-content .import-top-sticky .stat-card {
+  background: #ffffff !important;
+  border: 1px solid #e7ebf5 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03) !important;
+  padding: 18px 22px !important;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.main-content .summary-cards .card-title-text,
+.main-content .product-top-sticky .product-stat-label,
+.main-content .import-top-sticky .stat-label {
+  color: #7b8aa3 !important;
+  font-size: 0.86rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 6px !important;
+}
+
+.main-content .summary-cards .card-number,
+.main-content .product-top-sticky .product-stat-value,
+.main-content .import-top-sticky .stat-value {
+  color: #243b6b !important;
+  font-size: 2rem !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  margin: 0 !important;
+}
+
+.main-content .import-top-sticky .text-dark-blue,
+.main-content .import-top-sticky .text-success-custom,
+.main-content .import-top-sticky .text-danger-custom {
+  color: #243b6b !important;
+}
+
+.main-content .summary-cards .card-box:nth-child(2) .card-number,
+.main-content
+  .import-top-sticky
+  .row
+  > [class*="col-"]:nth-child(2)
+  .stat-value {
+  color: #ff5b00 !important;
+}
+
+.main-content .summary-cards .card-box:nth-child(3) .card-number,
+.main-content
+  .import-top-sticky
+  .row
+  > [class*="col-"]:nth-child(3)
+  .stat-value {
+  color: #6f4ae8 !important;
+}
+
+.main-content
+  .product-top-sticky
+  .row
+  > [class*="col-"]:nth-child(2)
+  .product-stat-value {
+  color: #ff5b00 !important;
+}
+
+.main-content
+  .product-top-sticky
+  .row
+  > [class*="col-"]:nth-child(3)
+  .product-stat-value {
+  color: #6f4ae8 !important;
+}
+
+@media (max-width: 992px) {
+  .main-content .summary-cards {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .main-content .summary-cards .card-box,
+  .main-content .product-top-sticky .product-stat-card,
+  .main-content .import-top-sticky .stat-card {
+    min-height: 96px;
+  }
+
+  .main-content .summary-cards .card-number,
+  .main-content .product-top-sticky .product-stat-value,
+  .main-content .import-top-sticky .stat-value {
+    font-size: 1.75rem !important;
+  }
+}
+
+/* Đồng bộ kích thước nút thao tác theo form Nhân viên */
+.main-content > .d-flex.gap-2.mb-4 > button,
+.main-content .order-top-sticky .d-flex.gap-2.mb-3 > button,
+.main-content .department-top-sticky .d-flex.gap-2.mb-4 > button,
+.main-content .supplier-top-sticky .d-flex.gap-2.mb-4 > button,
+.main-content .product-top-sticky .d-flex.gap-2.mb-4 > button {
+  min-height: 42px !important;
+  padding: 10px 20px !important;
+  border-radius: 8px !important;
+  font-size: 0.95rem !important;
+  line-height: 1.2 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+}

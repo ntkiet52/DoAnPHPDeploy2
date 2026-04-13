@@ -20,7 +20,39 @@ function pickDashboardValue(array $row, array $keys, $default = '') {
 }
 
 function normalizeDashboardStatus(string $status): string {
-    return mb_strtolower(trim($status), 'UTF-8');
+    $normalized = trim(str_replace(['_', '-'], ' ', $status));
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    return mb_strtolower($normalized, 'UTF-8');
+}
+
+function formatDashboardStatusLabel(string $status): string {
+    $normalized = normalizeDashboardStatus($status);
+    if ($normalized === '') {
+        return 'Chờ duyệt';
+    }
+
+    $map = [
+        'cho duyet' => 'Chờ duyệt',
+        'chua duyet' => 'Chờ duyệt',
+        'pending' => 'Chờ duyệt',
+        'da duyet' => 'Đã duyệt',
+        'approved' => 'Đã duyệt',
+        'dang giao' => 'Đang giao',
+        'shipping' => 'Đang giao',
+        'gan giao' => 'Gần giao',
+        'near delivery' => 'Gần giao',
+        'da nhan' => 'Đã nhận',
+        'received' => 'Đã nhận',
+        'da huy' => 'Đã hủy',
+        'cancelled' => 'Đã hủy',
+        'canceled' => 'Đã hủy',
+    ];
+
+    if (isset($map[$normalized])) {
+        return $map[$normalized];
+    }
+
+    return mb_convert_case($normalized, MB_CASE_TITLE, 'UTF-8');
 }
 
 function isCompletedDashboardOrder(string $status): bool {
@@ -190,6 +222,7 @@ try {
         }
 
         $status = (string) pickDashboardValue($row, ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'], 'Chưa duyệt');
+        $displayStatus = formatDashboardStatusLabel($status);
         $statusLower = normalizeDashboardStatus($status);
         $isCompleted = isCompletedDashboardOrder($status);
         $isShipping = isShippingDashboardOrder($status);
@@ -264,7 +297,7 @@ try {
             'id' => $maDon,
             'name' => $tenKh,
             'amount' => number_format($tongTien, 0, ',', '.') . ' ₫',
-            'status' => $status,
+            'status' => $displayStatus,
             'color' => $color,
             'sort_ts' => ($dateRaw !== '' && strtotime($dateRaw) !== false) ? strtotime($dateRaw) : 0,
         ];
@@ -568,6 +601,12 @@ try {
         border-radius: 20px;
         font-size: 0.75rem;
         font-weight: bold;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        line-height: 1.2;
+        margin-top: 4px;
     }
 
     .bg-soft-warning {

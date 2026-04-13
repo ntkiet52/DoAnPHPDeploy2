@@ -469,7 +469,7 @@ $totalCategories = count($categories);
         right: 0;
         z-index: 1030;
         background: #ffffff;
-        padding: 30px 40px 12px;
+        padding: 20px 40px 12px;
         border-bottom: none;
         box-shadow: none;
     }
