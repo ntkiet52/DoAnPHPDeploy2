@@ -24,6 +24,7 @@ if ($currentUserName === '') {
 $payload = [
     'ok' => true,
     'is_logged_in' => $isLoggedIn,
+    'user_id' => (int) ($_SESSION['user_id'] ?? 0),
     'name' => $currentUserName,
     'email' => $currentUserEmail,
     'role' => $currentUserRole,

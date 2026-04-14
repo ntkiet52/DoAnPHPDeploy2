@@ -262,6 +262,20 @@ function ensureVoucherUsageTablePdo(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureVoucherClaimTablePdo(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_nhan (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_key VARCHAR(100) NOT NULL,
+        id_voucher INT NOT NULL,
+        ma_voucher VARCHAR(100) NOT NULL,
+        thoi_gian_nhan DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_claim_user_voucher (user_key, id_voucher),
+        INDEX idx_claim_user_key (user_key),
+        INDEX idx_claim_voucher_id (id_voucher)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 function ensureOrderPaymentMetaTablePdo(PDO $pdo): void
 {
     $pdo->exec("CREATE TABLE IF NOT EXISTS phieuxuat_thanhtoan_map (
@@ -623,6 +637,7 @@ try {
     }
 
     ensureVoucherUsageTablePdo($pdo);
+    ensureVoucherClaimTablePdo($pdo);
     ensureOrderPaymentMetaTablePdo($pdo);
     $voucherUserKey = currentVoucherUserKeyCheckout();
     $voucherUsed = null;
@@ -632,7 +647,7 @@ try {
         $voucherCode = strtoupper(trim((string) ($voucherPayload['code'] ?? '')));
         if ($voucherCode !== '') {
             $voucherStmt = $pdo->prepare(
-                "SELECT id_voucher, ma_voucher, kieu_giam, gia_tri_giam, tien_toi_thieu, so_luong_toi_da, so_luong_da_su_dung
+                "SELECT id_voucher, ma_voucher, ten_voucher, kieu_giam, gia_tri_giam, tien_toi_thieu, so_luong_toi_da, so_luong_da_su_dung
                  FROM voucher
                  WHERE UPPER(ma_voucher) = :code
                  AND trang_thai = 'active'
@@ -651,10 +666,25 @@ try {
                 respondCheckout(false, 'Voucher không hợp lệ.');
             }
 
-            $usedCheckStmt = $pdo->prepare('SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = :user_key AND id_voucher = :id_voucher LIMIT 1');
+            $claimCheckStmt = $pdo->prepare(
+                'SELECT id FROM voucher_nguoi_dung_da_nhan WHERE user_key = :user_key AND (id_voucher = :id_voucher OR UPPER(ma_voucher) = :ma_voucher) LIMIT 1'
+            );
+            $claimCheckStmt->execute([
+                ':user_key' => $voucherUserKey,
+                ':id_voucher' => $voucherId,
+                ':ma_voucher' => strtoupper((string) ($voucherRow['ma_voucher'] ?? $voucherCode)),
+            ]);
+            if ($claimCheckStmt->fetchColumn() === false) {
+                respondCheckout(false, 'Bạn chưa nhận voucher này. Vui lòng nhận voucher trong mục Quản lý tài khoản trước.');
+            }
+
+            $usedCheckStmt = $pdo->prepare(
+                'SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = :user_key AND (id_voucher = :id_voucher OR UPPER(ma_voucher) = :ma_voucher) LIMIT 1'
+            );
             $usedCheckStmt->execute([
                 ':user_key' => $voucherUserKey,
                 ':id_voucher' => $voucherId,
+                ':ma_voucher' => strtoupper((string) ($voucherRow['ma_voucher'] ?? $voucherCode)),
             ]);
             $alreadyUsed = $usedCheckStmt->fetchColumn() !== false;
             if ($alreadyUsed) {
@@ -684,6 +714,7 @@ try {
             $voucherUsed = [
                 'id_voucher' => $voucherId,
                 'ma_voucher' => (string) ($voucherRow['ma_voucher'] ?? $voucherCode),
+                'ten_voucher' => (string) ($voucherRow['ten_voucher'] ?? ''),
             ];
         }
     }

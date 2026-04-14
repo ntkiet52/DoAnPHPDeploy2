@@ -19,8 +19,12 @@ function pickVoucherValue(array $row, array $keys, $default = '') {
     return $default;
 }
 
-function getExistingColumns(PDO $pdo, string $table): array {
+function getExistingColumns(PDO $pdo, string $table, bool $forceRefresh = false): array {
     static $cache = [];
+
+    if ($forceRefresh) {
+        unset($cache[$table]);
+    }
 
     if (isset($cache[$table])) {
         return $cache[$table];
@@ -116,6 +120,153 @@ function normalizeVoucherStatus(string $status): string {
     return in_array($raw, ['active', 'inactive'], true) ? $raw : 'active';
 }
 
+function normalizeVoucherSchema(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS voucher (
+        id_voucher INT AUTO_INCREMENT PRIMARY KEY,
+        ma_voucher VARCHAR(100) NOT NULL,
+        ten_voucher VARCHAR(255) NOT NULL,
+        mo_ta TEXT NULL,
+        kieu_giam VARCHAR(20) NOT NULL DEFAULT 'fixed',
+        gia_tri_giam DECIMAL(12,2) NOT NULL DEFAULT 0,
+        tien_toi_thieu DECIMAL(12,2) NOT NULL DEFAULT 0,
+        so_luong_toi_da INT NOT NULL DEFAULT 0,
+        so_luong_da_su_dung INT NOT NULL DEFAULT 0,
+        ngay_bat_dau DATETIME NOT NULL,
+        ngay_ket_thuc DATETIME NOT NULL,
+        trang_thai VARCHAR(30) NOT NULL DEFAULT 'active',
+        thoi_gian_tao TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $columns = getExistingColumns($pdo, 'voucher', true);
+    $addColumnIfMissing = static function (string $column, string $definition) use ($pdo, &$columns): void {
+        if (!in_array(strtolower($column), $columns, true)) {
+            $pdo->exec("ALTER TABLE voucher ADD COLUMN `{$column}` {$definition}");
+            $columns[] = strtolower($column);
+        }
+    };
+
+    $addColumnIfMissing('id_voucher', 'INT NOT NULL DEFAULT 0');
+    $addColumnIfMissing('ma_voucher', "VARCHAR(100) NOT NULL DEFAULT ''");
+    $addColumnIfMissing('ten_voucher', "VARCHAR(255) NOT NULL DEFAULT ''");
+    $addColumnIfMissing('mo_ta', 'TEXT NULL');
+    $addColumnIfMissing('kieu_giam', "VARCHAR(20) NOT NULL DEFAULT 'fixed'");
+    $addColumnIfMissing('gia_tri_giam', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    $addColumnIfMissing('tien_toi_thieu', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    $addColumnIfMissing('so_luong_toi_da', 'INT NOT NULL DEFAULT 0');
+    $addColumnIfMissing('so_luong_da_su_dung', 'INT NOT NULL DEFAULT 0');
+    $addColumnIfMissing('ngay_bat_dau', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+    $addColumnIfMissing('ngay_ket_thuc', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+    $addColumnIfMissing('trang_thai', "VARCHAR(30) NOT NULL DEFAULT 'active'");
+    $addColumnIfMissing('thoi_gian_tao', 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP');
+
+    $pdo->exec('UPDATE voucher SET ma_voucher = UPPER(TRIM(ma_voucher)) WHERE ma_voucher IS NOT NULL');
+    $pdo->exec("UPDATE voucher SET ma_voucher = CONCAT('VC_FIX_', id_voucher) WHERE TRIM(COALESCE(ma_voucher, '')) = ''");
+
+    $maxId = (int) ($pdo->query('SELECT COALESCE(MAX(id_voucher), 0) FROM voucher')->fetchColumn() ?: 0);
+    $zeroIdCodes = $pdo->query('SELECT ma_voucher FROM voucher WHERE id_voucher <= 0 ORDER BY ma_voucher ASC')->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($zeroIdCodes as $code) {
+        $maxId++;
+        $stmt = $pdo->prepare('UPDATE voucher SET id_voucher = :new_id WHERE id_voucher <= 0 AND ma_voucher = :code LIMIT 1');
+        $stmt->execute([
+            ':new_id' => $maxId,
+            ':code' => (string) $code,
+        ]);
+    }
+
+    $duplicateCodeRows = $pdo->query('SELECT UPPER(TRIM(ma_voucher)) AS code_key, COUNT(*) AS total FROM voucher GROUP BY code_key HAVING COUNT(*) > 1')->fetchAll();
+    foreach ($duplicateCodeRows as $dup) {
+        $codeKey = (string) ($dup['code_key'] ?? '');
+        if ($codeKey === '') {
+            continue;
+        }
+
+        $rows = $pdo->prepare('SELECT id_voucher, ma_voucher FROM voucher WHERE UPPER(TRIM(ma_voucher)) = :code_key ORDER BY id_voucher ASC');
+        $rows->execute([':code_key' => $codeKey]);
+        $list = $rows->fetchAll();
+
+        $counter = 1;
+        foreach ($list as $row) {
+            $id = (int) ($row['id_voucher'] ?? 0);
+            if ($counter === 1) {
+                $counter++;
+                continue;
+            }
+
+            $newCode = $codeKey . '_' . str_pad((string) max(1, $id), 3, '0', STR_PAD_LEFT);
+            $update = $pdo->prepare('UPDATE voucher SET ma_voucher = :new_code WHERE id_voucher = :id LIMIT 1');
+            $update->execute([
+                ':new_code' => $newCode,
+                ':id' => $id,
+            ]);
+            $counter++;
+        }
+    }
+
+    try {
+        $pdo->exec('ALTER TABLE voucher MODIFY id_voucher INT NOT NULL AUTO_INCREMENT');
+    } catch (Throwable $ignored) {
+    }
+
+    $indexRows = $pdo->query('SHOW INDEX FROM voucher')->fetchAll(PDO::FETCH_ASSOC);
+    $hasPrimary = false;
+    $hasUniqueCode = false;
+    $hasCodeIndex = false;
+    $hasStatusIndex = false;
+
+    foreach ($indexRows as $idx) {
+        $keyName = strtolower((string) ($idx['Key_name'] ?? ''));
+        $columnName = strtolower((string) ($idx['Column_name'] ?? ''));
+        $nonUnique = (int) ($idx['Non_unique'] ?? 1);
+
+        if ($keyName === 'primary' && $columnName === 'id_voucher') {
+            $hasPrimary = true;
+        }
+
+        if ($columnName === 'ma_voucher' && $nonUnique === 0) {
+            $hasUniqueCode = true;
+        }
+
+        if ($columnName === 'ma_voucher') {
+            $hasCodeIndex = true;
+        }
+
+        if ($columnName === 'trang_thai') {
+            $hasStatusIndex = true;
+        }
+    }
+
+    if (!$hasPrimary) {
+        try {
+            $pdo->exec('ALTER TABLE voucher ADD PRIMARY KEY (id_voucher)');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    if (!$hasUniqueCode) {
+        try {
+            $pdo->exec('ALTER TABLE voucher ADD UNIQUE KEY uq_voucher_code (ma_voucher)');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    if (!$hasCodeIndex) {
+        try {
+            $pdo->exec('ALTER TABLE voucher ADD INDEX idx_ma_voucher (ma_voucher)');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    if (!$hasStatusIndex) {
+        try {
+            $pdo->exec('ALTER TABLE voucher ADD INDEX idx_trang_thai (trang_thai)');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    getExistingColumns($pdo, 'voucher', true);
+}
+
 $vouchers = [];
 $dbError = '';
 $crudMessage = '';
@@ -138,21 +289,7 @@ try {
         ]
     );
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS voucher (
-        id_voucher INT AUTO_INCREMENT PRIMARY KEY,
-        ma_voucher VARCHAR(100) NOT NULL UNIQUE,
-        ten_voucher VARCHAR(255) NOT NULL,
-        kieu_giam VARCHAR(20) NOT NULL DEFAULT 'fixed',
-        gia_tri_giam DECIMAL(12,2) NOT NULL DEFAULT 0,
-        tien_toi_thieu DECIMAL(12,2) NOT NULL DEFAULT 0,
-        so_luong_toi_da INT NOT NULL DEFAULT 0,
-        so_luong_da_su_dung INT NOT NULL DEFAULT 0,
-        ngay_bat_dau DATETIME NOT NULL,
-        ngay_ket_thuc DATETIME NOT NULL,
-        trang_thai VARCHAR(30) NOT NULL DEFAULT 'active',
-        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    normalizeVoucherSchema($pdo);
 
     $voucherColumns = getExistingColumns($pdo, 'voucher');
     $idCol = pickExistingColumn($voucherColumns, ['id_voucher', 'idvoucher', 'id']);
@@ -240,6 +377,7 @@ try {
         if ($action === 'update_voucher') {
             $voucherId = (int) ($_POST['voucher_id'] ?? 0);
             $code = strtoupper(trim((string) ($_POST['voucher_code'] ?? '')));
+            $originalCode = strtoupper(trim((string) ($_POST['voucher_original_code'] ?? '')));
             $name = trim((string) ($_POST['voucher_name'] ?? ''));
             $type = normalizeVoucherType((string) ($_POST['voucher_type'] ?? 'fixed'));
             $value = (float) ($_POST['voucher_value'] ?? 0);
@@ -249,7 +387,11 @@ try {
             $endDate = trim((string) ($_POST['voucher_end_date'] ?? ''));
             $status = normalizeVoucherStatus((string) ($_POST['voucher_status'] ?? 'active'));
 
-            if ($voucherId <= 0 || $code === '' || $name === '' || $startDate === '' || $endDate === '') {
+            if ($originalCode === '') {
+                $originalCode = $code;
+            }
+
+            if ($code === '' || $name === '' || $startDate === '' || $endDate === '') {
                 $crudError = 'Thông tin cập nhật voucher chưa hợp lệ.';
             } else if ($value <= 0) {
                 $crudError = 'Giá trị giảm phải lớn hơn 0.';
@@ -257,11 +399,9 @@ try {
                 $crudError = 'Voucher phần trăm chỉ được từ 1 đến 100.';
             } else if (strtotime($startDate) === false || strtotime($endDate) === false || strtotime($startDate) > strtotime($endDate)) {
                 $crudError = 'Thời gian bắt đầu/kết thúc không hợp lệ.';
-            } else if ($idCol === null) {
-                $crudError = 'Không tìm thấy khóa chính voucher để cập nhật.';
             } else {
                 $setParts = [];
-                $params = [':id' => $voucherId];
+                $params = [];
 
                 $fieldMap = [
                     $codeCol => $code,
@@ -289,10 +429,30 @@ try {
                     $crudError = 'Không tìm thấy cột dữ liệu voucher để cập nhật.';
                 } else {
                     try {
-                        $sql = 'UPDATE voucher SET ' . implode(', ', $setParts) . " WHERE `{$idCol}` = :id";
+                        $whereSql = '';
+                        if ($voucherId > 0 && $idCol !== null) {
+                            $whereSql = " WHERE `{$idCol}` = :id";
+                            $params[':id'] = $voucherId;
+                        } else if ($originalCode !== '' && $codeCol !== null) {
+                            $whereSql = " WHERE `{$codeCol}` = :original_code";
+                            $params[':original_code'] = $originalCode;
+                        } else {
+                            $crudError = 'Không xác định được voucher cần cập nhật.';
+                        }
+
+                        if ($crudError !== '') {
+                            throw new RuntimeException($crudError);
+                        }
+
+                        $sql = 'UPDATE voucher SET ' . implode(', ', $setParts) . $whereSql;
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
-                        $crudMessage = 'Đã cập nhật voucher thành công.';
+
+                        if ($stmt->rowCount() === 0) {
+                            $crudError = 'Không tìm thấy voucher phù hợp để cập nhật hoặc dữ liệu chưa thay đổi.';
+                        } else {
+                            $crudMessage = 'Đã cập nhật voucher thành công.';
+                        }
                     } catch (Throwable $e) {
                         $crudError = 'Không thể cập nhật voucher: ' . $e->getMessage();
                     }
@@ -796,16 +956,17 @@ foreach ($vouchers as $voucher) {
             </div>
 
             <div class="d-flex gap-2 mb-4">
-                <button class="btn-add-voucher mb-0" data-bs-toggle="modal" data-bs-target="#addVoucherModal">
+                <button type="button" class="btn-add-voucher mb-0" data-bs-toggle="modal"
+                    data-bs-target="#addVoucherModal">
                     <i class="fas fa-plus me-2"></i> Thêm voucher
                 </button>
-                <button class="btn-edit-voucher" id="btnEditVoucher" disabled>
+                <button type="button" class="btn-edit-voucher" id="btnEditVoucher" disabled>
                     <i class="fas fa-pen me-1"></i> Sửa voucher
                 </button>
-                <button class="btn-view-voucher" id="btnViewVoucher" disabled>
+                <button type="button" class="btn-view-voucher" id="btnViewVoucher" disabled>
                     <i class="fas fa-eye me-1"></i> Xem chi tiết
                 </button>
-                <button class="btn-delete-voucher" id="btnDeleteVoucher" disabled>
+                <button type="button" class="btn-delete-voucher" id="btnDeleteVoucher" disabled>
                     <i class="fas fa-trash me-1"></i> Xóa
                 </button>
             </div>
@@ -894,6 +1055,7 @@ foreach ($vouchers as $voucher) {
                         <form method="post" id="voucherDetailForm">
                             <input type="hidden" name="crud_action" value="update_voucher">
                             <input type="hidden" name="voucher_id" id="detailVoucherId">
+                            <input type="hidden" name="voucher_original_code" id="detailVoucherOriginalCode">
                             <div class="modal-body">
                                 <div class="row g-3">
                                     <div class="col-md-6">
@@ -1092,10 +1254,17 @@ foreach ($vouchers as $voucher) {
         fieldIds.forEach((id) => {
             const field = document.getElementById(id);
             if (!field) return;
+
             if (field.tagName === 'SELECT') {
                 field.disabled = voucherDetailReadOnly;
             } else {
                 field.readOnly = voucherDetailReadOnly;
+                if (voucherDetailReadOnly) {
+                    field.setAttribute('readonly', 'readonly');
+                } else {
+                    field.removeAttribute('readonly');
+                    field.disabled = false;
+                }
             }
         });
 
@@ -1106,8 +1275,12 @@ foreach ($vouchers as $voucher) {
     }
 
     function fillVoucherDetailModal(row, readOnly = false) {
-        document.getElementById('detailVoucherId').value = row.getAttribute('data-id') || '';
-        document.getElementById('detailVoucherCode').value = row.getAttribute('data-code') || '';
+        const voucherId = row.getAttribute('data-id') || '';
+        const voucherCode = row.getAttribute('data-code') || '';
+
+        document.getElementById('detailVoucherId').value = voucherId;
+        document.getElementById('detailVoucherOriginalCode').value = voucherCode;
+        document.getElementById('detailVoucherCode').value = voucherCode;
         document.getElementById('detailVoucherName').value = row.getAttribute('data-name') || '';
         document.getElementById('detailVoucherType').value = row.getAttribute('data-type') || 'fixed';
         document.getElementById('detailVoucherValue').value = row.getAttribute('data-value') || '0';
@@ -1119,46 +1292,74 @@ foreach ($vouchers as $voucher) {
         setVoucherDetailReadOnly(readOnly);
     }
 
+    function getSelectedVoucherRow() {
+        if (selectedVoucherRow && selectedVoucherRow.isConnected) {
+            return selectedVoucherRow;
+        }
+
+        const activeRow = document.querySelector('.voucher-row.selected');
+        if (activeRow) {
+            selectedVoucherRow = activeRow;
+            return selectedVoucherRow;
+        }
+
+        return null;
+    }
+
+    function setVoucherButtonsEnabled(enabled) {
+        const disabled = !enabled;
+        document.getElementById('btnEditVoucher').disabled = disabled;
+        document.getElementById('btnViewVoucher').disabled = disabled;
+        document.getElementById('btnDeleteVoucher').disabled = disabled;
+    }
+
     document.querySelectorAll('.voucher-row').forEach((row) => {
         row.addEventListener('click', function() {
             document.querySelectorAll('.voucher-row').forEach((r) => r.classList.remove('selected'));
             this.classList.add('selected');
             selectedVoucherRow = this;
 
-            document.getElementById('btnEditVoucher').disabled = false;
-            document.getElementById('btnViewVoucher').disabled = false;
-            document.getElementById('btnDeleteVoucher').disabled = false;
+            setVoucherButtonsEnabled(true);
+        });
+
+        row.addEventListener('dblclick', function() {
+            this.click();
+            fillVoucherDetailModal(this, false);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('voucherDetailModal')).show();
         });
     });
 
     document.getElementById('btnViewVoucher').addEventListener('click', function() {
-        if (!selectedVoucherRow) {
+        const row = getSelectedVoucherRow();
+        if (!row) {
             alert('Vui lòng chọn voucher để xem chi tiết.');
             return;
         }
 
-        fillVoucherDetailModal(selectedVoucherRow, true);
+        fillVoucherDetailModal(row, true);
         bootstrap.Modal.getOrCreateInstance(document.getElementById('voucherDetailModal')).show();
     });
 
     document.getElementById('btnEditVoucher').addEventListener('click', function() {
-        if (!selectedVoucherRow) {
+        const row = getSelectedVoucherRow();
+        if (!row) {
             alert('Vui lòng chọn voucher để sửa.');
             return;
         }
 
-        fillVoucherDetailModal(selectedVoucherRow, false);
+        fillVoucherDetailModal(row, false);
         bootstrap.Modal.getOrCreateInstance(document.getElementById('voucherDetailModal')).show();
     });
 
     document.getElementById('btnDeleteVoucher').addEventListener('click', function() {
-        if (!selectedVoucherRow) {
+        const row = getSelectedVoucherRow();
+        if (!row) {
             alert('Vui lòng chọn voucher để xóa.');
             return;
         }
 
-        const voucherId = selectedVoucherRow.getAttribute('data-id') || '';
-        const voucherCode = selectedVoucherRow.getAttribute('data-code') || '';
+        const voucherId = row.getAttribute('data-id') || '';
+        const voucherCode = row.getAttribute('data-code') || '';
         if (!voucherId) {
             return;
         }
@@ -1184,8 +1385,22 @@ foreach ($vouchers as $voucher) {
 
         const type = (document.getElementById('detailVoucherType').value || 'fixed').trim();
         const value = parseFloat(document.getElementById('detailVoucherValue').value || '0');
+        const voucherCode = (document.getElementById('detailVoucherCode').value || '').trim();
+        const originalCode = (document.getElementById('detailVoucherOriginalCode').value || '').trim();
         const startDate = document.getElementById('detailVoucherStartDate').value;
         const endDate = document.getElementById('detailVoucherEndDate').value;
+
+        if (!voucherCode) {
+            event.preventDefault();
+            alert('Mã voucher không được để trống.');
+            return;
+        }
+
+        if (!originalCode && !(document.getElementById('detailVoucherId').value || '').trim()) {
+            event.preventDefault();
+            alert('Không xác định được voucher cần cập nhật. Vui lòng chọn lại voucher từ danh sách.');
+            return;
+        }
 
         if (value <= 0) {
             event.preventDefault();
@@ -1220,6 +1435,8 @@ foreach ($vouchers as $voucher) {
     window.addEventListener('resize', syncVoucherFixedTopOffset);
     window.addEventListener('load', syncVoucherFixedTopOffset);
     syncVoucherFixedTopOffset();
+
+    setVoucherButtonsEnabled(!!document.querySelector('.voucher-row.selected'));
     </script>
     <script src="admin-search.js"></script>
 </body>

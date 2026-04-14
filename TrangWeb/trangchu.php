@@ -1872,7 +1872,7 @@ $categories = $__catalogData['categories'];
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js?v=20260412-3"></script>
+    <script src="web-events.js?v=20260414-3"></script>
     <script>
     const isAdminUser = <?php echo $isAdminUser ? 'true' : 'false'; ?>;
     const adminConfigApiUrl = 'trangchu.php?admin_home_config_api=1';
@@ -2237,6 +2237,10 @@ $categories = $__catalogData['categories'];
             const chatbotInput = document.querySelector('.chatbot-input-area input');
             const chatbotSendBtn = document.querySelector('.chatbot-send-btn');
 
+            if (window.__ackChatbotManagedByGlobal || (chatbotWidget && chatbotWidget.dataset && chatbotWidget.dataset.ackBound === '1')) {
+                return;
+            }
+
             if (!chatbotButton || !chatbotWidget || !chatbotClose || !chatbotMessages || !chatbotInput || !chatbotSendBtn) {
                 return;
             }
@@ -2295,7 +2299,7 @@ $categories = $__catalogData['categories'];
                                 style.textContent = `
                                     .chatbot-products {
                                         display: grid;
-                                        grid-template-columns: 1fr;
+                                        grid-template-columns: repeat(4, minmax(0, 1fr));
                                         gap: 10px;
                                         margin: 10px 0 2px;
                                     }
@@ -2365,6 +2369,7 @@ $categories = $__catalogData['categories'];
                                         color: #0056b3;
                                         text-decoration: underline;
                                     }
+
                                 `;
                                 document.head.appendChild(style);
                             }
@@ -2376,7 +2381,7 @@ $categories = $__catalogData['categories'];
                             data.products.forEach((product) => {
                                 const productUrl = product.link || '#';
                                 productsHTML += `
-                                    <a href="${escapeHtml(productUrl)}" class="chatbot-product-item" target="_blank" title="${escapeHtml(product.name || '')}">
+                                    <a href="${escapeHtml(productUrl)}" class="chatbot-product-item" title="${escapeHtml(product.name || '')}">
                                         <img src="${escapeHtml(product.img || '')}" alt="${escapeHtml(product.name || '')}" class="chatbot-product-img">
                                         <div class="chatbot-product-body">
                                             <div class="chatbot-product-name">${escapeHtml(product.name || '')}</div>
@@ -2410,7 +2415,7 @@ $categories = $__catalogData['categories'];
                                 const remaining = Math.max(0, Number(data.totalCount || 0) - Number(data.displayedCount || 0));
                                 productsHTML += `
                                     <div class="chatbot-view-more">
-                                        <a href="${categoryLink}" target="_blank">
+                                        <a href="${categoryLink}">
                                             <button class="chatbot-view-more-btn">Xem thêm ${remaining} sản phẩm →</button>
                                         </a>
                                     </div>

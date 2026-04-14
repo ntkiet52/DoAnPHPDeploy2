@@ -630,15 +630,21 @@ if ($result_cart->num_rows > 0) {
         </div>
 
         <div id="cart-list">
-            <?php foreach($cart_items as $item): ?>
-            <div class="cart-item-card" id="item-<?php echo (int)$item['chi_tiet_id']; ?>"
+            <?php foreach($cart_items as $idx => $item): ?>
+            <?php
+                $detailId = (int) ($item['chi_tiet_id'] ?? 0);
+                $safeProductKey = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string) ($item['id'] ?? 'sp'));
+                $rowKey = $detailId > 0 ? ('d' . $detailId) : ('r' . (int) $idx . '_' . $safeProductKey);
+            ?>
+            <div class="cart-item-card" id="item-<?php echo htmlspecialchars($rowKey, ENT_QUOTES); ?>"
                 data-product-id="<?php echo htmlspecialchars((string)$item['id'], ENT_QUOTES); ?>"
                 data-product-name="<?php echo htmlspecialchars((string)$item['name'], ENT_QUOTES); ?>">
 
                 <div class="product-main-info">
                     <input type="checkbox" class="custom-checkbox item-checkbox" checked
                         data-price="<?php echo (float)$item['price']; ?>"
-                        data-id="<?php echo (int)$item['chi_tiet_id']; ?>"
+                        data-id="<?php echo (int)$detailId; ?>"
+                        data-row-key="<?php echo htmlspecialchars($rowKey, ENT_QUOTES); ?>"
                         data-product-id="<?php echo htmlspecialchars((string)$item['id'], ENT_QUOTES); ?>"
                         data-product-name="<?php echo htmlspecialchars((string)$item['name'], ENT_QUOTES); ?>"
                         onchange="calculateTotal()">
@@ -662,8 +668,8 @@ if ($result_cart->num_rows > 0) {
                             <i class="far fa-heart me-1"></i> <span>Thêm Vào Yêu Thích</span>
                             <span class="text-secondary mx-2">|</span>
                             <button type="button" class="delete-item-btn"
-                                data-delete-id="<?php echo (int)$item['chi_tiet_id']; ?>"
-                                onclick="deleteFromCart(<?php echo (int)$item['chi_tiet_id']; ?>, this)">Xóa</button>
+                                data-delete-id="<?php echo (int)$detailId; ?>"
+                                data-product-id="<?php echo htmlspecialchars((string)$item['id'], ENT_QUOTES); ?>">Xóa</button>
                         </div>
                     </div>
 
@@ -675,17 +681,23 @@ if ($result_cart->num_rows > 0) {
                     </div>
 
                     <div class="qty-control">
-                        <button class="qty-btn"
-                            onclick="updateQty(<?php echo (int)$item['chi_tiet_id']; ?>, -1)">-</button>
-                        <input type="number" class="qty-input" id="qty-<?php echo (int)$item['chi_tiet_id']; ?>"
+                        <button type="button" class="qty-btn"
+                            data-detail-id="<?php echo (int)$detailId; ?>"
+                            data-product-id="<?php echo htmlspecialchars((string)$item['id'], ENT_QUOTES); ?>"
+                            data-row-key="<?php echo htmlspecialchars($rowKey, ENT_QUOTES); ?>"
+                            data-change="-1">-</button>
+                        <input type="number" class="qty-input" id="qty-<?php echo htmlspecialchars($rowKey, ENT_QUOTES); ?>"
                             value="<?php echo $item['qty']; ?>" readonly>
-                        <button class="qty-btn"
-                            onclick="updateQty(<?php echo (int)$item['chi_tiet_id']; ?>, 1)">+</button>
+                        <button type="button" class="qty-btn"
+                            data-detail-id="<?php echo (int)$detailId; ?>"
+                            data-product-id="<?php echo htmlspecialchars((string)$item['id'], ENT_QUOTES); ?>"
+                            data-row-key="<?php echo htmlspecialchars($rowKey, ENT_QUOTES); ?>"
+                            data-change="1">+</button>
                     </div>
 
                     <div class="total-price-col d-none d-md-block">
                         <span
-                            id="total-<?php echo (int)$item['chi_tiet_id']; ?>"><?php echo number_format($item['price'] * $item['qty'], 0, ',', '.'); ?>₫</span>
+                            id="total-<?php echo htmlspecialchars($rowKey, ENT_QUOTES); ?>"><?php echo number_format($item['price'] * $item['qty'], 0, ',', '.'); ?>₫</span>
                     </div>
                 </div>
 
@@ -803,7 +815,7 @@ if ($result_cart->num_rows > 0) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="cart-events.js?v=<?php echo urlencode((string) (@filemtime(__DIR__ . '/cart-events.js') ?: time())); ?>"></script>
-    <script src="web-events.js?v=20260412-3"></script>
+    <script src="web-events.js?v=20260414-3"></script>
 </body>
 
 </html>

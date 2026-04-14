@@ -1057,7 +1057,7 @@ $categories = $__catalogData['categories'];
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="web-events.js?v=20260412-3"></script>
+    <script src="web-events.js?v=20260414-3"></script>
 
     <script>
     const slider = document.querySelector('.category-scroll-inner');

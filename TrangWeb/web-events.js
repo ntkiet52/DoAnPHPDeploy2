@@ -8,7 +8,10 @@
   const AI_ADVISOR_ENDPOINT = "ai-advisor.php";
   const USER_MENU_STYLE_ID = "ack-global-user-menu-style";
   const CHATBOT_STYLE_ID = "ack-global-chatbot-style";
+  const CHATBOT_HISTORY_PREFIX = "ack_chatbot_history_v1_";
+  const CHATBOT_AUTH_STATE_KEY = "ack_chatbot_auth_state_v1";
   const LOCATION_STORAGE_KEY = "ack_selected_location";
+  const FAVORITES_KEY_PREFIX = "ack_favorites_v1_";
   let userSessionPromise = null;
   let locationListPromise = null;
 
@@ -209,6 +212,42 @@
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
   }
 
+  function getFavoritesStorageKey(userData) {
+    if (userData?.is_logged_in) {
+      const userId = Number.parseInt(String(userData?.user_id || 0), 10) || 0;
+      if (userId > 0) return `${FAVORITES_KEY_PREFIX}uid_${userId}`;
+
+      const email = String(userData?.email || "")
+        .trim()
+        .toLowerCase();
+      if (email) return `${FAVORITES_KEY_PREFIX}mail_${email}`;
+    }
+
+    return `${FAVORITES_KEY_PREFIX}guest`;
+  }
+
+  async function loadFavoritesForCurrentUser() {
+    const userData = await fetchCurrentUserSession();
+    const storageKey = getFavoritesStorageKey(userData || {});
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  async function saveFavoritesForCurrentUser(items) {
+    const userData = await fetchCurrentUserSession();
+    const storageKey = getFavoritesStorageKey(userData || {});
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(Array.isArray(items) ? items : []),
+    );
+  }
+
   function toast(message) {
     const node = document.createElement("div");
     node.textContent = message;
@@ -235,6 +274,37 @@
       .replace(/>/g, "&gt;")
       .replace(/\"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function getCurrentPageBasename() {
+    try {
+      const pathname = String(window.location.pathname || "");
+      const clean = pathname.split("?")[0].split("#")[0];
+      const segments = clean.split("/").filter(Boolean);
+      return String(segments[segments.length - 1] || "").toLowerCase();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function shouldHideQuickPromoFormOnPage() {
+    const page = getCurrentPageBasename();
+    if (!page) return false;
+
+    if (page === "giohang.php") return true;
+    if (page === "drink-detail.php") return true;
+    if (page === "don-hang-cua-toi.php") return true;
+
+    // Các trang nhóm hàng theo convention: Trang*.php (không gồm trangchu.php)
+    if (
+      page.startsWith("trang") &&
+      page.endsWith(".php") &&
+      page !== "trangchu.php"
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   function injectGlobalUserMenuStyles() {
@@ -481,11 +551,45 @@
     dropdownMenu.appendChild(orderItem);
   }
 
+  function ensureFavoritesItemInDropdown(dropdownMenu) {
+    if (!dropdownMenu) return;
+    if (dropdownMenu.querySelector('a[href*="tai-khoan.php?tab=favorites"]')) {
+      return;
+    }
+
+    const favoritesItem = document.createElement("li");
+    favoritesItem.innerHTML =
+      '<a class="dropdown-item" href="tai-khoan.php?tab=favorites"><i class="fas fa-heart me-2 text-primary"></i>Sản phẩm yêu thích</a>';
+
+    const orderItem = dropdownMenu.querySelector(
+      'a[href*="don-hang-cua-toi.php"]',
+    );
+    const settingsItem = dropdownMenu.querySelector(
+      'a[href*="tai-khoan.php?tab=settings"]',
+    );
+
+    if (orderItem?.parentElement) {
+      orderItem.parentElement.insertAdjacentElement("afterend", favoritesItem);
+      return;
+    }
+
+    if (settingsItem?.parentElement) {
+      settingsItem.parentElement.insertAdjacentElement(
+        "beforebegin",
+        favoritesItem,
+      );
+      return;
+    }
+
+    dropdownMenu.appendChild(favoritesItem);
+  }
+
   function syncExistingDropdown() {
     document.querySelectorAll(".user-dropdown-menu").forEach((menu) => {
       const hasLogout = !!menu.querySelector('a[href*="logout.php"]');
       if (hasLogout) {
         ensureOrderItemInDropdown(menu);
+        ensureFavoritesItemInDropdown(menu);
       }
     });
   }
@@ -735,11 +839,9 @@
     const role = escapeHtml(userData?.role_label || "Khách");
     const email = escapeHtml(userData?.email || "Chưa cập nhật email");
 
-    const loggedInItems = `
-      <li><a class="dropdown-item" href="tai-khoan.php?tab=info"><i class="fas fa-id-badge me-2 text-primary"></i>Thông tin tài khoản</a></li>
-      <li><a class="dropdown-item" href="tai-khoan.php?tab=manage"><i class="fas fa-briefcase me-2 text-primary"></i>Quản lý tài khoản</a></li>
-      <li><a class="dropdown-item" href="don-hang-cua-toi.php"><i class="fas fa-receipt me-2 text-primary"></i>Đơn hàng của tôi</a></li>
-      <li><a class="dropdown-item" href="tai-khoan.php?tab=settings"><i class="fas fa-gear me-2 text-primary"></i>Cài đặt tài khoản</a></li>
+    const promoFormItem = shouldHideQuickPromoFormOnPage()
+      ? ""
+      : `
       <li class="ack-promo-form-item">
         <label class="ack-promo-form-label">Lấy khuyến mãi nhanh</label>
         <form class="ack-promo-form-wrap" data-promo-form>
@@ -748,7 +850,15 @@
           </select>
           <button class="btn btn-sm btn-primary ack-promo-submit" type="submit">Lấy mã</button>
         </form>
-      </li>
+      </li>`;
+
+    const loggedInItems = `
+      <li><a class="dropdown-item" href="tai-khoan.php?tab=info"><i class="fas fa-id-badge me-2 text-primary"></i>Thông tin tài khoản</a></li>
+      <li><a class="dropdown-item" href="tai-khoan.php?tab=manage"><i class="fas fa-briefcase me-2 text-primary"></i>Quản lý tài khoản</a></li>
+      <li><a class="dropdown-item" href="don-hang-cua-toi.php"><i class="fas fa-receipt me-2 text-primary"></i>Đơn hàng của tôi</a></li>
+      <li><a class="dropdown-item" href="tai-khoan.php?tab=favorites"><i class="fas fa-heart me-2 text-primary"></i>Sản phẩm yêu thích</a></li>
+      <li><a class="dropdown-item" href="tai-khoan.php?tab=settings"><i class="fas fa-gear me-2 text-primary"></i>Cài đặt tài khoản</a></li>
+      ${promoFormItem}
       <li><hr class="dropdown-divider my-1"></li>
       <li><a class="dropdown-item text-danger" href="../Login/logout.php"><i class="fas fa-right-from-bracket me-2"></i>Đăng xuất</a></li>
     `;
@@ -1025,6 +1135,179 @@
       qty: 1,
       desc: "",
     };
+  }
+
+  function findProductLinkFromCard(card, fallbackId = "") {
+    const explicitLink = String(card?.getAttribute("data-link") || "").trim();
+    if (explicitLink) return explicitLink;
+
+    const detailLink = card?.querySelector('a[href*="drink-detail.php"]');
+    const href = String(detailLink?.getAttribute("href") || "").trim();
+    if (href) return href;
+
+    const page = getCurrentPageBasename();
+    if (page === "drink-detail.php") {
+      return `${page}${window.location.search || ""}`;
+    }
+
+    const safeId = String(fallbackId || "").trim();
+    return safeId
+      ? `drink-detail.php?id=${encodeURIComponent(safeId)}`
+      : "drink-detail.php";
+  }
+
+  async function addProductToFavorites(item, productLink) {
+    if (!item || !item.id) return { added: false, items: [] };
+
+    const favorites = await loadFavoritesForCurrentUser();
+    const idKey = String(item.id).trim();
+    const existed = favorites.some(
+      (fav) => String(fav?.id || "").trim() === idKey,
+    );
+
+    if (existed) {
+      return { added: false, items: favorites };
+    }
+
+    const nextItems = [
+      {
+        id: idKey,
+        name: String(item.name || "Sản phẩm"),
+        price: Number(item.price || 0),
+        img: String(item.img || "../TrangUser/ack.png"),
+        link: String(productLink || "drink-detail.php"),
+        added_at: Date.now(),
+      },
+      ...favorites,
+    ].slice(0, 120);
+
+    await saveFavoritesForCurrentUser(nextItems);
+    return { added: true, items: nextItems };
+  }
+
+  function renderFavoritesList(container, items) {
+    if (!container) return;
+
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) {
+      container.innerHTML =
+        '<div class="list-group-item text-muted small">Chưa có sản phẩm yêu thích. Hãy bấm vào biểu tượng trái tim ở sản phẩm để thêm.</div>';
+      return;
+    }
+
+    container.innerHTML = list
+      .map((item) => {
+        const name = escapeHtml(item?.name || "Sản phẩm");
+        const id = escapeHtml(item?.id || "");
+        const img = escapeHtml(item?.img || "../TrangUser/ack.png");
+        const link = escapeHtml(item?.link || "drink-detail.php");
+        const price = formatMoney(Number(item?.price || 0));
+
+        return `
+          <div class="list-group-item d-flex align-items-center gap-3">
+            <a href="${link}" class="text-decoration-none">
+              <img src="${img}" alt="${name}" style="width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid #e5e7eb;" onerror="this.src='../TrangUser/ack.png'">
+            </a>
+            <div class="flex-grow-1 min-w-0">
+              <a href="${link}" class="fw-semibold text-decoration-none d-block text-truncate">${name}</a>
+              <div class="small text-muted">${price}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-favorite-remove-id="${id}" data-favorite-remove-name="${name}">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  async function renderFavoritesWidgets() {
+    const containers = Array.from(
+      document.querySelectorAll("[data-favorites-list]"),
+    );
+    if (!containers.length) return;
+
+    const items = await loadFavoritesForCurrentUser();
+    containers.forEach((container) => renderFavoritesList(container, items));
+  }
+
+  function bindFavoriteButtons() {
+    if (document.body.dataset.ackFavoritesBound === "1") return;
+    document.body.dataset.ackFavoritesBound = "1";
+
+    document.addEventListener(
+      "click",
+      async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const removeBtn = target.closest("[data-favorite-remove-id]");
+        if (removeBtn) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const removeId = String(
+            removeBtn.getAttribute("data-favorite-remove-id") || "",
+          ).trim();
+          if (!removeId) return;
+
+          const removeName = String(
+            removeBtn.getAttribute("data-favorite-remove-name") || "",
+          ).trim();
+          const favorites = await loadFavoritesForCurrentUser();
+          const nextItems = favorites.filter(
+            (item) => String(item?.id || "").trim() !== removeId,
+          );
+          await saveFavoritesForCurrentUser(nextItems);
+          renderFavoritesWidgets();
+          toast(
+            removeName
+              ? `Đã bỏ "${removeName}" khỏi yêu thích`
+              : "Đã bỏ sản phẩm khỏi yêu thích",
+          );
+          return;
+        }
+
+        const hasHeartIcon = !!target.closest(".fa-heart");
+        const textAction = target.closest("a,button,span");
+        const text = String(textAction?.textContent || "").toLowerCase();
+        const clickedFavoriteText =
+          text.includes("yêu thích") || text.includes("yeu thich");
+
+        if (!hasHeartIcon && !clickedFavoriteText) return;
+        if (target.closest(".ack-user-menu")) return;
+
+        const trigger = target.closest("a,button,span,div") || target;
+
+        const card = trigger.closest(
+          ".product-card, .product-container, .cart-item-card, [data-product-id]",
+        );
+        if (!card) {
+          toast("Không xác định được sản phẩm để thêm yêu thích.");
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const item = getProductFromCard(card);
+        if (!item) {
+          toast("Không xác định được sản phẩm để thêm yêu thích.");
+          return;
+        }
+
+        const productLink = findProductLinkFromCard(card, item.id);
+        const result = await addProductToFavorites(item, productLink);
+        if (result.added) {
+          toast(`Đã thêm "${item.name}" vào yêu thích`);
+        } else {
+          toast(`"${item.name}" đã có trong yêu thích`);
+        }
+
+        renderFavoritesWidgets();
+      },
+      true,
+    );
   }
 
   async function fetchStockMapByIds(productIds) {
@@ -2255,7 +2538,7 @@
 
       .chatbot-products {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
         margin: 10px 0 2px;
       }
@@ -2342,6 +2625,7 @@
           font-size: 24px;
         }
       }
+
     `;
 
     document.head.appendChild(style);
@@ -2351,7 +2635,12 @@
     const hasButton = !!document.getElementById("chatbot-button");
     const hasWidget = !!document.getElementById("chatbot-widget");
 
-    // Trang nào đã tự có chatbot riêng thì không đụng vào
+    if (hasButton && hasWidget) {
+      injectGlobalChatbotStyles();
+      return true;
+    }
+
+    // Trang có widget lệch/cụt structure thì không cố tự vá để tránh side-effects
     if (hasButton || hasWidget) {
       return false;
     }
@@ -2386,9 +2675,48 @@
     return true;
   }
 
+  function getChatbotAuthState(userData) {
+    const isLoggedIn = !!userData?.is_logged_in;
+    if (!isLoggedIn) return "guest";
+
+    const userId = Number.parseInt(String(userData?.user_id || 0), 10) || 0;
+    if (userId > 0) {
+      return `user_${userId}`;
+    }
+
+    const email = String(userData?.email || "")
+      .trim()
+      .toLowerCase();
+    if (email) {
+      return `user_${email}`;
+    }
+
+    const name = String(userData?.name || "")
+      .trim()
+      .toLowerCase();
+    return name ? `user_${name}` : "user_unknown";
+  }
+
+  function clearAllChatbotHistories() {
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith(CHATBOT_HISTORY_PREFIX)) {
+          keysToRemove.push(key);
+        }
+      }
+
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    } catch (_) {
+      // silent
+    }
+  }
+
   function bindGlobalChatbot() {
-    const createdByGlobal = ensureGlobalChatbotWidget();
-    if (!createdByGlobal) {
+    const canBind = ensureGlobalChatbotWidget();
+    if (!canBind) {
       return;
     }
 
@@ -2421,7 +2749,57 @@
     if (chatbotWidget.dataset.ackBound === "1") {
       return;
     }
+
+    window.__ackChatbotManagedByGlobal = true;
     chatbotWidget.dataset.ackBound = "1";
+
+    const defaultChatHtml = chatbotMessages.innerHTML;
+    let activeHistoryKey = `${CHATBOT_HISTORY_PREFIX}guest`;
+
+    function persistChatbotHistory() {
+      try {
+        localStorage.setItem(activeHistoryKey, chatbotMessages.innerHTML || "");
+      } catch (_) {
+        // silent
+      }
+    }
+
+    function restoreChatbotHistory() {
+      let stored = "";
+      try {
+        stored = String(localStorage.getItem(activeHistoryKey) || "");
+      } catch (_) {
+        stored = "";
+      }
+
+      if (stored.trim() !== "") {
+        chatbotMessages.innerHTML = stored;
+      } else {
+        chatbotMessages.innerHTML = defaultChatHtml;
+        persistChatbotHistory();
+      }
+
+      chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+    }
+
+    function syncChatbotHistoryScope(userData) {
+      const currentAuthState = getChatbotAuthState(userData);
+      const prevAuthState = String(
+        localStorage.getItem(CHATBOT_AUTH_STATE_KEY) || "",
+      );
+
+      if (prevAuthState && prevAuthState !== currentAuthState) {
+        clearAllChatbotHistories();
+      }
+
+      localStorage.setItem(CHATBOT_AUTH_STATE_KEY, currentAuthState);
+      activeHistoryKey = `${CHATBOT_HISTORY_PREFIX}${currentAuthState}`;
+      restoreChatbotHistory();
+    }
+
+    fetchCurrentUserSession()
+      .then((userData) => syncChatbotHistoryScope(userData || {}))
+      .catch(() => syncChatbotHistoryScope({ is_logged_in: false }));
 
     chatbotButton.addEventListener("click", () => {
       chatbotWidget.classList.toggle("active");
@@ -2441,6 +2819,7 @@
       aiDiv.className = "chatbot-message ai";
       aiDiv.innerHTML = `<div class="chatbot-bubble">${escapeHtml(text)}</div>`;
       chatbotMessages.appendChild(aiDiv);
+      persistChatbotHistory();
       chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
     }
 
@@ -2450,7 +2829,7 @@
         (product) => {
           const productUrl = product?.link || "#";
           html += `
-          <a href="${escapeHtml(productUrl)}" class="chatbot-product-item" target="_blank" title="${escapeHtml(product?.name || "")}">
+          <a href="${escapeHtml(productUrl)}" class="chatbot-product-item" title="${escapeHtml(product?.name || "")}">
             <img src="${escapeHtml(product?.img || "")}" alt="${escapeHtml(product?.name || "")}" class="chatbot-product-img">
             <div class="chatbot-product-body">
               <div class="chatbot-product-name">${escapeHtml(product?.name || "")}</div>
@@ -2489,7 +2868,7 @@
 
         html += `
           <div class="chatbot-view-more">
-            <a href="${escapeHtml(categoryLink)}" target="_blank">
+            <a href="${escapeHtml(categoryLink)}">
               <button class="chatbot-view-more-btn" type="button">Xem thêm ${remaining} sản phẩm →</button>
             </a>
           </div>
@@ -2507,6 +2886,7 @@
       userDiv.className = "chatbot-message user";
       userDiv.innerHTML = `<div class="chatbot-bubble">${escapeHtml(message)}</div>`;
       chatbotMessages.appendChild(userDiv);
+      persistChatbotHistory();
       chatbotInput.value = "";
 
       const typingDiv = document.createElement("div");
@@ -2546,6 +2926,7 @@
           productsDiv.className = "chatbot-message ai";
           productsDiv.innerHTML = buildProductsHtml(data);
           chatbotMessages.appendChild(productsDiv);
+          persistChatbotHistory();
           chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
         }
       } catch (_) {
@@ -2571,6 +2952,8 @@
     bindGlobalChatbot();
     syncProductStockStates();
     bindAddToCartButtons();
+    bindFavoriteButtons();
+    renderFavoritesWidgets();
     bindProductCardNavigation();
     bindSearchFilter();
     updateCartBadge();

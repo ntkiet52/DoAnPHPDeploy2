@@ -358,6 +358,22 @@ function ensureVoucherUsageTable(mysqli $conn): void
     $conn->query($sql);
 }
 
+function ensureVoucherClaimTable(mysqli $conn): void
+{
+    $sql = "CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_nhan (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_key VARCHAR(100) NOT NULL,
+                id_voucher INT NOT NULL,
+                ma_voucher VARCHAR(100) NOT NULL,
+                thoi_gian_nhan DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_claim_user_voucher (user_key, id_voucher),
+                INDEX idx_claim_user_key (user_key),
+                INDEX idx_claim_voucher_id (id_voucher)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+    $conn->query($sql);
+}
+
 $action = trim((string) ($_POST['action'] ?? $_GET['action'] ?? ''));
 $maKhachHang = currentCustomerCode();
 $voucherUserKey = currentVoucherUserKey();
@@ -485,28 +501,37 @@ try {
 
         case 'update_quantity': {
             $idChiTiet = max(0, (int) ($_POST['id_chi_tiet'] ?? 0));
+            $maSanPhamFromPost = trim((string) ($_POST['ma_san_pham'] ?? ''));
             $soLuong = (int) ($_POST['so_luong'] ?? 0);
-            if ($idChiTiet <= 0) {
-                respondCart(false, 'Thiếu id_chi_tiet.', [], 400);
+            if ($idChiTiet <= 0 && $maSanPhamFromPost === '') {
+                respondCart(false, 'Thiếu thông tin sản phẩm để cập nhật số lượng.', [], 400);
             }
 
             if ($soLuong <= 0) {
-                $_POST['id_chi_tiet'] = (string) $idChiTiet;
-                $_POST['action'] = 'remove_item';
-                $action = 'remove_item';
-                // Continue with remove action logic by recursion-like handling
-                $stmt = $conn->prepare('DELETE gct FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
                 $active = 'active';
-                $stmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+                if ($idChiTiet > 0) {
+                    $stmt = $conn->prepare('DELETE gct FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+                    $stmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+                } else {
+                    $stmt = $conn->prepare('DELETE gct FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.ma_san_pham = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+                    $stmt->bind_param('sss', $maSanPhamFromPost, $maKhachHang, $active);
+                }
+
                 $stmt->execute();
                 $affected = $stmt->affected_rows;
                 $stmt->close();
                 respondCart($affected > 0, $affected > 0 ? 'Đã xóa sản phẩm.' : 'Không tìm thấy sản phẩm.');
             }
 
-            $detailStmt = $conn->prepare('SELECT gct.ma_san_pham FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ? LIMIT 1');
             $active = 'active';
-            $detailStmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+            if ($idChiTiet > 0) {
+                $detailStmt = $conn->prepare('SELECT gct.id_chi_tiet, gct.ma_san_pham FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ? LIMIT 1');
+                $detailStmt->bind_param('iss', $idChiTiet, $maKhachHang, $active);
+            } else {
+                $detailStmt = $conn->prepare('SELECT gct.id_chi_tiet, gct.ma_san_pham FROM gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang WHERE gct.ma_san_pham = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ? ORDER BY gct.id_chi_tiet DESC LIMIT 1');
+                $detailStmt->bind_param('sss', $maSanPhamFromPost, $maKhachHang, $active);
+            }
+
             $detailStmt->execute();
             $detailRes = $detailStmt->get_result();
             $detailRow = $detailRes ? $detailRes->fetch_assoc() : null;
@@ -517,6 +542,8 @@ try {
             }
 
             $maSanPham = trim((string) $detailRow['ma_san_pham']);
+            $resolvedDetailId = max(0, (int) ($detailRow['id_chi_tiet'] ?? 0));
+
             $availableStock = getAvailableStockByProduct($conn, $maSanPham);
             if ($soLuong > $availableStock) {
                 respondCart(false, 'Số lượng vượt quá tồn kho. Hiện chỉ còn ' . $availableStock . ' sản phẩm.', [
@@ -525,14 +552,21 @@ try {
                 ], 400);
             }
 
-            $stmt = $conn->prepare('UPDATE gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang SET gct.so_luong = ? WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
-            $stmt->bind_param('iiss', $soLuong, $idChiTiet, $maKhachHang, $active);
+            if ($resolvedDetailId > 0) {
+                $stmt = $conn->prepare('UPDATE gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang SET gct.so_luong = ? WHERE gct.id_chi_tiet = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+                $stmt->bind_param('iiss', $soLuong, $resolvedDetailId, $maKhachHang, $active);
+            } else {
+                $stmt = $conn->prepare('UPDATE gio_hang_chi_tiet gct INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang SET gct.so_luong = ? WHERE gct.ma_san_pham = ? AND gh.ma_khach_hang = ? AND gh.trang_thai = ?');
+                $stmt->bind_param('isss', $soLuong, $maSanPham, $maKhachHang, $active);
+            }
+
             $stmt->execute();
             $affected = $stmt->affected_rows;
             $stmt->close();
 
             respondCart($affected >= 0, 'Cập nhật số lượng thành công.', [
-                'id_chi_tiet' => $idChiTiet,
+                'id_chi_tiet' => $resolvedDetailId,
+                'ma_san_pham' => $maSanPham,
                 'so_luong' => $soLuong,
                 'available_stock' => $availableStock,
             ]);
@@ -634,6 +668,7 @@ try {
 
         case 'apply_voucher': {
             ensureVoucherUsageTable($conn);
+            ensureVoucherClaimTable($conn);
 
             $maVoucher = strtoupper(trim((string) ($_POST['ma_voucher'] ?? '')));
             if ($maVoucher === '') {
@@ -666,9 +701,23 @@ try {
             }
 
             $voucherId = (int) ($voucher['id_voucher'] ?? 0);
+
+            $claimStmt = $conn->prepare('SELECT id FROM voucher_nguoi_dung_da_nhan WHERE user_key = ? AND (id_voucher = ? OR UPPER(ma_voucher) = ?) LIMIT 1');
+            $claimCode = (string) ($voucher['ma_voucher'] ?? $maVoucher);
+            $claimStmt->bind_param('sis', $voucherUserKey, $voucherId, $claimCode);
+            $claimStmt->execute();
+            $claimRes = $claimStmt->get_result();
+            $isClaimed = $claimRes && $claimRes->num_rows > 0;
+            $claimStmt->close();
+
+            if (!$isClaimed) {
+                respondCart(false, 'Bạn chưa nhận voucher này. Vào Tài khoản > Quản lý để nhận trước khi sử dụng.', [], 400);
+            }
+
             if ($voucherId > 0) {
-                $usedStmt = $conn->prepare('SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = ? AND id_voucher = ? LIMIT 1');
-                $usedStmt->bind_param('si', $voucherUserKey, $voucherId);
+                $voucherCodeNormalized = strtoupper((string) ($voucher['ma_voucher'] ?? $maVoucher));
+                $usedStmt = $conn->prepare('SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = ? AND (id_voucher = ? OR UPPER(ma_voucher) = ?) LIMIT 1');
+                $usedStmt->bind_param('sis', $voucherUserKey, $voucherId, $voucherCodeNormalized);
                 $usedStmt->execute();
                 $usedRes = $usedStmt->get_result();
                 $alreadyUsed = $usedRes && $usedRes->num_rows > 0;
@@ -697,17 +746,23 @@ try {
 
         case 'get_available_vouchers': {
             ensureVoucherUsageTable($conn);
+                        ensureVoucherClaimTable($conn);
 
-            $query = 'SELECT id_voucher, ma_voucher, ten_voucher, mo_ta, kieu_giam, gia_tri_giam, so_luong_toi_da, so_luong_da_su_dung, tien_toi_thieu, ngay_bat_dau, ngay_ket_thuc
-                      FROM voucher
-                      WHERE trang_thai = ?
-                      AND NOW() BETWEEN ngay_bat_dau AND ngay_ket_thuc
-                      ORDER BY ngay_ket_thuc ASC, id_voucher DESC
-                      LIMIT 20';
+                        $query = 'SELECT v.id_voucher, v.ma_voucher, v.ten_voucher, v.mo_ta, v.kieu_giam, v.gia_tri_giam, v.so_luong_toi_da, v.so_luong_da_su_dung, v.tien_toi_thieu, v.ngay_bat_dau, v.ngay_ket_thuc
+                                            FROM voucher v
+                                            INNER JOIN voucher_nguoi_dung_da_nhan c
+                                                ON c.user_key = ? AND (c.id_voucher = v.id_voucher OR UPPER(c.ma_voucher) = UPPER(v.ma_voucher))
+                                            LEFT JOIN voucher_nguoi_dung_da_dung u
+                                                ON u.user_key = ? AND (u.id_voucher = v.id_voucher OR UPPER(u.ma_voucher) = UPPER(v.ma_voucher))
+                                            WHERE v.trang_thai = ?
+                                            AND NOW() BETWEEN v.ngay_bat_dau AND v.ngay_ket_thuc
+                                            AND u.id IS NULL
+                                            ORDER BY v.ngay_ket_thuc ASC, v.id_voucher DESC
+                                            LIMIT 20';
 
             $stmt = $conn->prepare($query);
             $active = 'active';
-            $stmt->bind_param('s', $active);
+                        $stmt->bind_param('sss', $voucherUserKey, $voucherUserKey, $active);
             $stmt->execute();
             $res = $stmt->get_result();
 
@@ -723,33 +778,25 @@ try {
                     continue;
                 }
 
-                $voucherId = (int) ($row['id_voucher'] ?? 0);
-                if ($voucherId > 0) {
-                    $usedStmt = $conn->prepare('SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = ? AND id_voucher = ? LIMIT 1');
-                    $usedStmt->bind_param('si', $voucherUserKey, $voucherId);
-                    $usedStmt->execute();
-                    $usedRes = $usedStmt->get_result();
-                    $alreadyUsed = $usedRes && $usedRes->num_rows > 0;
-                    $usedStmt->close();
-
-                    if ($alreadyUsed) {
-                        continue;
-                    }
-                }
-
                 $discountText = formatVoucherDiscount($row);
                 $minOrder = (float) ($row['tien_toi_thieu'] ?? 0);
+                $voucherCode = (string) ($row['ma_voucher'] ?? '');
+                $voucherName = trim((string) ($row['ten_voucher'] ?? ''));
+                $labelPrefix = $voucherCode;
+                if ($voucherName !== '') {
+                    $labelPrefix .= ' - ' . $voucherName;
+                }
 
                 $vouchers[] = [
                     'id' => (int) $row['id_voucher'],
-                    'ma_voucher' => (string) $row['ma_voucher'],
-                    'ten_voucher' => (string) ($row['ten_voucher'] ?? ''),
+                    'ma_voucher' => $voucherCode,
+                    'ten_voucher' => $voucherName,
                     'mo_ta' => (string) ($row['mo_ta'] ?? ''),
                     'kieu_giam' => (string) ($row['kieu_giam'] ?? 'fixed'),
                     'gia_tri_giam' => (float) ($row['gia_tri_giam'] ?? 0),
                     'discount_text' => $discountText,
                     'tien_toi_thieu' => $minOrder,
-                    'label' => (string) $row['ma_voucher'] . ' - ' . $discountText . ' (Tối thiểu ' . number_format((int) round($minOrder), 0, ',', '.') . 'đ)',
+                    'label' => $labelPrefix . ' • ' . $discountText . ' (Tối thiểu ' . number_format((int) round($minOrder), 0, ',', '.') . 'đ)',
                     'ngay_ket_thuc' => (string) ($row['ngay_ket_thuc'] ?? ''),
                 ];
             }

@@ -267,7 +267,7 @@ function isExcludedSpentStatus(string $rawStatus): bool {
 }
 
 $tab = strtolower(trim((string) ($_GET['tab'] ?? 'info')));
-if (!in_array($tab, ['info', 'manage', 'settings'], true)) {
+if (!in_array($tab, ['info', 'manage', 'favorites', 'settings'], true)) {
     $tab = 'info';
 }
 
@@ -555,7 +555,12 @@ if (isset($conn) && $conn instanceof mysqli) {
     }
 
     $claimedStmt = $conn->prepare(
-        "SELECT ma_voucher, thoi_gian_nhan FROM voucher_nguoi_dung_da_nhan WHERE user_key = ? ORDER BY thoi_gian_nhan DESC LIMIT 8"
+        "SELECT r.ma_voucher, r.thoi_gian_nhan, v.ten_voucher
+         FROM voucher_nguoi_dung_da_nhan r
+         LEFT JOIN voucher v ON v.id_voucher = r.id_voucher
+         WHERE r.user_key = ?
+         ORDER BY r.thoi_gian_nhan DESC
+         LIMIT 8"
     );
     if ($claimedStmt) {
         $claimedStmt->bind_param('s', $voucherUserKey);
@@ -1015,6 +1020,8 @@ if (isset($conn) && $conn instanceof mysqli) {
                         href="tai-khoan.php?tab=manage"><i class="fas fa-folder-tree me-2"></i>Quản lý</a>
                     <a class="menu-link" href="don-hang-cua-toi.php"><i class="fas fa-receipt me-2"></i>Đơn hàng của
                         tôi</a>
+                    <a class="menu-link <?php echo $tab === 'favorites' ? 'active' : ''; ?>"
+                        href="tai-khoan.php?tab=favorites"><i class="fas fa-heart me-2"></i>Sản phẩm yêu thích</a>
                     <a class="menu-link <?php echo $tab === 'settings' ? 'active' : ''; ?>"
                         href="tai-khoan.php?tab=settings"><i class="fas fa-gear me-2"></i>Cài đặt</a>
                     <hr>
@@ -1135,8 +1142,17 @@ if (isset($conn) && $conn instanceof mysqli) {
                                     <div class="small text-muted mt-2">Đã nhận gần đây:</div>
                                     <div>
                                         <?php foreach ($claimedVouchers as $claimed): ?>
-                                        <span class="voucher-tag"><i
-                                                class="fas fa-check-circle"></i><?php echo htmlspecialchars((string) ($claimed['ma_voucher'] ?? '')); ?></span>
+                                        <?php $claimedCode = (string) ($claimed['ma_voucher'] ?? ''); ?>
+                                        <?php $claimedName = trim((string) ($claimed['ten_voucher'] ?? '')); ?>
+                                        <a class="voucher-tag text-decoration-none"
+                                            href="giohang.php?voucher=<?php echo urlencode($claimedCode); ?>"
+                                            title="Dùng ngay voucher này ở giỏ hàng">
+                                            <i class="fas fa-check-circle"></i>
+                                            <?php echo htmlspecialchars($claimedCode); ?>
+                                            <?php if ($claimedName !== ''): ?>
+                                            - <?php echo htmlspecialchars($claimedName); ?>
+                                            <?php endif; ?>
+                                        </a>
                                         <?php endforeach; ?>
                                     </div>
                                     <?php endif; ?>
@@ -1176,6 +1192,14 @@ if (isset($conn) && $conn instanceof mysqli) {
                                         đã mua</a>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    <?php elseif ($tab === 'favorites'): ?>
+                    <div class="panel p-3 p-md-4">
+                        <h5 class="fw-bold mb-3">Sản phẩm yêu thích</h5>
+                        <p class="text-muted small mb-3">Bấm vào biểu tượng trái tim ở sản phẩm để lưu nhanh vào danh sách yêu thích của bạn.</p>
+                        <div class="list-group" data-favorites-list>
+                            <div class="list-group-item text-muted small">Đang tải danh sách yêu thích...</div>
                         </div>
                     </div>
                     <?php else: ?>
@@ -1298,7 +1322,7 @@ if (isset($conn) && $conn instanceof mysqli) {
         window.addEventListener('load', updateHeaderOffset);
     })();
     </script>
-    <script src="web-events.js?v=20260412-3"></script>
+    <script src="web-events.js?v=20260414-3"></script>
 </body>
 
 </html>

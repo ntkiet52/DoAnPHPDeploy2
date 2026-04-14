@@ -285,6 +285,14 @@ function resolveStatusMetaFromOrderRow(array $orderRow): array {
 
 $userName = trim((string) ($_SESSION['user_name'] ?? 'Khách hàng'));
 $userEmail = strtolower(trim((string) ($_SESSION['user_email'] ?? '')));
+$userRole = strtolower(trim((string) ($_SESSION['user_role'] ?? 'khachhang')));
+
+$roleLabelMap = [
+    'admin' => 'Quản trị viên',
+    'khachhang' => 'Khách hàng',
+    'user' => 'Khách hàng',
+];
+$roleLabel = $roleLabelMap[$userRole] ?? 'Khách hàng';
 
 $orders = [];
 $dbError = '';
@@ -781,38 +789,118 @@ $hasOrders = count($orders) > 0;
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-    :root {
-        --bg-main: #f1f4fb;
-        --text-main: #0f172a;
-        --text-muted: #64748b;
-        --brand: #3b82f6;
-        --brand-2: #0ea5e9;
-        --line: #e2e8f0;
-        --panel-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
-    }
-
     body {
-        background: radial-gradient(circle at 12% 0%, #eef2ff 0%, var(--bg-main) 40%, #eef3fb 100%);
+        background: #f5f7fb;
         font-family: 'Segoe UI', sans-serif;
-        color: var(--text-main);
     }
 
-    body.orders-static-layout {
+    body.account-split-layout {
         overflow: hidden;
     }
 
-    .orders-page-container {
-        min-height: 0;
+    .account-page-container {
         padding-top: 10px;
-        padding-bottom: 10px;
-        max-width: 100%;
+        padding-bottom: 5px;
     }
 
-    body.orders-static-layout .orders-page-container {
-        height: calc(100vh - var(--orders-header-offset, 130px));
+    body.account-split-layout .account-page-container {
+        height: calc(100vh - var(--account-header-offset, 130px));
         overflow: hidden;
         display: flex;
         flex-direction: column;
+    }
+
+    .account-page-heading {
+        flex: 0 0 auto;
+    }
+
+    .account-layout-row {
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+
+    body.account-split-layout .account-layout-row {
+        overflow: hidden;
+    }
+
+    body.account-split-layout .account-layout-row>.account-left-col,
+    body.account-split-layout .account-layout-row>.account-right-col {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    body.account-split-layout .account-layout-row>.account-right-col {
+        overflow: hidden;
+    }
+
+    .account-right-scroll {
+        min-height: 0;
+    }
+
+    body.account-split-layout .account-right-scroll {
+        flex: 1 1 auto;
+        height: 100%;
+        max-height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 0;
+        padding-bottom: 5px;
+        border-radius: 14px;
+        box-sizing: border-box;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    body.account-split-layout .account-right-scroll .panel {
+        overflow: hidden;
+    }
+
+    body.account-split-layout .account-right-scroll::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
+    }
+
+    .avatar-circle {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff6d8;
+        color: #f59f00;
+        border: 1px solid #ffe7a5;
+        font-size: 1.5rem;
+    }
+
+    .menu-link {
+        border-radius: 10px;
+        color: #334155;
+        text-decoration: none;
+        padding: 10px 12px;
+        display: block;
+    }
+
+    .menu-link:hover {
+        background: #f1f5ff;
+        color: #0b74e5;
+    }
+
+    .menu-link.active {
+        background: #eaf2ff;
+        color: #0b74e5;
+        font-weight: 600;
+    }
+
+    .panel {
+        border: 1px solid #e8edf5;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, .04);
     }
 
     /* Header đồng bộ trang hàng hóa */
@@ -876,14 +964,6 @@ $hasOrders = count($orders) > 0;
         font-style: italic;
     }
 
-
-    .panel {
-        border: 1px solid rgba(148, 163, 184, .22);
-        border-radius: 18px;
-        background: rgba(255, 255, 255, .92);
-        backdrop-filter: blur(10px);
-        box-shadow: none;
-    }
 
     .orders-page-panel {
         min-height: 0;
@@ -985,14 +1065,14 @@ $hasOrders = count($orders) > 0;
 
     .order-stat .label {
         font-size: .82rem;
-        color: var(--text-muted);
+        color: #64748b;
         margin-bottom: 4px;
     }
 
     .order-stat .value {
         font-size: 1.25rem;
         font-weight: 700;
-        color: var(--text-main);
+        color: #0f172a;
         line-height: 1.1;
     }
 
@@ -1055,6 +1135,55 @@ $hasOrders = count($orders) > 0;
         padding: 18px 8px;
     }
 
+    .order-float-toast {
+        position: fixed;
+        top: calc(var(--account-header-offset, 130px) + 3px);
+        right: 16px;
+        z-index: 1080;
+        min-width: 220px;
+        max-width: min(320px, calc(100vw - 24px));
+        border-radius: 10px;
+        border: 1px solid transparent;
+        box-shadow: 0 10px 20px rgba(15, 23, 42, .14);
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.3;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity .25s ease, transform .25s ease;
+        pointer-events: none;
+    }
+
+    .order-float-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .order-float-toast.toast-success {
+        background: #e8f7f1;
+        border-color: #9ad9be;
+        color: #0f5132;
+    }
+
+    .order-float-toast.toast-danger {
+        background: #fdecec;
+        border-color: #f2b6bc;
+        color: #842029;
+    }
+
+    .order-float-toast.toast-warning {
+        background: #fff8e5;
+        border-color: #f5de9b;
+        color: #7a5a00;
+    }
+
+    .order-float-toast.toast-info {
+        background: #e8f2ff;
+        border-color: #b7d4ff;
+        color: #0b3d91;
+    }
+
     .table tbody tr.order-row {
         cursor: pointer;
         transition: background-color .18s ease;
@@ -1077,12 +1206,16 @@ $hasOrders = count($orders) > 0;
     .orders-table-scroll .table {
         margin-bottom: 0;
         width: 100%;
+        min-width: 1180px;
+        table-layout: fixed;
     }
 
     .orders-table-scroll .table th,
     .orders-table-scroll .table td {
         white-space: normal;
-        word-break: break-word;
+        word-break: normal;
+        overflow-wrap: break-word;
+        vertical-align: middle;
     }
 
     .orders-table-scroll .table th:nth-child(1),
@@ -1098,9 +1231,64 @@ $hasOrders = count($orders) > 0;
         white-space: nowrap;
     }
 
+    .orders-table-scroll .table th:nth-child(1),
+    .orders-table-scroll .table td:nth-child(1) {
+        width: 90px;
+    }
+
+    .orders-table-scroll .table th:nth-child(2),
+    .orders-table-scroll .table td:nth-child(2) {
+        width: 170px;
+    }
+
+    .orders-table-scroll .table th:nth-child(3),
+    .orders-table-scroll .table td:nth-child(3) {
+        width: 170px;
+    }
+
+    .orders-table-scroll .table th:nth-child(4),
+    .orders-table-scroll .table td:nth-child(4) {
+        width: 180px;
+    }
+
+    .orders-table-scroll .table th:nth-child(5),
+    .orders-table-scroll .table td:nth-child(5) {
+        width: 260px;
+    }
+
+    .orders-table-scroll .table th:nth-child(6),
+    .orders-table-scroll .table td:nth-child(6) {
+        width: 130px;
+    }
+
+    .orders-table-scroll .table th:nth-child(7),
+    .orders-table-scroll .table td:nth-child(7) {
+        width: 250px;
+    }
+
+    .orders-table-scroll .table td:nth-child(4) div,
+    .orders-table-scroll .table td:nth-child(5) {
+        line-height: 1.35;
+    }
+
+    .orders-table-scroll .table td:nth-child(7) form {
+        max-width: 240px;
+        margin-left: 0;
+    }
+
+    .orders-table-scroll .table td:nth-child(7) .form-select,
+    .orders-table-scroll .table td:nth-child(7) .form-control,
+    .orders-table-scroll .table td:nth-child(7) .btn {
+        border-radius: 8px;
+    }
+
+    .orders-table-scroll .table td:nth-child(7) .btn {
+        width: 100%;
+    }
+
     .table thead th {
         background: #f8fafc;
-        border-bottom: 1px solid var(--line);
+        border-bottom: 1px solid #e2e8f0;
         color: #334155;
         font-size: .86rem;
         text-transform: uppercase;
@@ -1161,21 +1349,19 @@ $hasOrders = count($orders) > 0;
     }
 
     @media (max-width: 768px) {
-        body.orders-static-layout {
+        body.account-split-layout {
             overflow: auto;
         }
 
-        body.orders-static-layout .orders-page-container {
+        body.account-split-layout .account-page-container {
             height: auto;
+            display: block;
             overflow: visible;
         }
 
-        body.orders-static-layout .orders-page-panel {
-            display: block;
-        }
-
-        body.orders-static-layout .orders-table-scroll {
-            max-height: 52vh;
+        body.account-split-layout .account-right-scroll {
+            overflow: visible;
+            padding-right: 0;
         }
 
         .order-toolbar {
@@ -1186,11 +1372,18 @@ $hasOrders = count($orders) > 0;
         .table tbody td {
             white-space: nowrap;
         }
+
+        .order-float-toast {
+            right: 12px;
+            left: 12px;
+            max-width: none;
+            min-width: 0;
+        }
     }
     </style>
 </head>
 
-<body class="<?php echo $hasOrders ? 'orders-static-layout' : ''; ?>">
+<body class="account-split-layout">
     <header class="sticky-top bg-white">
         <div class="top-bar">
             <div class="container d-flex align-items-center justify-content-between">
@@ -1240,26 +1433,57 @@ $hasOrders = count($orders) > 0;
         </div>
     </header>
 
-    <div class="container-fluid px-3 px-md-4 orders-page-container">
+    <div class="container account-page-container">
+        <div class="d-flex align-items-center mb-3 account-page-heading">
+            <h4 class="mb-0 fw-bold">Đơn hàng của tôi</h4>
+        </div>
+
         <?php if ($dbError !== ''): ?>
         <div class="alert alert-danger">Không thể tải đơn hàng: <?php echo htmlspecialchars($dbError); ?></div>
         <?php endif; ?>
 
         <?php if ($flashMessage !== ''): ?>
-        <div class="alert alert-<?php echo htmlspecialchars($flashType); ?>">
-            <?php echo htmlspecialchars($flashMessage); ?></div>
+        <div id="orderFlashToast"
+            class="order-float-toast toast-<?php echo htmlspecialchars(in_array($flashType, ['success', 'danger', 'warning', 'info'], true) ? $flashType : 'info'); ?>"
+            role="status" aria-live="polite">
+            <?php echo htmlspecialchars($flashMessage); ?>
+        </div>
         <?php endif; ?>
 
-        <div class="panel p-3 p-md-4 orders-page-panel">
-            <?php if (count($orders) === 0): ?>
-            <div class="text-center py-4">
-                <div class="mb-2"><i class="fas fa-receipt fa-2x text-muted"></i></div>
-                <h6 class="fw-bold">Bạn chưa có đơn hàng nào</h6>
-                <p class="text-muted mb-3">Sau khi đặt mua, trạng thái đơn sẽ hiển thị ở đây.</p>
-                <a href="trangchu.php" class="btn btn-primary btn-sm">Mua sắm ngay</a>
+        <div class="row g-3 g-md-4 account-layout-row">
+            <div class="col-lg-4 account-left-col">
+                <div class="panel p-3 p-md-4">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <span class="avatar-circle"><i class="fas fa-user"></i></span>
+                        <div>
+                            <div class="fw-bold"><?php echo htmlspecialchars($userName !== '' ? $userName : 'Khách hàng'); ?></div>
+                            <div class="text-muted small"><?php echo htmlspecialchars($userEmail !== '' ? $userEmail : 'Chưa cập nhật email'); ?></div>
+                            <div class="text-primary small fw-semibold"><?php echo htmlspecialchars($roleLabel); ?></div>
+                        </div>
+                    </div>
+
+                    <a class="menu-link" href="tai-khoan.php?tab=info"><i class="fas fa-id-card me-2"></i>Thông tin tài khoản</a>
+                    <a class="menu-link" href="tai-khoan.php?tab=manage"><i class="fas fa-folder-tree me-2"></i>Quản lý</a>
+                    <a class="menu-link active" href="don-hang-cua-toi.php"><i class="fas fa-receipt me-2"></i>Đơn hàng của tôi</a>
+                    <a class="menu-link" href="tai-khoan.php?tab=favorites"><i class="fas fa-heart me-2"></i>Sản phẩm yêu thích</a>
+                    <a class="menu-link" href="tai-khoan.php?tab=settings"><i class="fas fa-gear me-2"></i>Cài đặt</a>
+                    <hr>
+                    <a class="menu-link text-danger" href="../Login/logout.php"><i class="fas fa-right-from-bracket me-2"></i>Đăng xuất</a>
+                </div>
             </div>
-            <?php else: ?>
-            <div class="orders-static-top">
+
+            <div class="col-lg-8 account-right-col">
+                <div class="account-right-scroll">
+                    <div class="panel p-3 p-md-4 orders-page-panel">
+                    <?php if (count($orders) === 0): ?>
+                    <div class="text-center py-4">
+                        <div class="mb-2"><i class="fas fa-receipt fa-2x text-muted"></i></div>
+                        <h6 class="fw-bold">Bạn chưa có đơn hàng nào</h6>
+                        <p class="text-muted mb-3">Sau khi đặt mua, trạng thái đơn sẽ hiển thị ở đây.</p>
+                        <a href="trangchu.php" class="btn btn-primary btn-sm">Mua sắm ngay</a>
+                    </div>
+                    <?php else: ?>
+                    <div class="orders-static-top">
                 <div class="row g-2 g-md-3 mb-3">
                     <div class="col-6 col-lg-3">
                         <div class="order-stat">
@@ -1468,7 +1692,10 @@ $hasOrders = count($orders) > 0;
                 Không có đơn hàng phù hợp với bộ lọc hiện tại.
             </div>
             <div id="orderResultCount" class="order-result-hint"></div>
-            <?php endif; ?>
+                    <?php endif; ?>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1476,18 +1703,37 @@ $hasOrders = count($orders) > 0;
     <script>
     (function() {
         const body = document.body;
-        if (!body || !body.classList.contains('orders-static-layout')) {
+        if (!body || !body.classList.contains('account-split-layout')) {
             return;
         }
 
         function updateHeaderOffset() {
             const header = document.querySelector('header.sticky-top');
             const offset = header ? Math.ceil(header.getBoundingClientRect().height) : 130;
-            body.style.setProperty('--orders-header-offset', `${offset + 8}px`);
+            body.style.setProperty('--account-header-offset', `${offset + 8}px`);
         }
 
         updateHeaderOffset();
         window.addEventListener('resize', updateHeaderOffset);
+    })();
+    </script>
+    <script>
+    (function() {
+        const toast = document.getElementById('orderFlashToast');
+        if (!toast) return;
+
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast && toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 260);
+        }, 3200);
     })();
     </script>
     <script>
@@ -1636,7 +1882,7 @@ $hasOrders = count($orders) > 0;
         applyFilterAndSort();
     })();
     </script>
-    <script src="web-events.js?v=20260412-3"></script>
+    <script src="web-events.js?v=20260414-3"></script>
 </body>
 
 </html>

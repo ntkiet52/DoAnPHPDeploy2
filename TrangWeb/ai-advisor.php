@@ -147,7 +147,7 @@ function generateProductMessage($specificProduct, $categorySlug, $totalCount) {
     ];
     
     $defaultMessages = [
-        'traicay' => '🍎 Các loại trái cây tươi ngon đây! Tôi gợi ý 4 loại phổ biến nhất, bạn có thể xem thêm nhiều loại khác:',
+        'traicay' => '🍎 Các loại trái cây tươi ngon đây! Tôi gợi ý 16 sản phẩm phù hợp nhất, bạn có thể xem thêm nhiều loại khác:',
         'raucu' => '🥬 Rau củ sạch, không hóa chất, tươi ngay hôm nay:',
         'sua' => '🥛 Sữa và sản phẩm từ sữa - bổ sung canxi và dưỡng chất:',
         'nuocngot' => '🥤 Nước ngọt mát lạnh, nhiều vị, rất phù hợp cho các bữa ăn:',
@@ -196,7 +196,7 @@ foreach ($allProducts as $product) {
 
 // Nếu tìm được sản phẩm cụ thể (3+ kết quả)
 if (count($searchResults) >= 1) {
-    $displayLimit = 4;
+    $displayLimit = 16;
     $totalResults = count($searchResults);
     $displayedResults = array_slice($searchResults, 0, $displayLimit);
     $hasMore = $totalResults > $displayLimit;
@@ -229,7 +229,7 @@ if ($categorySlug) {
     
     if (!empty($allFilteredProducts)) {
         // Số lượng sản phẩm hiển thị mặc định
-        $displayLimit = 4;
+        $displayLimit = 16;
         $totalProducts = count($allFilteredProducts);
         $displayedProducts = array_slice($allFilteredProducts, 0, $displayLimit);
         $hasMore = $totalProducts > $displayLimit;

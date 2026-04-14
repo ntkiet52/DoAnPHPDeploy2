@@ -52,6 +52,7 @@
         justify-content: flex-end;
         gap: 10px;
       }
+
     `;
     document.head.appendChild(style);
   }
@@ -260,12 +261,17 @@
       return { amount: 0, isEligible: false, reason: "" };
     }
 
+    const voucherName = String(appliedVoucher.name || "").trim();
+    const voucherLabel = voucherName
+      ? `${appliedVoucher.code} - ${voucherName}`
+      : `${appliedVoucher.code}`;
+
     const minOrder = Math.max(0, Number(appliedVoucher.min_order_value || 0));
     if (subtotal < minOrder) {
       return {
         amount: 0,
         isEligible: false,
-        reason: `Mã ${appliedVoucher.code} cần đơn tối thiểu ${formatMoney(minOrder)}.`,
+        reason: `Mã ${voucherLabel} cần đơn tối thiểu ${formatMoney(minOrder)}.`,
       };
     }
 
@@ -284,20 +290,66 @@
     return {
       amount: discountAmount,
       isEligible: true,
-      reason: `Đã áp dụng mã ${appliedVoucher.code} (${appliedVoucher.discount_text}).`,
+      reason: `Đã áp dụng mã ${voucherLabel} (${appliedVoucher.discount_text}).`,
     };
   }
 
   function getRowByDetailId(detailId) {
-    return document.getElementById(`item-${detailId}`);
+    const id = String(detailId || "").trim();
+    if (!id) return null;
+    return (
+      document.getElementById(`item-${id}`) ||
+      document.getElementById(`item-d${id}`)
+    );
   }
 
-  function updateRowTotal(detailId) {
-    const checkbox = document.querySelector(
-      `.item-checkbox[data-id="${detailId}"]`,
+  function getRowByKey(rowKey, detailId) {
+    const key = String(rowKey || "").trim();
+    if (key) {
+      const byKey = document.getElementById(`item-${key}`);
+      if (byKey) return byKey;
+    }
+    return getRowByDetailId(detailId);
+  }
+
+  function getQtyInput(detailId, rowKey) {
+    const key = String(rowKey || "").trim();
+    if (key) {
+      const byKey = document.getElementById(`qty-${key}`);
+      if (byKey) return byKey;
+    }
+    const id = String(detailId || "").trim();
+    if (!id) return null;
+    return (
+      document.getElementById(`qty-${id}`) ||
+      document.getElementById(`qty-d${id}`)
     );
-    const qtyInput = document.getElementById(`qty-${detailId}`);
-    const totalEl = document.getElementById(`total-${detailId}`);
+  }
+
+  function getTotalEl(detailId, rowKey) {
+    const key = String(rowKey || "").trim();
+    if (key) {
+      const byKey = document.getElementById(`total-${key}`);
+      if (byKey) return byKey;
+    }
+    const id = String(detailId || "").trim();
+    if (!id) return null;
+    return (
+      document.getElementById(`total-${id}`) ||
+      document.getElementById(`total-d${id}`)
+    );
+  }
+
+  function updateRowTotal(detailId, rowKey) {
+    const key = String(rowKey || "").trim();
+    const checkboxByKey = key
+      ? document.querySelector(`.item-checkbox[data-row-key="${key}"]`)
+      : null;
+    const checkbox =
+      checkboxByKey ||
+      document.querySelector(`.item-checkbox[data-id="${detailId}"]`);
+    const qtyInput = getQtyInput(detailId, key);
+    const totalEl = getTotalEl(detailId, key);
     if (!checkbox || !qtyInput || !totalEl) return;
 
     const price = Math.max(0, parseFloat(checkbox.dataset.price || "0") || 0);
@@ -318,11 +370,18 @@
     }
   }
 
-  window.updateQty = async function updateQty(detailId, change) {
+  window.updateQty = async function updateQty(
+    detailId,
+    change,
+    productId,
+    rowKey,
+  ) {
     const id = Number(detailId || 0);
-    if (id <= 0) return;
+    const maSanPham = String(productId || "").trim();
+    const key = String(rowKey || "").trim();
+    if (id <= 0 && !maSanPham) return;
 
-    const qtyInput = document.getElementById(`qty-${id}`);
+    const qtyInput = getQtyInput(id, key);
     if (!qtyInput) return;
 
     const current = Math.max(1, parseInt(qtyInput.value || "1", 10) || 1);
@@ -332,10 +391,11 @@
     try {
       await postCartAction("update_quantity", {
         id_chi_tiet: id,
+        ma_san_pham: maSanPham,
         so_luong: nextQty,
       });
       qtyInput.value = String(nextQty);
-      updateRowTotal(id);
+      updateRowTotal(id, key);
       calculateTotal();
       refreshHeaderCartCount();
     } catch (error) {
@@ -374,11 +434,13 @@
         });
       }
 
-      const card = cardFromElement || getRowByDetailId(id);
+      const card =
+        cardFromElement || getRowByKey(element?.dataset?.rowKey || "", id);
       if (card) card.remove();
       ensureEmptyCartView();
       calculateTotal();
       refreshHeaderCartCount();
+      await showAlertCenter("Đã xóa sản phẩm khỏi giỏ hàng.", "Thành công");
     } catch (error) {
       await showAlertCenter(error.message || "Không thể xóa sản phẩm.");
     }
@@ -411,6 +473,10 @@
       ensureEmptyCartView();
       calculateTotal();
       refreshHeaderCartCount();
+      await showAlertCenter(
+        `Đã xóa ${selectedIds.length} sản phẩm.`,
+        "Thành công",
+      );
     } catch (error) {
       await showAlertCenter(
         error.message || "Không thể xóa danh sách đã chọn.",
@@ -432,17 +498,15 @@
 
     document.querySelectorAll(".item-checkbox").forEach((cb) => {
       const detailId = cb.dataset.id;
-      const row = getRowByDetailId(detailId);
+      const rowKey = cb.dataset.rowKey || detailId;
+      const row = getRowByKey(rowKey, detailId);
       if (!row) return;
 
       if (cb.checked) {
         const price = Math.max(0, parseFloat(cb.dataset.price || "0") || 0);
         const qty = Math.max(
           1,
-          parseInt(
-            document.getElementById(`qty-${detailId}`)?.value || "1",
-            10,
-          ) || 1,
+          parseInt(getQtyInput(detailId, rowKey)?.value || "1", 10) || 1,
         );
         subtotal += price * qty;
         count += qty;
@@ -502,7 +566,7 @@
     wrap.innerHTML = items
       .map(
         (item) =>
-          `<button type="button" class="voucher-quick-item" data-code="${String(item.ma_voucher || "").replace(/\"/g, "&quot;")}">${item.ma_voucher} • ${item.discount_text}</button>`,
+          `<button type="button" class="voucher-quick-item" data-code="${String(item.ma_voucher || "").replace(/\"/g, "&quot;")}">${item.ma_voucher}${item.ten_voucher ? ` - ${item.ten_voucher}` : ""} • ${item.discount_text}</button>`,
       )
       .join("");
   }
@@ -557,6 +621,7 @@
 
       appliedVoucher = {
         code: data.voucher.code,
+        name: data.voucher.name || "",
         discount_type: data.voucher.discount_type,
         discount_value: data.voucher.discount_value,
         discount_text: data.voucher.discount_text,
@@ -639,13 +704,28 @@
     if (!cartList) return;
 
     cartList.addEventListener("click", function (event) {
+      const qtyBtn = event.target.closest(".qty-btn[data-change]");
+      if (qtyBtn) {
+        event.preventDefault();
+        const detailId = Number(qtyBtn.getAttribute("data-detail-id") || 0);
+        const change = Number(qtyBtn.getAttribute("data-change") || 0);
+        const productId = String(
+          qtyBtn.getAttribute("data-product-id") ||
+            qtyBtn.closest(".cart-item-card")?.dataset?.productId ||
+            "",
+        ).trim();
+        const rowKey = String(qtyBtn.getAttribute("data-row-key") || "").trim();
+        if (change !== 0 && (detailId > 0 || productId)) {
+          window.updateQty(detailId, change, productId, rowKey);
+        }
+        return;
+      }
+
       const deleteBtn = event.target.closest(".delete-item-btn");
       if (!deleteBtn) return;
 
       event.preventDefault();
       const detailId = Number(deleteBtn.getAttribute("data-delete-id") || 0);
-      if (detailId <= 0) return;
-
       window.deleteFromCart(detailId, deleteBtn);
     });
 
@@ -653,6 +733,29 @@
       const checkbox = event.target.closest(".item-checkbox");
       if (!checkbox) return;
       calculateTotal();
+    });
+
+    // Fallback binding: đảm bảo nút +/- vẫn chạy nếu event delegation bị chặn bởi layout khác
+    cartList.querySelectorAll(".qty-btn[data-change]").forEach((btn) => {
+      if (btn.dataset.qtyBound === "1") return;
+      btn.dataset.qtyBound = "1";
+
+      btn.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const detailId = Number(btn.getAttribute("data-detail-id") || 0);
+        const change = Number(btn.getAttribute("data-change") || 0);
+        const productId = String(
+          btn.getAttribute("data-product-id") ||
+            btn.closest(".cart-item-card")?.dataset?.productId ||
+            "",
+        ).trim();
+        const rowKey = String(btn.getAttribute("data-row-key") || "").trim();
+        if (change !== 0 && (detailId > 0 || productId)) {
+          window.updateQty(detailId, change, productId, rowKey);
+        }
+      });
     });
   }
 
@@ -697,11 +800,12 @@
 
     document.querySelectorAll(".item-checkbox:checked").forEach((checkbox) => {
       const detailId = Number(checkbox?.dataset?.id || 0);
+      const rowKey = String(checkbox?.dataset?.rowKey || detailId || "").trim();
       const productId = String(checkbox?.dataset?.productId || "").trim();
       const productName = String(checkbox?.dataset?.productName || "").trim();
       if (!productId) return;
 
-      const qtyInput = document.getElementById(`qty-${detailId}`);
+      const qtyInput = getQtyInput(detailId, rowKey);
       const qty = Math.max(1, parseInt(qtyInput?.value || "1", 10) || 1);
       const price = Math.max(
         0,
@@ -725,11 +829,12 @@
 
     document.querySelectorAll(".item-checkbox").forEach((checkbox) => {
       const detailId = Number(checkbox?.dataset?.id || 0);
+      const rowKey = String(checkbox?.dataset?.rowKey || detailId || "").trim();
       const productId = String(checkbox?.dataset?.productId || "").trim();
       const productName = String(checkbox?.dataset?.productName || "").trim();
       if (!productId) return;
 
-      const qtyInput = document.getElementById(`qty-${detailId}`);
+      const qtyInput = getQtyInput(detailId, rowKey);
       const qty = Math.max(1, parseInt(qtyInput?.value || "1", 10) || 1);
       const price = Math.max(
         0,
@@ -888,6 +993,7 @@
             voucher: appliedVoucher
               ? {
                   code: appliedVoucher.code,
+                  name: appliedVoucher.name || "",
                   discount_amount: voucherMeta.amount,
                   discount_type: appliedVoucher.discount_type,
                   discount_value: appliedVoucher.discount_value,
@@ -940,7 +1046,7 @@
         const orderId = data?.order_id || "(đang cập nhật)";
         const voucherHint =
           appliedVoucher && voucherMeta.amount > 0
-            ? `\nVoucher ${appliedVoucher.code} đã giảm ${formatMoney(voucherMeta.amount)}.`
+            ? `\nVoucher ${appliedVoucher.code}${appliedVoucher.name ? ` - ${appliedVoucher.name}` : ""} đã giảm ${formatMoney(voucherMeta.amount)}.`
             : "";
 
         const askOpenOrderPage = await showDialog({

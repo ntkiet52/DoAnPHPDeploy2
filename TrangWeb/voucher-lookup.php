@@ -10,59 +10,12 @@ function respondVoucher(bool $ok, string $message, array $extra = [], int $statu
     exit;
 }
 
-function parseMoneyValue(string $text): int {
-    $digits = preg_replace('/[^\d]/', '', $text);
-    return $digits !== '' ? (int) $digits : 0;
-}
-
-function parseDiscountMeta(string $discountText): array {
-    $raw = trim($discountText);
-    if ($raw === '') {
-        return [
-            'type' => 'fixed',
-            'value' => 0,
-        ];
+function formatVoucherDiscount(string $type, float $value): string {
+    if (strtolower(trim($type)) === 'percent') {
+        return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') . '%';
     }
 
-    if (preg_match('/(\d+(?:[\.,]\d+)?)\s*%/u', $raw, $m) === 1) {
-        $percent = (float) str_replace(',', '.', (string) ($m[1] ?? '0'));
-        return [
-            'type' => 'percent',
-            'value' => max(0, min(100, $percent)),
-        ];
-    }
-
-    return [
-        'type' => 'fixed',
-        'value' => max(0, parseMoneyValue($raw)),
-    ];
-}
-
-function normalizeDateString(string $raw): ?DateTimeImmutable {
-    $value = trim($raw);
-    if ($value === '') {
-        return null;
-    }
-
-    $lower = mb_strtolower($value, 'UTF-8');
-    if (str_contains($lower, 'không') || str_contains($lower, 'vo han') || str_contains($lower, 'vô hạn')) {
-        return null;
-    }
-
-    $formats = ['d/m/Y', 'Y-m-d', 'd-m-Y', 'd/m/y'];
-    foreach ($formats as $format) {
-        $dt = DateTimeImmutable::createFromFormat($format, $value);
-        if ($dt instanceof DateTimeImmutable) {
-            return $dt->setTime(23, 59, 59);
-        }
-    }
-
-    $ts = strtotime($value);
-    if ($ts === false) {
-        return null;
-    }
-
-    return (new DateTimeImmutable())->setTimestamp($ts)->setTime(23, 59, 59);
+    return number_format((int) round($value), 0, ',', '.') . 'đ';
 }
 
 $dbHost = '127.0.0.1';
@@ -84,7 +37,12 @@ try {
     $code = strtoupper(trim((string) ($_GET['code'] ?? '')));
 
     if ($code !== '') {
-        $stmt = $pdo->prepare('SELECT id, code, discount, min_order, expiry, status FROM voucher WHERE UPPER(code) = UPPER(?) LIMIT 1');
+        $stmt = $pdo->prepare(
+            'SELECT id_voucher, ma_voucher, ten_voucher, mo_ta, kieu_giam, gia_tri_giam, tien_toi_thieu, ngay_bat_dau, ngay_ket_thuc, trang_thai, so_luong_toi_da, so_luong_da_su_dung
+             FROM voucher
+             WHERE UPPER(ma_voucher) = ?
+             LIMIT 1'
+        );
         $stmt->execute([$code]);
         $row = $stmt->fetch();
 
@@ -92,57 +50,71 @@ try {
             respondVoucher(false, 'Mã voucher không tồn tại.', [], 404);
         }
 
-        $status = trim((string) ($row['status'] ?? ''));
-        if (strcasecmp($status, 'Active') !== 0) {
+        if (strtolower((string) ($row['trang_thai'] ?? 'inactive')) !== 'active') {
             respondVoucher(false, 'Voucher hiện không khả dụng.', [], 400);
         }
 
-        $expiryRaw = (string) ($row['expiry'] ?? '');
-        $expiryDate = normalizeDateString($expiryRaw);
-        if ($expiryDate instanceof DateTimeImmutable) {
-            $now = new DateTimeImmutable('now');
-            if ($expiryDate < $now) {
-                respondVoucher(false, 'Voucher đã hết hạn.', [], 400);
-            }
+        $startTs = strtotime((string) ($row['ngay_bat_dau'] ?? ''));
+        $endTs = strtotime((string) ($row['ngay_ket_thuc'] ?? ''));
+        $nowTs = time();
+        if ($startTs === false || $endTs === false || $startTs > $nowTs || $endTs < $nowTs) {
+            respondVoucher(false, 'Voucher đã hết hạn hoặc chưa tới thời gian áp dụng.', [], 400);
         }
 
-        $discountMeta = parseDiscountMeta((string) ($row['discount'] ?? ''));
-        $minOrderValue = parseMoneyValue((string) ($row['min_order'] ?? ''));
+        $maxQty = (int) ($row['so_luong_toi_da'] ?? 0);
+        $usedQty = (int) ($row['so_luong_da_su_dung'] ?? 0);
+        if ($maxQty > 0 && $usedQty >= $maxQty) {
+            respondVoucher(false, 'Voucher đã hết lượt sử dụng.', [], 400);
+        }
+
+        $discountType = (string) ($row['kieu_giam'] ?? 'fixed');
+        $discountValue = (float) ($row['gia_tri_giam'] ?? 0);
+        $minOrderValue = (float) ($row['tien_toi_thieu'] ?? 0);
 
         respondVoucher(true, 'Áp dụng voucher thành công.', [
             'voucher' => [
-                'id' => (string) ($row['id'] ?? ''),
-                'code' => (string) ($row['code'] ?? ''),
-                'discount_text' => (string) ($row['discount'] ?? ''),
-                'min_order_text' => (string) ($row['min_order'] ?? ''),
-                'expiry_text' => $expiryRaw,
-                'discount_type' => (string) ($discountMeta['type'] ?? 'fixed'),
-                'discount_value' => (float) ($discountMeta['value'] ?? 0),
+                'id' => (int) ($row['id_voucher'] ?? 0),
+                'code' => (string) ($row['ma_voucher'] ?? ''),
+                'name' => (string) ($row['ten_voucher'] ?? ''),
+                'description' => (string) ($row['mo_ta'] ?? ''),
+                'discount_text' => formatVoucherDiscount($discountType, $discountValue),
+                'discount_type' => $discountType,
+                'discount_value' => $discountValue,
                 'min_order_value' => $minOrderValue,
             ],
         ]);
     }
 
-    $rows = $pdo->query('SELECT id, code, discount, min_order, expiry, status FROM voucher WHERE status = "Active" ORDER BY created_at DESC, id DESC LIMIT 8')->fetchAll();
+    $rows = $pdo->query('SELECT id_voucher, ma_voucher, ten_voucher, mo_ta, kieu_giam, gia_tri_giam, tien_toi_thieu, ngay_bat_dau, ngay_ket_thuc, so_luong_toi_da, so_luong_da_su_dung
+                         FROM voucher
+                         WHERE trang_thai = "active"
+                         AND NOW() BETWEEN ngay_bat_dau AND ngay_ket_thuc
+                         ORDER BY ngay_ket_thuc ASC, id_voucher DESC
+                         LIMIT 20')->fetchAll();
     $items = [];
-    $now = new DateTimeImmutable('now');
 
     foreach ($rows as $row) {
-        $expiryRaw = (string) ($row['expiry'] ?? '');
-        $expiryDate = normalizeDateString($expiryRaw);
-        if ($expiryDate instanceof DateTimeImmutable && $expiryDate < $now) {
+        $maxQty = (int) ($row['so_luong_toi_da'] ?? 0);
+        $usedQty = (int) ($row['so_luong_da_su_dung'] ?? 0);
+        if ($maxQty > 0 && $usedQty >= $maxQty) {
             continue;
         }
 
-        $discountMeta = parseDiscountMeta((string) ($row['discount'] ?? ''));
+        $discountType = (string) ($row['kieu_giam'] ?? 'fixed');
+        $discountValue = (float) ($row['gia_tri_giam'] ?? 0);
+        $voucherCode = (string) ($row['ma_voucher'] ?? '');
+        $voucherName = trim((string) ($row['ten_voucher'] ?? ''));
+
         $items[] = [
-            'id' => (string) ($row['id'] ?? ''),
-            'code' => (string) ($row['code'] ?? ''),
-            'discount_text' => (string) ($row['discount'] ?? ''),
-            'min_order_text' => (string) ($row['min_order'] ?? ''),
-            'discount_type' => (string) ($discountMeta['type'] ?? 'fixed'),
-            'discount_value' => (float) ($discountMeta['value'] ?? 0),
-            'min_order_value' => parseMoneyValue((string) ($row['min_order'] ?? '')),
+            'id' => (int) ($row['id_voucher'] ?? 0),
+            'code' => $voucherCode,
+            'name' => $voucherName,
+            'description' => (string) ($row['mo_ta'] ?? ''),
+            'discount_text' => formatVoucherDiscount($discountType, $discountValue),
+            'discount_type' => $discountType,
+            'discount_value' => $discountValue,
+            'min_order_value' => (float) ($row['tien_toi_thieu'] ?? 0),
+            'label' => $voucherCode . ($voucherName !== '' ? ' - ' . $voucherName : '') . ' • ' . formatVoucherDiscount($discountType, $discountValue),
         ];
     }
 
