@@ -936,6 +936,64 @@ if (isset($conn) && $conn instanceof mysqli) {
         font-weight: 600;
         margin: 4px 6px 0 0;
     }
+
+    .account-float-toast {
+        position: fixed;
+        top: calc(var(--account-header-offset, 130px) + 3px);
+        right: 16px;
+        z-index: 1080;
+        min-width: 220px;
+        max-width: min(320px, calc(100vw - 24px));
+        border-radius: 10px;
+        border: 1px solid transparent;
+        box-shadow: 0 10px 20px rgba(15, 23, 42, .14);
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.3;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity .25s ease, transform .25s ease;
+        pointer-events: none;
+    }
+
+    .account-float-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .account-float-toast.toast-success {
+        background: #e8f7f1;
+        border-color: #9ad9be;
+        color: #0f5132;
+    }
+
+    .account-float-toast.toast-danger {
+        background: #fdecec;
+        border-color: #f2b6bc;
+        color: #842029;
+    }
+
+    .account-float-toast.toast-warning {
+        background: #fff8e5;
+        border-color: #f5de9b;
+        color: #7a5a00;
+    }
+
+    .account-float-toast.toast-info {
+        background: #e8f2ff;
+        border-color: #b7d4ff;
+        color: #0b3d91;
+    }
+
+    @media (max-width: 768px) {
+        .account-float-toast {
+            right: 12px;
+            left: 12px;
+            max-width: none;
+            min-width: 0;
+        }
+    }
     </style>
 </head>
 
@@ -995,8 +1053,11 @@ if (isset($conn) && $conn instanceof mysqli) {
         </div>
 
         <?php if ($flashMessage !== ''): ?>
-        <div class="alert alert-<?php echo htmlspecialchars($flashType); ?>">
-            <?php echo htmlspecialchars($flashMessage); ?></div>
+        <div id="accountFlashToast"
+            class="account-float-toast toast-<?php echo htmlspecialchars(in_array($flashType, ['success', 'danger', 'warning', 'info'], true) ? $flashType : 'info'); ?>"
+            role="status" aria-live="polite">
+            <?php echo htmlspecialchars($flashMessage); ?>
+        </div>
         <?php endif; ?>
 
         <div class="row g-3 g-md-4 account-layout-row">
@@ -1320,6 +1381,25 @@ if (isset($conn) && $conn instanceof mysqli) {
         updateHeaderOffset();
         window.addEventListener('resize', updateHeaderOffset);
         window.addEventListener('load', updateHeaderOffset);
+    })();
+    </script>
+    <script>
+    (function() {
+        const toast = document.getElementById('accountFlashToast');
+        if (!toast) return;
+
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast && toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 260);
+        }, 3200);
     })();
     </script>
     <script src="web-events.js?v=20260414-3"></script>

@@ -1314,6 +1314,48 @@ foreach ($orders as $order) {
     let selectedOrderRow = null;
     let pendingOrderAction = null;
 
+    function ensureOrderToastStack() {
+        let stack = document.getElementById('ack-admin-toast-stack');
+        if (stack) {
+            return stack;
+        }
+
+        stack = document.createElement('div');
+        stack.id = 'ack-admin-toast-stack';
+        document.body.appendChild(stack);
+        return stack;
+    }
+
+    function showOrderInlineHintAsToast(message, type = 'warning') {
+        const text = (message || '').toString().trim();
+        if (text === '') {
+            return;
+        }
+
+        const normalizedType = ['success', 'danger', 'warning', 'info'].includes(type) ? type : 'warning';
+        const stack = ensureOrderToastStack();
+        const toast = document.createElement('div');
+
+        toast.className = `alert alert-${normalizedType} ack-admin-toast`;
+        toast.setAttribute('role', 'alert');
+        toast.textContent = text;
+
+        stack.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 260);
+        }, 3200);
+    }
+
     function openOrderConfirmModal(actionType, orderId) {
         if (!orderConfirmModalEl || !orderConfirmModalLabel || !orderConfirmMessage || !btnConfirmOrderAction) {
             return;
@@ -1465,9 +1507,11 @@ foreach ($orders as $order) {
             if (orderPaymentHint) {
                 if (!paymentReady) {
                     const orderId = this.getAttribute('data-id') || '';
-                    orderPaymentHint.textContent =
+                    const hintText =
                         `Đơn ${orderId} chưa được khách xác nhận chuyển khoản QR. Chưa thể duyệt hoặc chuyển sang giao.`;
-                    orderPaymentHint.classList.remove('d-none');
+                    orderPaymentHint.classList.add('d-none');
+                    orderPaymentHint.textContent = hintText;
+                    showOrderInlineHintAsToast(hintText, 'warning');
                 } else {
                     orderPaymentHint.classList.add('d-none');
                     orderPaymentHint.textContent = '';
