@@ -1012,7 +1012,7 @@ foreach ($orders as $order) {
         }
     }
     </style>
-    <link rel="stylesheet" href="admin-unified-ui.css">
+    <link rel="stylesheet" href="admin-unified-ui.css?v=20260414-2">
 </head>
 
 <body>
@@ -1617,7 +1617,7 @@ foreach ($orders as $order) {
     window.addEventListener('load', syncOrderFixedTopOffset);
     syncOrderFixedTopOffset();
     </script>
-    <script src="admin-search.js"></script>
+    <script src="admin-search.js?v=20260414-2"></script>
 </body>
 
 </html>

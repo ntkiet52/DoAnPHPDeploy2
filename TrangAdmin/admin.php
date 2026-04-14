@@ -624,7 +624,7 @@ try {
         color: #10b981;
     }
     </style>
-    <link rel="stylesheet" href="admin-unified-ui.css">
+    <link rel="stylesheet" href="admin-unified-ui.css?v=20260414-2">
 </head>
 
 <body>
@@ -894,7 +894,7 @@ try {
         }
     });
     </script>
-    <script src="admin-search.js"></script>
+    <script src="admin-search.js?v=20260414-2"></script>
 </body>
 
 </html>

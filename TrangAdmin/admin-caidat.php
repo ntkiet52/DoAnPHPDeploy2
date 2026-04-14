@@ -386,15 +386,8 @@ try {
         padding: 12px 60px;
         font-weight: 600;
     }
-
-    .search-input {
-        border-radius: 20px;
-        padding: 5px 20px;
-        border: 1px solid #ddd;
-        width: 250px;
-    }
     </style>
-    <link rel="stylesheet" href="admin-unified-ui.css">
+    <link rel="stylesheet" href="admin-unified-ui.css?v=20260414-2">
 </head>
 
 <body>
@@ -426,9 +419,8 @@ try {
             <button class="btn btn-light rounded-circle shadow-sm"><i class="fas fa-times"></i></button>
         </div>
 
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center mb-4">
             <h3 class="fw-bold mb-0">Cài đặt hệ thống</h3>
-            <input type="text" class="search-input" placeholder="Tìm kiếm">
         </div>
 
         <?php if ($dbError !== ''): ?>
@@ -585,7 +577,7 @@ try {
         </form>
     </div>
 
-    <script src="admin-search.js"></script>
+    <script src="admin-search.js?v=20260414-2"></script>
 </body>
 
 </html>

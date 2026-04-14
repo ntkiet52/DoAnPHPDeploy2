@@ -127,6 +127,82 @@ function initAdminSearch() {
     .forEach((input) => bindTableSearch(input));
 }
 
+function ensureAdminToastStack() {
+  let stack = document.getElementById("ack-admin-toast-stack");
+  if (stack) return stack;
+
+  stack = document.createElement("div");
+  stack.id = "ack-admin-toast-stack";
+  document.body.appendChild(stack);
+  return stack;
+}
+
+function isConvertibleAlert(node) {
+  if (!(node instanceof HTMLElement)) return false;
+  if (!node.classList.contains("alert")) return false;
+  if (node.classList.contains("d-none")) return false;
+  if (node.classList.contains("payment-warning")) return false;
+  if (node.id === "orderPaymentHint") return false;
+  if (node.dataset.ackToastConverted === "1") return false;
+  if (node.closest("#ack-admin-toast-stack")) return false;
+  if (!node.textContent || node.textContent.trim() === "") return false;
+  if (node.closest(".modal")) return false;
+  return true;
+}
+
+function initAdminToasts(root = document) {
+  const scope =
+    root instanceof Element || root instanceof Document ? root : document;
+  const alerts = Array.from(scope.querySelectorAll(".alert"));
+  if (!alerts.length) return;
+
+  const stack = ensureAdminToastStack();
+
+  alerts.filter(isConvertibleAlert).forEach((alert, index) => {
+    alert.dataset.ackToastConverted = "1";
+    alert.classList.add("ack-admin-toast");
+    stack.appendChild(alert);
+
+    requestAnimationFrame(() => {
+      alert.classList.add("show");
+    });
+
+    const holdMs = 3000 + Math.min(index, 3) * 350;
+    setTimeout(() => {
+      alert.classList.remove("show");
+      setTimeout(() => {
+        if (alert.parentNode) {
+          alert.parentNode.removeChild(alert);
+        }
+      }, 260);
+    }, holdMs);
+  });
+}
+
+function observeAdminAlerts() {
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) return;
+
+        if (node.classList.contains("alert")) {
+          initAdminToasts(node.parentElement || document);
+          return;
+        }
+
+        if (node.querySelector?.(".alert")) {
+          initAdminToasts(node);
+        }
+      });
+    }
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+}
+
 (function setupScrollPersistence() {
   window.addEventListener("beforeunload", () => {
     saveMainScroll();
@@ -137,6 +213,9 @@ function initAdminSearch() {
     restoreMainScroll();
     restoreSidebarScroll();
     initAdminSearch();
+    initAdminToasts();
+    setTimeout(() => initAdminToasts(), 80);
+    observeAdminAlerts();
   });
 
   document.querySelectorAll("a[href*='admin']").forEach((link) => {

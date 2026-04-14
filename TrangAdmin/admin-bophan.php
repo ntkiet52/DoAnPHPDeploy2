@@ -551,7 +551,7 @@ $totalDepartments = count($departments);
         }
     }
     </style>
-    <link rel="stylesheet" href="admin-unified-ui.css">
+    <link rel="stylesheet" href="admin-unified-ui.css?v=20260414-2">
 </head>
 
 <body>
@@ -939,7 +939,7 @@ $totalDepartments = count($departments);
     syncFixedTopOffset();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="admin-search.js"></script>
+    <script src="admin-search.js?v=20260414-2"></script>
 </body>
 
 </html>

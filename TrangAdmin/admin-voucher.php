@@ -869,7 +869,7 @@ foreach ($vouchers as $voucher) {
         }
     }
     </style>
-    <link rel="stylesheet" href="admin-unified-ui.css">
+    <link rel="stylesheet" href="admin-unified-ui.css?v=20260414-2">
 </head>
 
 <body>
@@ -1438,7 +1438,7 @@ foreach ($vouchers as $voucher) {
 
     setVoucherButtonsEnabled(!!document.querySelector('.voucher-row.selected'));
     </script>
-    <script src="admin-search.js"></script>
+    <script src="admin-search.js?v=20260414-2"></script>
 </body>
 
 </html>
