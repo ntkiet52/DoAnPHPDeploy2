@@ -466,6 +466,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     $tab = 'settings';
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_password') {
+    $currentPassword = (string) ($_POST['current_password'] ?? '');
+    $newPassword = (string) ($_POST['new_password'] ?? '');
+    $confirmPassword = (string) ($_POST['confirm_password'] ?? '');
+
+    if ($currentPassword === '' || $newPassword === '' || $confirmPassword === '') {
+        $flashMessage = 'Vui lòng nhập đầy đủ thông tin đổi mật khẩu.';
+        $flashType = 'danger';
+    } elseif (strlen($newPassword) < 6) {
+        $flashMessage = 'Mật khẩu mới phải có ít nhất 6 ký tự.';
+        $flashType = 'danger';
+    } elseif ($newPassword !== $confirmPassword) {
+        $flashMessage = 'Mật khẩu mới và xác nhận mật khẩu không khớp.';
+        $flashType = 'danger';
+    } elseif (!isset($conn) || !($conn instanceof mysqli)) {
+        $flashMessage = 'Không thể kết nối dữ liệu để đổi mật khẩu.';
+        $flashType = 'danger';
+    } else {
+        $selectStmt = $conn->prepare('SELECT password FROM users WHERE id = ? LIMIT 1');
+        if (!$selectStmt) {
+            $flashMessage = 'Không thể kiểm tra mật khẩu hiện tại.';
+            $flashType = 'danger';
+        } else {
+            $selectStmt->bind_param('i', $userId);
+            $selectStmt->execute();
+            $result = $selectStmt->get_result();
+            $row = $result ? $result->fetch_assoc() : null;
+            $selectStmt->close();
+
+            if (!is_array($row)) {
+                $flashMessage = 'Không tìm thấy tài khoản để đổi mật khẩu.';
+                $flashType = 'danger';
+            } else {
+                $storedPassword = (string) ($row['password'] ?? '');
+                $currentPasswordOk = password_verify($currentPassword, $storedPassword);
+                if (!$currentPasswordOk) {
+                    $currentPasswordOk = hash_equals(trim($storedPassword), $currentPassword);
+                }
+
+                if (!$currentPasswordOk) {
+                    $flashMessage = 'Mật khẩu hiện tại không đúng.';
+                    $flashType = 'danger';
+                } elseif ($currentPassword === $newPassword) {
+                    $flashMessage = 'Mật khẩu mới phải khác mật khẩu hiện tại.';
+                    $flashType = 'warning';
+                } else {
+                    $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+                    $updateStmt = $conn->prepare('UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?');
+                    if (!$updateStmt) {
+                        $flashMessage = 'Không thể cập nhật mật khẩu mới.';
+                        $flashType = 'danger';
+                    } else {
+                        $updateStmt->bind_param('si', $newPasswordHash, $userId);
+                        $updated = $updateStmt->execute();
+                        $updateStmt->close();
+
+                        if ($updated) {
+                            $flashMessage = 'Đổi mật khẩu thành công.';
+                            $flashType = 'success';
+                        } else {
+                            $flashMessage = 'Không thể đổi mật khẩu lúc này. Vui lòng thử lại.';
+                            $flashType = 'danger';
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    $tab = 'settings';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'claim_voucher') {
     $voucherId = (int) ($_POST['voucher_id'] ?? 0);
     $tab = 'manage';
@@ -937,6 +1009,58 @@ if (isset($conn) && $conn instanceof mysqli) {
         margin: 4px 6px 0 0;
     }
 
+    .password-compact-form {
+        max-width: 520px;
+    }
+
+    .settings-split-layout .panel {
+        height: 100%;
+    }
+
+    .profile-compact-form,
+    .system-compact-form,
+    .password-compact-form {
+        max-width: 520px;
+    }
+
+    .password-fields-stack {
+        display: grid;
+        gap: 10px;
+    }
+
+    .password-field-item {
+        max-width: 460px;
+    }
+
+    .password-compact-form .form-label {
+        font-size: 0.92rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .password-compact-form .input-group .form-control {
+        min-height: 40px;
+        border-right: 0;
+    }
+
+    .password-compact-form .password-toggle-btn {
+        min-width: 44px;
+        border: 1px solid #d9dde4;
+        border-left: 0;
+        background: #f3f4f6;
+        color: #8b95a7;
+        transition: all .18s ease;
+    }
+
+    .password-compact-form .password-toggle-btn:hover {
+        background: #eceff3;
+        color: #7a8496;
+    }
+
+    .password-compact-form .password-toggle-btn:focus {
+        box-shadow: 0 0 0 .2rem rgba(148, 163, 184, .2);
+        color: #64748b;
+    }
+
     .account-float-toast {
         position: fixed;
         top: calc(var(--account-header-offset, 130px) + 3px);
@@ -992,6 +1116,16 @@ if (isset($conn) && $conn instanceof mysqli) {
             left: 12px;
             max-width: none;
             min-width: 0;
+        }
+
+        .profile-compact-form,
+        .system-compact-form,
+        .password-compact-form {
+            max-width: 100%;
+        }
+
+        .password-field-item {
+            max-width: 100%;
         }
     }
     </style>
@@ -1264,81 +1398,121 @@ if (isset($conn) && $conn instanceof mysqli) {
                         </div>
                     </div>
                     <?php else: ?>
-                    <div class="panel p-3 p-md-4">
-                        <h5 class="fw-bold mb-3">Cài đặt tài khoản</h5>
-                        <form method="post">
-                            <input type="hidden" name="action" value="save_profile">
-                            <div class="mb-3">
-                                <label class="form-label">Tên hiển thị</label>
-                                <input type="text" class="form-control" name="display_name"
-                                    value="<?php echo htmlspecialchars($userName); ?>" required>
+                    <div class="row g-3 settings-split-layout">
+                        <div class="col-12 col-xl-6">
+                            <div class="panel p-3 p-md-4">
+                                <h6 class="fw-bold mb-3">Cài đặt tài khoản</h6>
+                                <form method="post" class="profile-compact-form">
+                                    <input type="hidden" name="action" value="save_profile">
+                                    <div class="mb-3">
+                                        <label class="form-label">Tên hiển thị</label>
+                                        <input type="text" class="form-control" name="display_name"
+                                            value="<?php echo htmlspecialchars($userName); ?>" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Email</label>
+                                        <input type="email" class="form-control"
+                                            value="<?php echo htmlspecialchars($userEmail); ?>" readonly>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Số điện thoại <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" name="phone"
+                                            value="<?php echo htmlspecialchars((string) ($customerProfile['phone'] ?? '')); ?>"
+                                            required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Địa chỉ <span class="text-danger">*</span></label>
+                                        <textarea class="form-control" name="address" rows="2" required><?php echo htmlspecialchars((string) ($customerProfile['address'] ?? '')); ?></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Giới tính</label>
+                                        <select class="form-select" name="gender">
+                                            <?php $currentGender = strtolower(trim((string) ($customerProfile['gender'] ?? ''))); ?>
+                                            <option value="" <?php echo $currentGender === '' ? 'selected' : ''; ?>>Chưa chọn</option>
+                                            <option value="Nam" <?php echo $currentGender === 'nam' ? 'selected' : ''; ?>>Nam</option>
+                                            <option value="Nữ" <?php echo in_array($currentGender, ['nữ', 'nu'], true) ? 'selected' : ''; ?>>Nữ</option>
+                                            <option value="Khác" <?php echo $currentGender === 'khác' ? 'selected' : ''; ?>>Khác</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Số tài khoản</label>
+                                        <input type="text" class="form-control" name="bank_account"
+                                            value="<?php echo htmlspecialchars((string) ($customerProfile['bank'] ?? '')); ?>">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-1"></i>Lưu
+                                        thay đổi</button>
+                                </form>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Email</label>
-                                <input type="email" class="form-control"
-                                    value="<?php echo htmlspecialchars($userEmail); ?>" readonly>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Số điện thoại <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" name="phone"
-                                    value="<?php echo htmlspecialchars((string) ($customerProfile['phone'] ?? '')); ?>"
-                                    required>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Địa chỉ <span class="text-danger">*</span></label>
-                                <textarea class="form-control" name="address" rows="2" required><?php echo htmlspecialchars((string) ($customerProfile['address'] ?? '')); ?></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Giới tính</label>
-                                <select class="form-select" name="gender">
-                                    <?php $currentGender = strtolower(trim((string) ($customerProfile['gender'] ?? ''))); ?>
-                                    <option value="" <?php echo $currentGender === '' ? 'selected' : ''; ?>>Chưa chọn</option>
-                                    <option value="Nam" <?php echo $currentGender === 'nam' ? 'selected' : ''; ?>>Nam</option>
-                                    <option value="Nữ" <?php echo in_array($currentGender, ['nữ', 'nu'], true) ? 'selected' : ''; ?>>Nữ</option>
-                                    <option value="Khác" <?php echo $currentGender === 'khác' ? 'selected' : ''; ?>>Khác</option>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Số tài khoản</label>
-                                <input type="text" class="form-control" name="bank_account"
-                                    value="<?php echo htmlspecialchars((string) ($customerProfile['bank'] ?? '')); ?>">
-                            </div>
-                            <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-1"></i>Lưu
-                                thay
-                                đổi</button>
-                        </form>
+                        </div>
 
-                        <hr class="my-4">
+                        <div class="col-12 col-xl-6">
+                            <div class="panel p-3 p-md-4">
+                                <h6 class="fw-bold mb-3">Cài đặt hệ thống</h6>
+                                <form method="post" class="system-compact-form">
+                                    <input type="hidden" name="action" value="save_system_settings">
+                                    <div class="mb-3">
+                                        <label class="form-label">Ngôn ngữ</label>
+                                        <select class="form-select" name="language">
+                                            <option value="vi" <?php echo $userLanguage === 'vi' ? 'selected' : ''; ?>>Tiếng Việt</option>
+                                            <option value="en" <?php echo $userLanguage === 'en' ? 'selected' : ''; ?>>English</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Theme</label>
+                                        <select class="form-select" name="theme">
+                                            <option value="light" <?php echo $userTheme === 'light' ? 'selected' : ''; ?>>Light</option>
+                                            <option value="dark" <?php echo $userTheme === 'dark' ? 'selected' : ''; ?>>Dark</option>
+                                            <option value="system" <?php echo $userTheme === 'system' ? 'selected' : ''; ?>>Theo hệ thống</option>
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="btn btn-outline-primary"><i class="fas fa-sliders me-1"></i>Lưu cài đặt hệ thống</button>
+                                </form>
 
-                        <h6 class="fw-bold mb-3">Cài đặt hệ thống</h6>
-                        <form method="post">
-                            <input type="hidden" name="action" value="save_system_settings">
-                            <div class="mb-3">
-                                <label class="form-label">Ngôn ngữ</label>
-                                <select class="form-select" name="language">
-                                    <option value="vi" <?php echo $userLanguage === 'vi' ? 'selected' : ''; ?>>Tiếng
-                                        Việt
-                                    </option>
-                                    <option value="en" <?php echo $userLanguage === 'en' ? 'selected' : ''; ?>>English
-                                    </option>
-                                </select>
+                                <hr class="my-4">
+
+                                <h6 class="fw-bold mb-3">Đổi mật khẩu</h6>
+                                <form method="post" autocomplete="off" class="password-compact-form">
+                                    <input type="hidden" name="action" value="change_password">
+                                    <div class="password-fields-stack mb-3">
+                                        <div class="password-field-item">
+                                            <label class="form-label">Mật khẩu hiện tại</label>
+                                            <div class="input-group">
+                                                <input type="password" class="form-control" name="current_password"
+                                                    id="currentPasswordInput" minlength="6" required>
+                                                <button class="btn password-toggle-btn" type="button"
+                                                    data-password-toggle="currentPasswordInput" aria-label="Hiện mật khẩu">
+                                                    <i class="fas fa-eye-slash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="password-field-item">
+                                            <label class="form-label">Mật khẩu mới</label>
+                                            <div class="input-group">
+                                                <input type="password" class="form-control" name="new_password"
+                                                    id="newPasswordInput" minlength="6" required>
+                                                <button class="btn password-toggle-btn" type="button"
+                                                    data-password-toggle="newPasswordInput" aria-label="Hiện mật khẩu">
+                                                    <i class="fas fa-eye-slash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="password-field-item">
+                                            <label class="form-label">Xác nhận mật khẩu mới</label>
+                                            <div class="input-group">
+                                                <input type="password" class="form-control" name="confirm_password"
+                                                    id="confirmPasswordInput" minlength="6" required>
+                                                <button class="btn password-toggle-btn" type="button"
+                                                    data-password-toggle="confirmPasswordInput" aria-label="Hiện mật khẩu">
+                                                    <i class="fas fa-eye-slash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-outline-danger"><i
+                                            class="fas fa-key me-1"></i>Đổi mật khẩu</button>
+                                </form>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">Theme</label>
-                                <select class="form-select" name="theme">
-                                    <option value="light" <?php echo $userTheme === 'light' ? 'selected' : ''; ?>>Light
-                                    </option>
-                                    <option value="dark" <?php echo $userTheme === 'dark' ? 'selected' : ''; ?>>Dark
-                                    </option>
-                                    <option value="system" <?php echo $userTheme === 'system' ? 'selected' : ''; ?>>Theo
-                                        hệ
-                                        thống</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="btn btn-outline-primary"><i class="fas fa-sliders me-1"></i>Lưu
-                                cài
-                                đặt hệ thống</button>
-                        </form>
+                        </div>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -1400,6 +1574,33 @@ if (isset($conn) && $conn instanceof mysqli) {
                 }
             }, 260);
         }, 3200);
+    })();
+    </script>
+    <script>
+    (function() {
+        const toggleButtons = document.querySelectorAll('[data-password-toggle]');
+        if (!toggleButtons.length) return;
+
+        toggleButtons.forEach((button) => {
+            button.addEventListener('click', function() {
+                const targetId = button.getAttribute('data-password-toggle');
+                if (!targetId) return;
+
+                const input = document.getElementById(targetId);
+                if (!input) return;
+
+                const icon = button.querySelector('i');
+                const isPassword = input.type === 'password';
+
+                input.type = isPassword ? 'text' : 'password';
+                button.setAttribute('aria-label', isPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu');
+
+                if (icon) {
+                    icon.classList.toggle('fa-eye', isPassword);
+                    icon.classList.toggle('fa-eye-slash', !isPassword);
+                }
+            });
+        });
     })();
     </script>
     <script src="web-events.js?v=20260414-3"></script>

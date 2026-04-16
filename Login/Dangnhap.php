@@ -26,6 +26,7 @@ if (isset($_SESSION['user_id'])) {
 }
 
 $resetSuccess = isset($_GET['reset']) && $_GET['reset'] === 'success';
+$socialError = trim((string) ($_GET['social_error'] ?? ''));
 ?>
 
 <!DOCTYPE html>
@@ -46,6 +47,12 @@ $resetSuccess = isset($_GET['reset']) && $_GET['reset'] === 'success';
     <?php if ($resetSuccess): ?>
     <div style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; background: #e8f7ee; color: #1a7f37; border: 1px solid #b7ebc6; padding: 10px 16px; border-radius: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08);">
         Đổi mật khẩu thành công! Bạn hãy đăng nhập lại nhé.
+    </div>
+    <?php endif; ?>
+
+    <?php if ($socialError !== ''): ?>
+    <div style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; background: #fdecec; color: #842029; border: 1px solid #f2b6bc; padding: 10px 16px; border-radius: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08);">
+        <?php echo htmlspecialchars($socialError); ?>
     </div>
     <?php endif; ?>
 
@@ -74,9 +81,8 @@ $resetSuccess = isset($_GET['reset']) && $_GET['reset'] === 'success';
 
                 <p style="margin-top: 15px; font-size: 12px; color: #666;">Hoặc đăng ký bằng</p>
                 <div class="social-icons">
-                    <a href="#" class="icon"><i class="bx bxl-google"></i></a>
-                    <a href="#" class="icon"><i class="bx bxl-facebook"></i></a>
-                    <a href="#" class="icon"><i class="bx bxl-github"></i></a>
+                    <a href="social_login.php?provider=google&action=start" class="icon" title="Đăng ký bằng Google"><i class="bx bxl-google"></i></a>
+                    <a href="social_login.php?provider=facebook&action=start" class="icon" title="Đăng ký bằng Facebook"><i class="bx bxl-facebook"></i></a>
                 </div>
             </form>
         </div>
@@ -99,9 +105,8 @@ $resetSuccess = isset($_GET['reset']) && $_GET['reset'] === 'success';
 
                 <p style="margin-top: 20px; font-size: 12px; color: #666;">Hoặc đăng nhập bằng</p>
                 <div class="social-icons">
-                    <a href="#" class="icon"><i class="bx bxl-google"></i></a>
-                    <a href="#" class="icon"><i class="bx bxl-facebook"></i></a>
-                    <a href="#" class="icon"><i class="bx bxl-github"></i></a>
+                    <a href="social_login.php?provider=google&action=start" class="icon" title="Đăng nhập bằng Google"><i class="bx bxl-google"></i></a>
+                    <a href="social_login.php?provider=facebook&action=start" class="icon" title="Đăng nhập bằng Facebook"><i class="bx bxl-facebook"></i></a>
                 </div>
             </form>
         </div>

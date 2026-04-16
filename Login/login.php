@@ -68,6 +68,33 @@ function firstExistingColumn(mysqli $conn, string $table, array $candidates): ?s
     return null;
 }
 
+function isStaffAccountFromNhanVien(mysqli $conn, string $email): bool
+{
+    $emailValue = trim($email);
+    if ($emailValue === '') {
+        return false;
+    }
+
+    $loginColumn = firstExistingColumn($conn, 'nhanvien', ['UserName', 'username', 'user_name', 'email', 'mail']);
+    if ($loginColumn === null) {
+        return false;
+    }
+
+    $sql = "SELECT 1 FROM nhanvien WHERE LOWER(`{$loginColumn}`) = LOWER(?) LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        return false;
+    }
+
+    $stmt->bind_param('s', $emailValue);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $exists = $result instanceof mysqli_result && $result->fetch_row() !== null;
+    $stmt->close();
+
+    return $exists;
+}
+
 $email = trim((string) ($_POST['email'] ?? ''));
 $password = (string) ($_POST['password'] ?? '');
 
@@ -115,11 +142,50 @@ if ($row = $result->fetch_assoc()) {
 
     if ($passwordOk) {
         $emailValue = strtolower(trim((string) ($row['email'] ?? '')));
+        $isStaffAccount = isStaffAccountFromNhanVien($conn, $emailValue);
         $dbRole = normalizeRole((string) ($roleColumn !== null ? ($row[$roleColumn] ?? '') : ''));
         $resolvedRole = $dbRole;
         $isPrimaryAdmin = $emailValue === 'admin@gmail.com';
         $adminCreatedValue = $adminCreatedColumn !== null ? (int) ($row[$adminCreatedColumn] ?? 0) : 0;
         $isAdminCreatedAccount = $isPrimaryAdmin || $adminCreatedValue === 1;
+
+        if ($isStaffAccount) {
+            $resolvedRole = 'admin';
+            $isAdminCreatedAccount = true;
+
+            $setParts = [];
+            $types = '';
+            $values = [];
+            if ($roleColumn !== null) {
+                $setParts[] = "{$roleColumn} = ?";
+                $types .= 's';
+                $values[] = 'admin';
+            }
+            if ($adminCreatedColumn !== null) {
+                $setParts[] = "{$adminCreatedColumn} = ?";
+                $types .= 'i';
+                $values[] = 1;
+            }
+            if (hasColumn($conn, 'users', 'updated_at')) {
+                $setParts[] = 'updated_at = NOW()';
+            }
+
+            if (count($setParts) > 0) {
+                $types .= 's';
+                $values[] = $emailValue;
+                $syncSql = 'UPDATE users SET ' . implode(', ', $setParts) . ' WHERE email = ? LIMIT 1';
+                $syncStmt = $conn->prepare($syncSql);
+                if ($syncStmt) {
+                    $bindArgs = [$types];
+                    foreach ($values as $idx => $value) {
+                        $bindArgs[] = &$values[$idx];
+                    }
+                    call_user_func_array([$syncStmt, 'bind_param'], $bindArgs);
+                    $syncStmt->execute();
+                    $syncStmt->close();
+                }
+            }
+        }
 
         if ($resolvedRole === '' && $isPrimaryAdmin) {
             $resolvedRole = 'admin';

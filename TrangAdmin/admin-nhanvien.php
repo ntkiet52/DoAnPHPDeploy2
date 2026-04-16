@@ -882,13 +882,13 @@ foreach ($staff as $member) {
         border-radius: 14px;
         border: 1px solid #e9ecef;
         box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
-        padding: 25px;
+        padding: 18px;
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: min(900px, calc(100vw - 40px));
-        max-height: calc(100vh - 80px);
+        width: min(1020px, calc(100vw - 36px));
+        max-height: calc(100vh - 56px);
         overflow-y: auto;
         z-index: 1600;
         display: none;
@@ -915,8 +915,8 @@ foreach ($staff as $member) {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
-        padding-bottom: 15px;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
         border-bottom: 2px solid #f0f2f5;
     }
 
@@ -929,8 +929,8 @@ foreach ($staff as $member) {
 
     .detail-content {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
         align-items: end;
     }
 
@@ -943,8 +943,8 @@ foreach ($staff as $member) {
     .detail-field label {
         font-weight: 600;
         color: #667eea;
-        font-size: 0.85rem;
-        margin-bottom: 8px;
+        font-size: 0.82rem;
+        margin-bottom: 6px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
@@ -954,12 +954,12 @@ foreach ($staff as $member) {
     .detail-field textarea {
         border: 1px solid #d7dce3;
         border-radius: 6px;
-        padding: 10px 12px;
-        font-size: 0.95rem;
+        padding: 8px 10px;
+        font-size: 0.9rem;
         color: #1f2937;
         background-color: #fff;
         width: 100%;
-        min-height: 46px;
+        min-height: 40px;
     }
 
     .detail-field input[readonly] {
@@ -976,25 +976,25 @@ foreach ($staff as $member) {
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
 
-    .detail-field.detail-field--full {
-        grid-column: 1 / -1;
+    .detail-field.detail-field--span-2 {
+        grid-column: span 2;
     }
 
     .detail-image-preview {
         width: 100%;
-        min-height: 170px;
+        min-height: 92px;
         border: 1px solid #d7dce3;
         border-radius: 8px;
         background: #f8f9fa;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 10px;
+        padding: 6px;
     }
 
     .detail-image-preview img {
         max-width: 100%;
-        max-height: 150px;
+        max-height: 78px;
         object-fit: contain;
         border-radius: 8px;
     }
@@ -1003,8 +1003,8 @@ foreach ($staff as $member) {
         display: flex;
         gap: 10px;
         justify-content: flex-end;
-        margin-top: 22px;
-        padding-top: 20px;
+        margin-top: 14px;
+        padding-top: 12px;
         border-top: 1px solid #f0f2f5;
     }
 
@@ -1016,19 +1016,29 @@ foreach ($staff as $member) {
 
     @media (max-width: 1200px) {
         .detail-content {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
         }
     }
 
     @media (max-width: 768px) {
         .detail-content {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .detail-panel {
             width: calc(100vw - 20px);
             max-height: calc(100vh - 20px);
             padding: 18px;
+        }
+
+        .detail-field.detail-field--span-2 {
+            grid-column: 1 / -1;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .detail-content {
+            grid-template-columns: 1fr;
         }
     }
 
@@ -1344,6 +1354,14 @@ foreach ($staff as $member) {
             </div>
             <div class="detail-content">
                 <div class="detail-field">
+                    <label>Xem ảnh</label>
+                    <div class="detail-image-preview">
+                        <img id="detailImagePreview" src="../TrangUser/ack.png" alt="Ảnh nhân viên"
+                            onerror="this.src=this.dataset.fallback || '../TrangUser/ack.png'"
+                            data-fallback="../TrangUser/ack.png">
+                    </div>
+                </div>
+                <div class="detail-field">
                     <label>Mã nhân viên</label>
                     <input type="text" id="detailId" readonly>
                 </div>
@@ -1385,14 +1403,6 @@ foreach ($staff as $member) {
                     <label>Link ảnh</label>
                     <input type="text" id="detailImage" placeholder="VD: ../AnhTrangChu/staff-admin.png">
                 </div>
-                <div class="detail-field detail-field--full">
-                    <label>Xem ảnh</label>
-                    <div class="detail-image-preview">
-                        <img id="detailImagePreview" src="../TrangUser/ack.png" alt="Ảnh nhân viên"
-                            onerror="this.src=this.dataset.fallback || '../TrangUser/ack.png'"
-                            data-fallback="../TrangUser/ack.png">
-                    </div>
-                </div>
                 <div class="detail-field">
                     <label>Giới tính</label>
                     <select id="detailGender" class="form-select">
@@ -1406,7 +1416,7 @@ foreach ($staff as $member) {
                     <label>Ngày sinh</label>
                     <input type="date" id="detailBirthYear">
                 </div>
-                <div class="detail-field detail-field--full">
+                <div class="detail-field detail-field--span-2">
                     <label>Mật khẩu mới (nếu đổi)</label>
                     <input type="password" id="detailPassword" placeholder="Để trống nếu không đổi">
                 </div>
