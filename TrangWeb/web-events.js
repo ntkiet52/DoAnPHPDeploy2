@@ -1156,8 +1156,8 @@
       : "drink-detail.php";
   }
 
-  async function addProductToFavorites(item, productLink) {
-    if (!item || !item.id) return { added: false, items: [] };
+  async function toggleProductFavorite(item, productLink) {
+    if (!item || !item.id) return { added: false, removed: false, items: [] };
 
     const favorites = await loadFavoritesForCurrentUser();
     const idKey = String(item.id).trim();
@@ -1166,7 +1166,11 @@
     );
 
     if (existed) {
-      return { added: false, items: favorites };
+      const nextItems = favorites.filter(
+        (fav) => String(fav?.id || "").trim() !== idKey,
+      );
+      await saveFavoritesForCurrentUser(nextItems);
+      return { added: false, removed: true, items: nextItems };
     }
 
     const nextItems = [
@@ -1182,7 +1186,7 @@
     ].slice(0, 120);
 
     await saveFavoritesForCurrentUser(nextItems);
-    return { added: true, items: nextItems };
+    return { added: true, removed: false, items: nextItems };
   }
 
   function renderFavoritesList(container, items) {
@@ -1297,9 +1301,11 @@
         }
 
         const productLink = findProductLinkFromCard(card, item.id);
-        const result = await addProductToFavorites(item, productLink);
+        const result = await toggleProductFavorite(item, productLink);
         if (result.added) {
           toast(`Đã thêm "${item.name}" vào yêu thích`);
+        } else if (result.removed) {
+          toast(`Đã bỏ "${item.name}" khỏi yêu thích`);
         } else {
           toast(`"${item.name}" đã có trong yêu thích`);
         }
@@ -2965,7 +2971,7 @@
         .trim();
 
     const anchors = Array.from(
-      document.querySelectorAll(".main-nav a.nav-link, a[data-ack-nav], a")
+      document.querySelectorAll(".main-nav a.nav-link, a[data-ack-nav], a"),
     );
     anchors.forEach((anchor) => {
       if (!(anchor instanceof HTMLAnchorElement)) return;

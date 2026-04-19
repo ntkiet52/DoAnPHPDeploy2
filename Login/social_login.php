@@ -442,6 +442,18 @@ function socialRedirectToLogin(string $message): void
     exit;
 }
 
+function socialFacebookFallbackEmail(string $facebookId): string
+{
+    $clean = preg_replace('/[^a-zA-Z0-9]/', '', $facebookId) ?? '';
+    $clean = strtolower(trim($clean));
+
+    if ($clean === '') {
+        $clean = bin2hex(random_bytes(8));
+    }
+
+    return 'fb_' . $clean . '@facebook.local';
+}
+
 function socialParseHttpStatusFromHeaders(array $headers): int
 {
     foreach ($headers as $headerLine) {
@@ -781,11 +793,17 @@ if ($action === 'start') {
         exit;
     }
 
+    $facebookScope = socialEnv('FACEBOOK_SCOPE', $fileEnv);
+    if ($facebookScope === '') {
+        // Keep default minimal to avoid "Invalid Scopes: email" on apps not approved for email permission yet.
+        $facebookScope = 'public_profile';
+    }
+
     $query = http_build_query([
         'client_id' => $clientId,
         'redirect_uri' => $redirectUri,
         'state' => $state,
-        'scope' => 'email,public_profile',
+        'scope' => $facebookScope,
         'response_type' => 'code',
     ]);
     header('Location: https://www.facebook.com/v19.0/dialog/oauth?' . $query);
@@ -853,6 +871,13 @@ if ($provider === 'google') {
 
     $userEmail = strtolower(trim((string) ($profile['email'] ?? '')));
     $userName = trim((string) ($profile['name'] ?? ''));
+
+    if ($userEmail === '') {
+        $facebookId = trim((string) ($profile['id'] ?? ''));
+        if ($facebookId !== '') {
+            $userEmail = socialFacebookFallbackEmail($facebookId);
+        }
+    }
 }
 
 if ($userEmail === '') {

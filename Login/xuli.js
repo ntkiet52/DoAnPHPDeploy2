@@ -2,6 +2,24 @@ const container = document.getElementById("container");
 const registerBtn = document.getElementById("register");
 const loginBtn = document.getElementById("login");
 
+const ackNativeAlert = window.alert?.bind(window);
+window.alert = function (message) {
+  const normalized = String(message ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    normalized === "đăng nhập thành công!" ||
+    normalized === "dang nhap thanh cong!"
+  ) {
+    return;
+  }
+
+  if (typeof ackNativeAlert === "function") {
+    ackNativeAlert(message);
+  }
+};
+
 // 1. CHỨC NĂNG TRƯỢT QUA LẠI
 const mobileLinkRegister = document.getElementById("link-register-mobile"); // Nếu có link mobile
 const mobileLinkLogin = document.getElementById("link-login-mobile"); // Nếu có link mobile

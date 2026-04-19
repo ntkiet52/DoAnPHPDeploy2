@@ -382,6 +382,48 @@ h3.fw-bold.mb-0 {
   transform: translateY(0);
 }
 
+/* Global loading overlay for CRUD actions (Add/Edit/Delete) */
+.ack-global-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
+}
+
+.ack-global-loading-overlay.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: all;
+}
+
+.ack-global-loading-spinner {
+  width: 54px;
+  height: 54px;
+  border: 5px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: ack-global-loading-spin 0.8s linear infinite;
+}
+
+@keyframes ack-global-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+body.ack-loading-active {
+  overflow: hidden;
+}
+
 @media (max-width: 768px) {
   #ack-admin-toast-stack {
     left: 12px;

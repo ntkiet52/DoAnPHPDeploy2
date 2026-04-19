@@ -1037,6 +1037,26 @@ foreach ($reviews as $rv) {
         font-size: 0.8rem;
         color: #64748b;
     }
+
+    .favorite-product-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        color: #6c757d;
+    }
+
+    .favorite-product-toggle .favorite-heart-icon {
+        transition: color 0.25s ease, transform 0.2s ease;
+    }
+
+    .favorite-product-toggle.is-favorited .favorite-heart-icon {
+        color: #ef4444 !important;
+        transform: scale(1.08);
+    }
+
+    .favorite-heart-active {
+        color: #ef4444 !important;
+    }
     </style>
 </head>
 
@@ -1132,7 +1152,9 @@ foreach ($reviews as $rv) {
                         </div>
                     </div>
                     <div class="mb-4">
-                        <a href="#" class="text-decoration-none text-secondary"><i class="far fa-heart me-1"></i> Thêm
+                        <a href="#" class="text-decoration-none text-secondary favorite-product-toggle" role="button"
+                            aria-pressed="false">
+                            <i class="far fa-heart me-1 favorite-heart-icon"></i> Thêm
                             vào yêu thích</a>
                     </div>
                     <div class="d-flex gap-2">
@@ -1383,6 +1405,121 @@ foreach ($reviews as $rv) {
             }
         });
     });
+
+    (function() {
+        const FAVORITES_KEY_PREFIX = 'ack_favorites_v1_';
+        const USER_SESSION_ENDPOINT = 'user-session.php';
+        const productWrap = document.querySelector('.product-container[data-product-id]');
+        const favoriteBtn = document.querySelector('.favorite-product-toggle');
+        const heartIcon = favoriteBtn ? favoriteBtn.querySelector('.favorite-heart-icon') : null;
+
+        if (!productWrap || !favoriteBtn || !heartIcon) {
+            return;
+        }
+
+        const productId = String(productWrap.getAttribute('data-product-id') || '').trim().toLowerCase();
+        if (!productId) {
+            return;
+        }
+
+        let cachedStorageKey = `${FAVORITES_KEY_PREFIX}guest`;
+        let storageKeyResolved = false;
+
+        const resolveCurrentStorageKey = async () => {
+            if (storageKeyResolved) {
+                return cachedStorageKey;
+            }
+
+            try {
+                const res = await fetch(USER_SESSION_ENDPOINT, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    cache: 'no-store'
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (data && data.is_logged_in) {
+                    const userId = Number.parseInt(String(data.user_id || 0), 10) || 0;
+                    if (userId > 0) {
+                        cachedStorageKey = `${FAVORITES_KEY_PREFIX}uid_${userId}`;
+                    } else {
+                        const email = String(data.email || '').trim().toLowerCase();
+                        cachedStorageKey = email ? `${FAVORITES_KEY_PREFIX}mail_${email}` :
+                            `${FAVORITES_KEY_PREFIX}guest`;
+                    }
+                }
+            } catch (_) {
+                cachedStorageKey = `${FAVORITES_KEY_PREFIX}guest`;
+            }
+
+            storageKeyResolved = true;
+            return cachedStorageKey;
+        };
+
+        const collectFavoritedProductIds = async () => {
+            const ids = new Set();
+
+            try {
+                const storageKey = await resolveCurrentStorageKey();
+                const raw = localStorage.getItem(storageKey);
+                const parsed = raw ? JSON.parse(raw) : [];
+                if (Array.isArray(parsed)) {
+                    parsed.forEach((item) => {
+                        const id = String(item && item.id ? item.id : '').trim().toLowerCase();
+                        if (id) {
+                            ids.add(id);
+                        }
+                    });
+                }
+            } catch (_) {
+                // ignore parse/storage errors
+            }
+
+            return ids;
+        };
+
+        const setFavoritedUI = (isFavorited) => {
+            favoriteBtn.classList.toggle('is-favorited', isFavorited);
+            favoriteBtn.setAttribute('aria-pressed', isFavorited ? 'true' : 'false');
+
+            heartIcon.classList.toggle('far', !isFavorited);
+            heartIcon.classList.toggle('fas', isFavorited);
+            heartIcon.classList.toggle('fa-regular', !isFavorited);
+            heartIcon.classList.toggle('fa-solid', isFavorited);
+            heartIcon.classList.toggle('favorite-heart-active', isFavorited);
+            if (isFavorited) {
+                heartIcon.style.setProperty('color', '#ef4444', 'important');
+            } else {
+                heartIcon.style.removeProperty('color');
+            }
+        };
+
+        const syncHeartStateFromStorage = async () => {
+            const ids = await collectFavoritedProductIds();
+            setFavoritedUI(ids.has(productId));
+        };
+
+        void syncHeartStateFromStorage();
+
+        // web-events.js handles "add favorite" at capture phase and writes localStorage.
+        // Re-sync UI right after that click flow completes.
+        window.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (!target.closest('.favorite-product-toggle, .favorite-product-toggle *')) return;
+
+            window.setTimeout(() => {
+                void syncHeartStateFromStorage();
+            }, 140);
+        }, true);
+
+        window.addEventListener('storage', (event) => {
+            const key = String(event.key || '');
+            if (!key.startsWith(FAVORITES_KEY_PREFIX)) return;
+            void syncHeartStateFromStorage();
+        });
+    })();
     </script>
     <script src="web-events.js?v=20260414-3"></script>
 </body>

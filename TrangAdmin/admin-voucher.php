@@ -477,12 +477,23 @@ try {
         }
     }
 
+    $todayStartTs = strtotime(date('Y-m-d')) ?: time();
     $rows = $pdo->query('SELECT * FROM voucher ORDER BY id_voucher DESC')->fetchAll();
     foreach ($rows as $row) {
         $rawType = normalizeVoucherType((string) pickVoucherValue($row, [$typeCol ?? 'kieu_giam'], 'fixed'));
         $rawStatus = normalizeVoucherStatus((string) pickVoucherValue($row, [$statusCol ?? 'trang_thai'], 'active'));
         $startRaw = (string) pickVoucherValue($row, [$startCol ?? 'ngay_bat_dau'], '');
         $endRaw = (string) pickVoucherValue($row, [$endCol ?? 'ngay_ket_thuc'], '');
+        $endDateInput = formatDateInput($endRaw);
+        $endDateTs = strtotime($endDateInput);
+        $isExpired = $endDateTs !== false && $endDateTs < $todayStartTs;
+
+        $effectiveStatus = $rawStatus;
+        $effectiveStatusLabel = $rawStatus === 'active' ? 'Đang áp dụng' : 'Tạm dừng';
+        if ($isExpired) {
+            $effectiveStatus = 'expired';
+            $effectiveStatusLabel = 'Đã hết hạn';
+        }
 
         $vouchers[] = [
             'id' => (int) pickVoucherValue($row, [$idCol ?? 'id_voucher'], 0),
@@ -496,10 +507,12 @@ try {
             'used' => (int) pickVoucherValue($row, [$usedCol ?? 'so_luong_da_su_dung'], 0),
             'start_date' => formatDateInput($startRaw),
             'start_date_display' => formatDateDisplay($startRaw),
-            'end_date' => formatDateInput($endRaw),
+            'end_date' => $endDateInput,
             'end_date_display' => formatDateDisplay($endRaw),
-            'status' => $rawStatus,
-            'status_label' => $rawStatus === 'active' ? 'Đang áp dụng' : 'Tạm dừng',
+            'raw_status' => $rawStatus,
+            'status' => $effectiveStatus,
+            'is_expired' => $isExpired,
+            'status_label' => $effectiveStatusLabel,
         ];
     }
 
@@ -518,8 +531,7 @@ foreach ($vouchers as $voucher) {
         $activeVouchers++;
     }
 
-    $endDateTs = strtotime((string) ($voucher['end_date'] ?? ''));
-    if ($endDateTs !== false && $endDateTs < $todayTs) {
+    if (!empty($voucher['is_expired'])) {
         $expiredVouchers++;
     }
 }
@@ -857,6 +869,11 @@ foreach ($vouchers as $voucher) {
         color: #991b1b;
     }
 
+    .voucher-status-expired {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
     @media (max-width: 768px) {
         .voucher-top-sticky {
             padding: 20px 15px 10px;
@@ -1179,7 +1196,7 @@ foreach ($vouchers as $voucher) {
                                 data-max-use="<?php echo htmlspecialchars((string) ($voucher['max_use'] ?? 0), ENT_QUOTES); ?>"
                                 data-start-date="<?php echo htmlspecialchars((string) ($voucher['start_date'] ?? ''), ENT_QUOTES); ?>"
                                 data-end-date="<?php echo htmlspecialchars((string) ($voucher['end_date'] ?? ''), ENT_QUOTES); ?>"
-                                data-status="<?php echo htmlspecialchars((string) ($voucher['status'] ?? 'inactive'), ENT_QUOTES); ?>">
+                                data-status="<?php echo htmlspecialchars((string) ($voucher['raw_status'] ?? 'inactive'), ENT_QUOTES); ?>">
                                 <td class="fw-bold"><?php echo htmlspecialchars((string) ($voucher['code'] ?? '')); ?>
                                 </td>
                                 <td><?php echo htmlspecialchars((string) ($voucher['name'] ?? '')); ?></td>
@@ -1203,8 +1220,15 @@ foreach ($vouchers as $voucher) {
                                     <?php echo htmlspecialchars((string) ($voucher['end_date_display'] ?? '')); ?>
                                 </td>
                                 <td>
-                                    <span
-                                        class="voucher-badge <?php echo (($voucher['status'] ?? 'inactive') === 'active') ? 'voucher-status-active' : 'voucher-status-inactive'; ?>">
+                                    <span class="voucher-badge <?php
+                                        $statusClass = 'voucher-status-inactive';
+                                        if (($voucher['status'] ?? 'inactive') === 'active') {
+                                            $statusClass = 'voucher-status-active';
+                                        } elseif (($voucher['status'] ?? 'inactive') === 'expired') {
+                                            $statusClass = 'voucher-status-expired';
+                                        }
+                                        echo $statusClass;
+                                    ?>">
                                         <?php echo htmlspecialchars((string) ($voucher['status_label'] ?? 'Tạm dừng')); ?>
                                     </span>
                                 </td>

@@ -244,6 +244,32 @@ if ($result_cart->num_rows > 0) {
         white-space: nowrap;
     }
 
+    .favorite-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        color: #6b7280;
+        user-select: none;
+    }
+
+    .favorite-toggle:hover {
+        color: #6b7280;
+    }
+
+    .favorite-toggle .fa-heart {
+        transition: none;
+    }
+
+    .favorite-toggle.active {
+        color: inherit;
+        font-weight: inherit;
+    }
+
+    .favorite-toggle.active .fa-heart {
+        color: #ef4444 !important;
+        font-weight: 900;
+    }
+
     .action-links .delete-item-btn {
         background: transparent;
         border: none;
@@ -253,7 +279,7 @@ if ($result_cart->num_rows > 0) {
         cursor: pointer;
     }
 
-    .action-links span:hover {
+    .action-links span:not(.favorite-toggle):hover {
         text-decoration: underline;
     }
 
@@ -665,7 +691,10 @@ if ($result_cart->num_rows > 0) {
                         </a>
                         <div class="product-desc"><?php echo $item['desc']; ?></div>
                         <div class="action-links">
-                            <i class="far fa-heart me-1"></i> <span>Thêm Vào Yêu Thích</span>
+                            <span class="favorite-toggle" role="button" tabindex="0" aria-pressed="false">
+                                <i class="far fa-heart me-1"></i>
+                                <span>Thêm Vào Yêu Thích</span>
+                            </span>
                             <span class="text-secondary mx-2">|</span>
                             <button type="button" class="delete-item-btn"
                                 data-delete-id="<?php echo (int)$detailId; ?>"
@@ -814,6 +843,118 @@ if ($result_cart->num_rows > 0) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+        const FAVORITES_KEY_PREFIX = 'ack_favorites_v1_';
+        const USER_SESSION_ENDPOINT = 'user-session.php';
+
+        let cachedStorageKey = `${FAVORITES_KEY_PREFIX}guest`;
+        let storageKeyResolved = false;
+
+        const resolveCurrentStorageKey = async () => {
+            if (storageKeyResolved) {
+                return cachedStorageKey;
+            }
+
+            try {
+                const res = await fetch(USER_SESSION_ENDPOINT, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    cache: 'no-store'
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (data && data.is_logged_in) {
+                    const userId = Number.parseInt(String(data.user_id || 0), 10) || 0;
+                    if (userId > 0) {
+                        cachedStorageKey = `${FAVORITES_KEY_PREFIX}uid_${userId}`;
+                    } else {
+                        const email = String(data.email || '').trim().toLowerCase();
+                        cachedStorageKey = email ? `${FAVORITES_KEY_PREFIX}mail_${email}` : `${FAVORITES_KEY_PREFIX}guest`;
+                    }
+                }
+            } catch (_) {
+                cachedStorageKey = `${FAVORITES_KEY_PREFIX}guest`;
+            }
+
+            storageKeyResolved = true;
+            return cachedStorageKey;
+        };
+
+        const collectFavoritedProductIds = async () => {
+            const ids = new Set();
+
+            try {
+                const storageKey = await resolveCurrentStorageKey();
+                const raw = localStorage.getItem(storageKey);
+                const parsed = raw ? JSON.parse(raw) : [];
+                if (Array.isArray(parsed)) {
+                    parsed.forEach((item) => {
+                        const id = String(item && item.id ? item.id : '').trim().toLowerCase();
+                        if (id) {
+                            ids.add(id);
+                        }
+                    });
+                }
+            } catch (_) {
+                // ignore parse/storage errors
+            }
+
+            return ids;
+        };
+
+        const setFavoriteUI = (favoriteEl, isFavorited) => {
+            if (!favoriteEl) return;
+
+            const heartIcon = favoriteEl.querySelector('i.fa-heart');
+            favoriteEl.classList.toggle('active', isFavorited);
+            favoriteEl.setAttribute('aria-pressed', isFavorited ? 'true' : 'false');
+
+            if (heartIcon) {
+                heartIcon.classList.toggle('far', !isFavorited);
+                heartIcon.classList.toggle('fas', isFavorited);
+                heartIcon.classList.toggle('fa-regular', !isFavorited);
+                heartIcon.classList.toggle('fa-solid', isFavorited);
+            }
+        };
+
+        const syncAllFavoriteButtons = async () => {
+            const ids = await collectFavoritedProductIds();
+
+            document.querySelectorAll('.cart-item-card').forEach((card) => {
+                const favoriteEl = card.querySelector('.favorite-toggle');
+                if (!favoriteEl) return;
+
+                const productId = String(card.getAttribute('data-product-id') || '').trim().toLowerCase();
+                if (!productId) {
+                    setFavoriteUI(favoriteEl, false);
+                    return;
+                }
+
+                setFavoriteUI(favoriteEl, ids.has(productId));
+            });
+        };
+
+        void syncAllFavoriteButtons();
+
+        window.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (!target.closest('.favorite-toggle, .favorite-toggle *')) return;
+
+            window.setTimeout(() => {
+                void syncAllFavoriteButtons();
+            }, 140);
+        }, true);
+
+        window.addEventListener('storage', (event) => {
+            const key = String(event.key || '');
+            if (!key.startsWith(FAVORITES_KEY_PREFIX)) return;
+            void syncAllFavoriteButtons();
+        });
+    })();
+    </script>
     <script src="cart-events.js?v=<?php echo urlencode((string) (@filemtime(__DIR__ . '/cart-events.js') ?: time())); ?>"></script>
     <script src="web-events.js?v=20260414-3"></script>
 </body>

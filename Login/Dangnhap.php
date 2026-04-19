@@ -39,7 +39,7 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260419-2">
 </head>
 
 <body>
@@ -80,14 +80,6 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
                 </div>
 
                 <button type="submit">Đăng Ký</button>
-
-                <p style="margin-top: 15px; font-size: 12px; color: #666;">Hoặc đăng ký bằng</p>
-                <div class="social-icons">
-                    <a href="social_login.php?provider=google&action=start" class="icon" title="Đăng ký bằng Google"><i
-                            class="bx bxl-google"></i></a>
-                    <a href="social_login.php?provider=facebook&action=start" class="icon"
-                        title="Đăng ký bằng Facebook"><i class="bx bxl-facebook"></i></a>
-                </div>
             </form>
         </div>
 
@@ -108,11 +100,17 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
                 <button type="submit">Đăng Nhập</button>
 
                 <p style="margin-top: 20px; font-size: 12px; color: #666;">Hoặc đăng nhập bằng</p>
-                <div class="social-icons">
-                    <a href="social_login.php?provider=google&action=start" class="icon"
-                        title="Đăng nhập bằng Google"><i class="bx bxl-google"></i></a>
-                    <a href="social_login.php?provider=facebook&action=start" class="icon"
-                        title="Đăng nhập bằng Facebook"><i class="bx bxl-facebook"></i></a>
+                <div class="social-login-grid">
+                    <a href="social_login.php?provider=google&action=start" class="social-login-btn google"
+                        title="Đăng nhập bằng Google">
+                        <i class="bx bxl-google"></i>
+                        <span>Google</span>
+                    </a>
+                    <a href="social_login.php?provider=facebook&action=start" class="social-login-btn facebook"
+                        title="Đăng nhập bằng Facebook">
+                        <i class="bx bxl-facebook"></i>
+                        <span>Facebook</span>
+                    </a>
                 </div>
             </form>
         </div>
@@ -133,7 +131,7 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
         </div>
     </div>
 
-    <script src="xuli.js"></script>
+    <script src="xuli.js?v=20260419-2"></script>
 </body>
 
 </html>

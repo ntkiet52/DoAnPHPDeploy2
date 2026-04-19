@@ -53,6 +53,27 @@
         gap: 10px;
       }
 
+      .ack-dialog-btn-loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .ack-dialog-btn-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.45);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: ack-dialog-spin 0.65s linear infinite;
+      }
+
+      @keyframes ack-dialog-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
     `;
     document.head.appendChild(style);
   }
@@ -68,9 +89,13 @@
       showCancel = false,
       confirmClass = "btn btn-primary",
       cancelClass = "btn btn-outline-secondary",
+      confirmLoadingMs = 0,
+      confirmLoadingText = "Đang xử lý...",
     } = options;
 
     return new Promise((resolve) => {
+      let isResolving = false;
+
       const backdrop = document.createElement("div");
       backdrop.className = "ack-dialog-backdrop";
       backdrop.innerHTML = `
@@ -90,11 +115,22 @@
       if (messageEl) messageEl.textContent = String(message || "");
 
       const close = (result) => {
+        if (isResolving) return;
+        isResolving = true;
         backdrop.remove();
         resolve(result);
       };
 
+      const setButtonsDisabled = (disabled) => {
+        backdrop
+          .querySelectorAll(".ack-dialog-actions button")
+          .forEach((btn) => {
+            btn.disabled = !!disabled;
+          });
+      };
+
       backdrop.addEventListener("click", (event) => {
+        if (isResolving) return;
         if (event.target === backdrop && showCancel) {
           close(false);
         }
@@ -102,13 +138,29 @@
 
       backdrop
         .querySelector('[data-role="ok"]')
-        ?.addEventListener("click", () => {
+        ?.addEventListener("click", (event) => {
+          if (isResolving) return;
+
+          const okButton = event.currentTarget;
+          const waitMs = Math.max(0, Number(confirmLoadingMs || 0));
+          if (waitMs > 0 && okButton instanceof HTMLElement) {
+            setButtonsDisabled(true);
+            okButton.innerHTML = `<span class="ack-dialog-btn-loading"><span class="ack-dialog-btn-spinner" aria-hidden="true"></span>${String(confirmLoadingText || "Đang xử lý...")}</span>`;
+            window.setTimeout(() => {
+              close(true);
+            }, waitMs);
+            return;
+          }
+
           close(true);
         });
 
       backdrop
         .querySelector('[data-role="cancel"]')
-        ?.addEventListener("click", () => close(false));
+        ?.addEventListener("click", () => {
+          if (isResolving) return;
+          close(false);
+        });
 
       document.body.appendChild(backdrop);
     });
@@ -963,6 +1015,8 @@
         showCancel: true,
         confirmClass: "btn btn-primary",
         cancelClass: "btn btn-outline-secondary",
+        confirmLoadingMs: 1500,
+        confirmLoadingText: "Đang xử lý...",
       });
       if (!confirmPlaceOrder) {
         return;
