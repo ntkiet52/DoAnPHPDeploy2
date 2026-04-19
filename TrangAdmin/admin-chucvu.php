@@ -1,8 +1,15 @@
 <?php
 require_once __DIR__ . '/../Login/admin_auth.php';
 
-function generateNextDepartmentId(PDO $pdo): string {
-    $rows = $pdo->query("SELECT MaBP FROM bophan")->fetchAll(PDO::FETCH_COLUMN);
+function ensurePositionTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS chucvu (
+        MaCV VARCHAR(20) NOT NULL PRIMARY KEY,
+        TenCV VARCHAR(255) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function generateNextPositionId(PDO $pdo): string {
+    $rows = $pdo->query("SELECT MaCV FROM chucvu")->fetchAll(PDO::FETCH_COLUMN);
     $usedNumbers = [];
 
     foreach ($rows as $rowId) {
@@ -19,14 +26,14 @@ function generateNextDepartmentId(PDO $pdo): string {
         $nextNumber++;
     }
 
-    return 'BP' . str_pad((string) $nextNumber, 2, '0', STR_PAD_LEFT);
+    return 'CV' . str_pad((string) $nextNumber, 2, '0', STR_PAD_LEFT);
 }
 
-$departments = [];
+$positions = [];
 $dbError = '';
 $crudMessage = '';
 $crudError = '';
-$nextDepartmentId = '';
+$nextPositionId = '';
 
 $dbHost = '127.0.0.1';
 $dbName = 'qlhethongbanhangmini';
@@ -44,78 +51,80 @@ try {
         ]
     );
 
+    ensurePositionTable($pdo);
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = trim((string) ($_POST['crud_action'] ?? ''));
 
-        if ($action === 'add_department') {
-            $id = trim((string) ($_POST['department_id'] ?? ''));
-            $name = trim((string) ($_POST['department_name'] ?? ''));
+        if ($action === 'add_position') {
+            $id = trim((string) ($_POST['position_id'] ?? ''));
+            $name = trim((string) ($_POST['position_name'] ?? ''));
 
             if ($id === '') {
-                $id = generateNextDepartmentId($pdo);
+                $id = generateNextPositionId($pdo);
             }
 
             if ($id === '' || $name === '') {
-                $crudError = 'Vui lòng nhập tên bộ phận.';
+                $crudError = 'Vui lòng nhập tên chức vụ.';
             } else {
                 try {
-                    $stmt = $pdo->prepare("INSERT INTO bophan (MaBP, TenBP) VALUES (?, ?)");
+                    $stmt = $pdo->prepare("INSERT INTO chucvu (MaCV, TenCV) VALUES (?, ?)");
                     $stmt->execute([$id, $name]);
-                    $crudMessage = 'Đã thêm bộ phận thành công.';
+                    $crudMessage = 'Đã thêm chức vụ thành công.';
                 } catch (Throwable $insertError) {
-                    $crudError = 'Không thể thêm bộ phận: ' . $insertError->getMessage();
+                    $crudError = 'Không thể thêm chức vụ: ' . $insertError->getMessage();
                 }
             }
         }
 
-        if ($action === 'update_department') {
-            $id = trim((string) ($_POST['department_id'] ?? ''));
-            $name = trim((string) ($_POST['department_name'] ?? ''));
+        if ($action === 'update_position') {
+            $id = trim((string) ($_POST['position_id'] ?? ''));
+            $name = trim((string) ($_POST['position_name'] ?? ''));
 
             if ($id === '' || $name === '') {
-                $crudError = 'Dữ liệu cập nhật bộ phận chưa hợp lệ.';
+                $crudError = 'Dữ liệu cập nhật chức vụ chưa hợp lệ.';
             } else {
                 try {
-                    $stmt = $pdo->prepare("UPDATE bophan SET TenBP = ? WHERE MaBP = ?");
+                    $stmt = $pdo->prepare("UPDATE chucvu SET TenCV = ? WHERE MaCV = ?");
                     $stmt->execute([$name, $id]);
-                    $crudMessage = 'Đã cập nhật bộ phận.';
+                    $crudMessage = 'Đã cập nhật chức vụ.';
                 } catch (Throwable $updateError) {
-                    $crudError = 'Không thể cập nhật bộ phận: ' . $updateError->getMessage();
+                    $crudError = 'Không thể cập nhật chức vụ: ' . $updateError->getMessage();
                 }
             }
         }
 
-        if ($action === 'delete_department') {
-            $id = trim((string) ($_POST['department_id'] ?? ''));
+        if ($action === 'delete_position') {
+            $id = trim((string) ($_POST['position_id'] ?? ''));
             if ($id === '') {
-                $crudError = 'Không xác định được bộ phận để xóa.';
+                $crudError = 'Không xác định được chức vụ để xóa.';
             } else {
                 try {
-                    $stmt = $pdo->prepare("DELETE FROM bophan WHERE MaBP = ?");
+                    $stmt = $pdo->prepare("DELETE FROM chucvu WHERE MaCV = ?");
                     $stmt->execute([$id]);
-                    $crudMessage = 'Đã xóa bộ phận.';
+                    $crudMessage = 'Đã xóa chức vụ.';
                 } catch (Throwable $deleteError) {
-                    $crudError = 'Không thể xóa bộ phận (có thể đang được nhân viên sử dụng): ' . $deleteError->getMessage();
+                    $crudError = 'Không thể xóa chức vụ (có thể đang được nhân viên sử dụng): ' . $deleteError->getMessage();
                 }
             }
         }
     }
 
-    $rows = $pdo->query("SELECT MaBP, TenBP FROM bophan ORDER BY MaBP ASC")->fetchAll();
+    $rows = $pdo->query("SELECT MaCV, TenCV FROM chucvu ORDER BY MaCV ASC")->fetchAll();
     foreach ($rows as $row) {
-        $id = (string) ($row['MaBP'] ?? '');
-        $departments[] = [
+        $id = (string) ($row['MaCV'] ?? '');
+        $positions[] = [
             'id' => $id,
-            'name' => (string) ($row['TenBP'] ?? ''),
+            'name' => (string) ($row['TenCV'] ?? ''),
         ];
     }
 
-    $nextDepartmentId = generateNextDepartmentId($pdo);
+    $nextPositionId = generateNextPositionId($pdo);
 } catch (Throwable $e) {
     $dbError = $e->getMessage();
 }
 
-$totalDepartments = count($departments);
+$totalPositions = count($positions);
 ?>
 
 <!DOCTYPE html>
@@ -124,7 +133,7 @@ $totalDepartments = count($departments);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACK Admin - Quản lý bộ phận</title>
+    <title>ACK Admin - Quản lý chức vụ</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -415,14 +424,6 @@ $totalDepartments = count($departments);
         padding-left: 16px;
     }
 
-    .department-img {
-        width: 44px;
-        height: 44px;
-        border-radius: 10px;
-        object-fit: cover;
-        border: 1px solid #d8dee9;
-    }
-
     .detail-overlay {
         display: none;
         position: fixed;
@@ -567,8 +568,8 @@ $totalDepartments = count($departments);
             <a href="admin-nhomhang.php" class="nav-item"><i class="fas fa-folder"></i> Nhóm hàng</a>
             <a href="admin-nhaphang.php" class="nav-item"><i class="fas fa-truck-loading"></i> Nhập hàng</a>
             <a href="admin-nhacungcap.php" class="nav-item"><i class="fas fa-building"></i> Nhà cung cấp</a>
-            <a href="admin-bophan.php" class="nav-item active"><i class="fas fa-sitemap"></i> Bộ phận</a>
-            <a href="admin-chucvu.php" class="nav-item"><i class="fas fa-user-tag"></i> Chức vụ</a>
+            <a href="admin-bophan.php" class="nav-item"><i class="fas fa-sitemap"></i> Bộ phận</a>
+            <a href="admin-chucvu.php" class="nav-item active"><i class="fas fa-user-tag"></i> Chức vụ</a>
             <a href="admin-donhang.php" class="nav-item"><i class="fas fa-shopping-cart"></i> Đơn hàng</a>
             <a href="admin-nhanvien.php" class="nav-item"><i class="fas fa-user-tie"></i> Nhân viên</a>
             <a href="admin-khachhang.php" class="nav-item"><i class="fas fa-users"></i> Khách hàng</a>
@@ -588,7 +589,7 @@ $totalDepartments = count($departments);
             </div>
 
             <div class="top-header">
-                <h2 class="page-title">Quản lý bộ phận</h2>
+                <h2 class="page-title">Quản lý chức vụ</h2>
                 <input type="text" class="search-top" placeholder="Tìm kiếm">
             </div>
 
@@ -612,30 +613,30 @@ $totalDepartments = count($departments);
 
             <div class="summary-cards">
                 <div class="card-box">
-                    <span class="card-title-text">Tổng bộ phận</span>
-                    <p class="card-number"><?php echo $totalDepartments; ?></p>
+                    <span class="card-title-text">Tổng chức vụ</span>
+                    <p class="card-number"><?php echo $totalPositions; ?></p>
                 </div>
                 <div class="card-box">
                     <span class="card-title-text">Đang sử dụng</span>
-                    <p class="card-number"><?php echo $totalDepartments; ?></p>
+                    <p class="card-number"><?php echo $totalPositions; ?></p>
                 </div>
                 <div class="card-box">
                     <span class="card-title-text">Chưa có dữ liệu</span>
-                    <p class="card-number"><?php echo ($totalDepartments === 0) ? 1 : 0; ?></p>
+                    <p class="card-number"><?php echo ($totalPositions === 0) ? 1 : 0; ?></p>
                 </div>
             </div>
 
             <div class="d-flex gap-2 mb-4">
-                <button class="btn btn-add-department mb-0" data-bs-toggle="modal" data-bs-target="#addDepartmentModal">
-                    <i class="fas fa-plus me-1"></i> Thêm bộ phận
+                <button class="btn btn-add-department mb-0" data-bs-toggle="modal" data-bs-target="#addPositionModal">
+                    <i class="fas fa-plus me-1"></i> Thêm chức vụ
                 </button>
-                <button class="btn btn-warning fw-semibold" id="btnEditDepartment" disabled>
-                    <i class="fas fa-pen me-1"></i> Sửa bộ phận
+                <button class="btn btn-warning fw-semibold" id="btnEditPosition" disabled>
+                    <i class="fas fa-pen me-1"></i> Sửa chức vụ
                 </button>
-                <button class="btn btn-info fw-semibold text-white" id="btnViewDepartment" disabled>
+                <button class="btn btn-info fw-semibold text-white" id="btnViewPosition" disabled>
                     <i class="fas fa-eye me-1"></i> Xem chi tiết
                 </button>
-                <button class="btn btn-danger fw-semibold" id="btnDeleteDepartment" disabled>
+                <button class="btn btn-danger fw-semibold" id="btnDeletePosition" disabled>
                     <i class="fas fa-trash me-1"></i> Xóa
                 </button>
             </div>
@@ -643,33 +644,33 @@ $totalDepartments = count($departments);
 
         <div id="departmentContentOffset" class="department-content-offset">
 
-            <div class="modal fade" id="addDepartmentModal" tabindex="-1" aria-labelledby="addDepartmentModalLabel"
+            <div class="modal fade" id="addPositionModal" tabindex="-1" aria-labelledby="addPositionModalLabel"
                 aria-hidden="true">
                 <div class="modal-dialog modal-lg modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title fw-bold" id="addDepartmentModalLabel">Thêm bộ phận</h5>
+                            <h5 class="modal-title fw-bold" id="addPositionModalLabel">Thêm chức vụ</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <form method="post">
-                            <input type="hidden" name="crud_action" value="add_department">
+                            <input type="hidden" name="crud_action" value="add_position">
                             <div class="modal-body">
                                 <div class="row g-3">
                                     <div class="col-md-6">
-                                        <label for="departmentId" class="form-label">Mã bộ phận</label>
-                                        <input type="text" class="form-control" id="departmentId" name="department_id"
-                                            value="<?php echo htmlspecialchars($nextDepartmentId); ?>" readonly>
+                                        <label for="positionId" class="form-label">Mã chức vụ</label>
+                                        <input type="text" class="form-control" id="positionId" name="position_id"
+                                            value="<?php echo htmlspecialchars($nextPositionId); ?>" readonly>
                                     </div>
                                     <div class="col-md-6">
-                                        <label for="departmentName" class="form-label">Tên bộ phận</label>
-                                        <input type="text" class="form-control" id="departmentName"
-                                            name="department_name" placeholder="Nhập tên bộ phận" required>
+                                        <label for="positionName" class="form-label">Tên chức vụ</label>
+                                        <input type="text" class="form-control" id="positionName"
+                                            name="position_name" placeholder="Nhập tên chức vụ" required>
                                     </div>
                                 </div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                                <button type="submit" class="btn btn-primary">Lưu bộ phận</button>
+                                <button type="submit" class="btn btn-primary">Lưu chức vụ</button>
                             </div>
                         </form>
                     </div>
@@ -680,16 +681,16 @@ $totalDepartments = count($departments);
 
             <div id="detailPanel" class="detail-panel">
                 <div class="detail-header">
-                    <h5>Chi tiết bộ phận</h5>
+                    <h5>Chi tiết chức vụ</h5>
                     <button type="button" class="btn-close" onclick="closeDetailPanel()"></button>
                 </div>
                 <div class="detail-content">
                     <div class="detail-field">
-                        <label>Mã bộ phận</label>
+                        <label>Mã chức vụ</label>
                         <input type="text" id="detailId" readonly>
                     </div>
                     <div class="detail-field">
-                        <label>Tên bộ phận</label>
+                        <label>Tên chức vụ</label>
                         <input type="text" id="detailName">
                     </div>
                 </div>
@@ -699,20 +700,20 @@ $totalDepartments = count($departments);
                 </div>
             </div>
 
-            <div class="modal fade" id="deleteDepartmentModal" tabindex="-1"
-                aria-labelledby="deleteDepartmentModalLabel" aria-hidden="true">
+            <div class="modal fade" id="deletePositionModal" tabindex="-1"
+                aria-labelledby="deletePositionModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="deleteDepartmentModalLabel">Xác nhận xóa</h5>
+                            <h5 class="modal-title" id="deletePositionModalLabel">Xác nhận xóa</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
-                            Bạn có chắc chắn muốn xóa bộ phận <strong id="deleteDepartmentName"></strong> không?
+                            Bạn có chắc chắn muốn xóa chức vụ <strong id="deletePositionName"></strong> không?
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                            <button type="button" class="btn btn-danger" id="btnConfirmDeleteDepartment">Xóa</button>
+                            <button type="button" class="btn btn-danger" id="btnConfirmDeletePosition">Xóa</button>
                         </div>
                     </div>
                 </div>
@@ -720,23 +721,23 @@ $totalDepartments = count($departments);
 
             <div class="table-container">
                 <div class="table-header">
-                    <h5>Danh sách bộ phận</h5>
+                    <h5>Danh sách chức vụ</h5>
                     <a href="#" class="text-dark"><i class="fas fa-download"></i></a>
                 </div>
                 <div class="department-table-scroll">
                     <table class="table text-center">
                         <thead>
                             <tr>
-                                <th class="text-center" width="35%">Mã bộ phận</th>
-                                <th class="text-center" width="65%">Tên bộ phận</th>
+                                <th class="text-center" width="35%">Mã chức vụ</th>
+                                <th class="text-center" width="65%">Tên chức vụ</th>
                             </tr>
                         </thead>
-                        <tbody id="departmentTableBody">
-                            <?php foreach($departments as $d): ?>
-                            <tr class="department-row" data-id="<?php echo htmlspecialchars($d['id']); ?>"
-                                data-name="<?php echo htmlspecialchars($d['name']); ?>">
-                                <td class="text-center"><?php echo htmlspecialchars($d['id']); ?></td>
-                                <td class="text-center"><?php echo htmlspecialchars($d['name']); ?></td>
+                        <tbody id="positionTableBody">
+                            <?php foreach($positions as $p): ?>
+                            <tr class="position-row" data-id="<?php echo htmlspecialchars($p['id']); ?>"
+                                data-name="<?php echo htmlspecialchars($p['name']); ?>">
+                                <td class="text-center"><?php echo htmlspecialchars($p['id']); ?></td>
+                                <td class="text-center"><?php echo htmlspecialchars($p['name']); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -744,10 +745,10 @@ $totalDepartments = count($departments);
                 </div>
             </div>
 
-            <form method="post" id="departmentEditForm" class="d-none">
-                <input type="hidden" name="crud_action" value="update_department">
-                <input type="hidden" name="department_id" id="editDepartmentId">
-                <input type="hidden" name="department_name" id="editDepartmentName">
+            <form method="post" id="positionEditForm" class="d-none">
+                <input type="hidden" name="crud_action" value="update_position">
+                <input type="hidden" name="position_id" id="editPositionId">
+                <input type="hidden" name="position_name" id="editPositionName">
             </form>
 
         </div>
@@ -755,18 +756,18 @@ $totalDepartments = count($departments);
     </div>
 
     <script>
-    let selectedDepartmentId = null;
-    let pendingDeleteDepartmentId = null;
-    let isDepartmentDetailReadOnly = false;
+    let selectedPositionId = null;
+    let pendingDeletePositionId = null;
+    let isPositionDetailReadOnly = false;
 
-    const addDepartmentModalEl = document.getElementById('addDepartmentModal');
-    if (addDepartmentModalEl && addDepartmentModalEl.parentElement !== document.body) {
-        document.body.appendChild(addDepartmentModalEl);
+    const addPositionModalEl = document.getElementById('addPositionModal');
+    if (addPositionModalEl && addPositionModalEl.parentElement !== document.body) {
+        document.body.appendChild(addPositionModalEl);
     }
 
-    const deleteDepartmentModalEl = document.getElementById('deleteDepartmentModal');
-    if (deleteDepartmentModalEl && deleteDepartmentModalEl.parentElement !== document.body) {
-        document.body.appendChild(deleteDepartmentModalEl);
+    const deletePositionModalEl = document.getElementById('deletePositionModal');
+    if (deletePositionModalEl && deletePositionModalEl.parentElement !== document.body) {
+        document.body.appendChild(deletePositionModalEl);
     }
 
     const detailOverlayEl = document.getElementById('detailOverlay');
@@ -779,35 +780,35 @@ $totalDepartments = count($departments);
         document.body.appendChild(detailPanelEl);
     }
 
-    document.querySelectorAll('.department-row').forEach(row => {
+    document.querySelectorAll('.position-row').forEach(row => {
         row.addEventListener('click', function() {
-            document.querySelectorAll('.department-row').forEach(r => r.classList.remove('selected'));
+            document.querySelectorAll('.position-row').forEach(r => r.classList.remove('selected'));
             this.classList.add('selected');
-            selectedDepartmentId = this.getAttribute('data-id');
-            document.getElementById('btnEditDepartment').disabled = false;
-            document.getElementById('btnViewDepartment').disabled = false;
-            document.getElementById('btnDeleteDepartment').disabled = false;
+            selectedPositionId = this.getAttribute('data-id');
+            document.getElementById('btnEditPosition').disabled = false;
+            document.getElementById('btnViewPosition').disabled = false;
+            document.getElementById('btnDeletePosition').disabled = false;
         });
     });
 
-    function setDepartmentDetailReadOnly(readOnly) {
-        isDepartmentDetailReadOnly = !!readOnly;
+    function setPositionDetailReadOnly(readOnly) {
+        isPositionDetailReadOnly = !!readOnly;
 
         const nameField = document.getElementById('detailName');
         if (nameField) {
-            nameField.readOnly = isDepartmentDetailReadOnly;
+            nameField.readOnly = isPositionDetailReadOnly;
         }
 
         const saveBtn = document.getElementById('btnDetailSave');
         if (saveBtn) {
-            saveBtn.style.display = isDepartmentDetailReadOnly ? 'none' : 'inline-block';
+            saveBtn.style.display = isPositionDetailReadOnly ? 'none' : 'inline-block';
         }
     }
 
     function showDetailPanel(id, name, readOnly = false) {
         document.getElementById('detailId').value = id;
         document.getElementById('detailName').value = name;
-        setDepartmentDetailReadOnly(readOnly);
+        setPositionDetailReadOnly(readOnly);
         document.getElementById('detailPanel').classList.add('show');
         document.getElementById('detailOverlay').classList.add('show');
         document.body.style.overflow = 'hidden';
@@ -819,10 +820,10 @@ $totalDepartments = count($departments);
         document.body.style.overflow = '';
     }
 
-    document.getElementById('btnEditDepartment').addEventListener('click', function() {
-        const selectedRow = document.querySelector('.department-row.selected');
+    document.getElementById('btnEditPosition').addEventListener('click', function() {
+        const selectedRow = document.querySelector('.position-row.selected');
         if (!selectedRow) {
-            alert('Vui lòng chọn bộ phận để sửa');
+            alert('Vui lòng chọn chức vụ để sửa');
             return;
         }
 
@@ -833,10 +834,10 @@ $totalDepartments = count($departments);
         );
     });
 
-    document.getElementById('btnViewDepartment').addEventListener('click', function() {
-        const selectedRow = document.querySelector('.department-row.selected');
+    document.getElementById('btnViewPosition').addEventListener('click', function() {
+        const selectedRow = document.querySelector('.position-row.selected');
         if (!selectedRow) {
-            alert('Vui lòng chọn bộ phận để xem chi tiết');
+            alert('Vui lòng chọn chức vụ để xem chi tiết');
             return;
         }
 
@@ -848,7 +849,7 @@ $totalDepartments = count($departments);
     });
 
     document.getElementById('btnDetailSave').addEventListener('click', function() {
-        if (isDepartmentDetailReadOnly) {
+        if (isPositionDetailReadOnly) {
             return;
         }
 
@@ -856,47 +857,47 @@ $totalDepartments = count($departments);
         const name = document.getElementById('detailName').value.trim();
 
         if (!name) {
-            alert('Tên bộ phận không được để trống');
+            alert('Tên chức vụ không được để trống');
             return;
         }
 
-        document.getElementById('editDepartmentId').value = id;
-        document.getElementById('editDepartmentName').value = name;
-        document.getElementById('departmentEditForm').submit();
+        document.getElementById('editPositionId').value = id;
+        document.getElementById('editPositionName').value = name;
+        document.getElementById('positionEditForm').submit();
     });
 
-    document.getElementById('btnDeleteDepartment').addEventListener('click', function() {
-        const selectedRow = document.querySelector('.department-row.selected');
+    document.getElementById('btnDeletePosition').addEventListener('click', function() {
+        const selectedRow = document.querySelector('.position-row.selected');
         if (!selectedRow) {
-            alert('Vui lòng chọn bộ phận để xóa');
+            alert('Vui lòng chọn chức vụ để xóa');
             return;
         }
 
-        pendingDeleteDepartmentId = selectedRow.getAttribute('data-id');
-        const departmentName = selectedRow.getAttribute('data-name') || pendingDeleteDepartmentId;
-        document.getElementById('deleteDepartmentName').textContent = departmentName;
+        pendingDeletePositionId = selectedRow.getAttribute('data-id');
+        const positionName = selectedRow.getAttribute('data-name') || pendingDeletePositionId;
+        document.getElementById('deletePositionName').textContent = positionName;
 
         const deleteModal = bootstrap.Modal.getOrCreateInstance(document.getElementById(
-            'deleteDepartmentModal'));
+            'deletePositionModal'));
         deleteModal.show();
     });
 
-    document.getElementById('btnConfirmDeleteDepartment').addEventListener('click', function() {
-        if (!pendingDeleteDepartmentId) {
+    document.getElementById('btnConfirmDeletePosition').addEventListener('click', function() {
+        if (!pendingDeletePositionId) {
             return;
         }
 
-        const deleteModalEl = document.getElementById('deleteDepartmentModal');
+        const deleteModalEl = document.getElementById('deletePositionModal');
         const deleteModal = bootstrap.Modal.getInstance(deleteModalEl);
         if (deleteModal) {
             deleteModal.hide();
         }
 
-        deleteDepartment(pendingDeleteDepartmentId);
+        deletePosition(pendingDeletePositionId);
     });
 
-    document.getElementById('deleteDepartmentModal').addEventListener('hidden.bs.modal', function() {
-        pendingDeleteDepartmentId = null;
+    document.getElementById('deletePositionModal').addEventListener('hidden.bs.modal', function() {
+        pendingDeletePositionId = null;
     });
 
     document.addEventListener('keydown', function(e) {
@@ -905,20 +906,20 @@ $totalDepartments = count($departments);
         }
     });
 
-    document.getElementById('addDepartmentModal').addEventListener('show.bs.modal', function() {
+    document.getElementById('addPositionModal').addEventListener('show.bs.modal', function() {
         closeDetailPanel();
-        const departmentIdInput = document.getElementById('departmentId');
-        if (departmentIdInput) {
-            departmentIdInput.value = '<?php echo htmlspecialchars($nextDepartmentId); ?>';
+        const positionIdInput = document.getElementById('positionId');
+        if (positionIdInput) {
+            positionIdInput.value = '<?php echo htmlspecialchars($nextPositionId); ?>';
         }
     });
 
-    function deleteDepartment(id) {
+    function deletePosition(id) {
         const form = document.createElement('form');
         form.method = 'POST';
         form.innerHTML = `
-            <input type="hidden" name="crud_action" value="delete_department">
-            <input type="hidden" name="department_id" value="${id}">
+            <input type="hidden" name="crud_action" value="delete_position">
+            <input type="hidden" name="position_id" value="${id}">
         `;
         document.body.appendChild(form);
         form.submit();
