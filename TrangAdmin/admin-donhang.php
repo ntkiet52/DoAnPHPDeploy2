@@ -85,6 +85,22 @@ function normalizeOrderStatus(string $rawStatus): array {
         ];
     }
 
+    if (str_contains($status, 'nhận') || str_contains($status, 'nhan') || str_contains($status, 'received') || str_contains($status, 'hoan') || str_contains($status, 'xong') || str_contains($status, 'done') || str_contains($status, 'success')) {
+        return [
+            'key' => 'completed',
+            'label' => 'Giao thành công',
+            'class' => 'status-completed',
+        ];
+    }
+
+    if (str_contains($status, 'giao thanh cong') || str_contains($status, 'giao thành công')) {
+        return [
+            'key' => 'completed',
+            'label' => 'Giao thành công',
+            'class' => 'status-completed',
+        ];
+    }
+
     if (str_contains($status, 'giao') || str_contains($status, 'ship')) {
         if (str_contains($status, 'gần') || str_contains($status, 'gan') || str_contains($status, 'near')) {
             return [
@@ -98,14 +114,6 @@ function normalizeOrderStatus(string $rawStatus): array {
             'key' => 'shipping',
             'label' => 'Đang giao',
             'class' => 'status-shipping',
-        ];
-    }
-
-    if (str_contains($status, 'nhận') || str_contains($status, 'nhan') || str_contains($status, 'received') || str_contains($status, 'hoan') || str_contains($status, 'xong') || str_contains($status, 'done') || str_contains($status, 'success')) {
-        return [
-            'key' => 'completed',
-            'label' => 'Giao thành công',
-            'class' => 'status-completed',
         ];
     }
 
@@ -956,7 +964,7 @@ foreach ($orders as $order) {
         $ordersToday++;
     }
 
-    if (($order['status_key'] ?? '') !== 'cancelled') {
+    if (($order['status_key'] ?? '') === 'completed') {
         $totalRevenue += (float) $order['total_number'];
     }
 }

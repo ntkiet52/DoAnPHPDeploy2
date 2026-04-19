@@ -164,6 +164,20 @@ try {
     } catch (Throwable $ignored) {
     }
 
+    $voucherMetaMap = [];
+    try {
+        $voucherRows = $pdo->query("SELECT ma_don_hang, tong_thanh_toan FROM phieuxuat_voucher_map")->fetchAll();
+        foreach ($voucherRows as $voucherRow) {
+            $voucherOrderId = trim((string) ($voucherRow['ma_don_hang'] ?? ''));
+            if ($voucherOrderId === '') {
+                continue;
+            }
+
+            $voucherMetaMap[$voucherOrderId] = max(0, (float) ($voucherRow['tong_thanh_toan'] ?? 0));
+        }
+    } catch (Throwable $ignored) {
+    }
+
     $orderTotalsFromDetails = [];
     foreach ($detailRows as $detailRow) {
         $detailOrderId = trim((string) pickDashboardValue($detailRow, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'ma_phieu', 'maphieu', 'madon', 'id'], ''));
@@ -217,7 +231,10 @@ try {
     foreach ($pxRows as $row) {
         $maDon = trim((string) pickDashboardValue($row, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']));
         $tongTien = (float) pickDashboardValue($row, ['tongtien', 'tong_tien', 'thanhtien', 'thanh_tien', 'total'], 0);
-        if ($tongTien <= 0 && $maDon !== '' && isset($orderTotalsFromDetails[$maDon])) {
+
+        if ($maDon !== '' && isset($voucherMetaMap[$maDon])) {
+            $tongTien = (float) $voucherMetaMap[$maDon];
+        } else if ($tongTien <= 0 && $maDon !== '' && isset($orderTotalsFromDetails[$maDon])) {
             $tongTien = (float) $orderTotalsFromDetails[$maDon];
         }
 
