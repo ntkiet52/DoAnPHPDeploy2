@@ -1044,9 +1044,13 @@
         await refreshHeaderCartCount();
 
         const orderId = data?.order_id || "(đang cập nhật)";
+        const serverDiscount = Math.max(
+          0,
+          Number(data?.discount_amount || voucherMeta.amount || 0),
+        );
         const voucherHint =
-          appliedVoucher && voucherMeta.amount > 0
-            ? `\nVoucher ${appliedVoucher.code}${appliedVoucher.name ? ` - ${appliedVoucher.name}` : ""} đã giảm ${formatMoney(voucherMeta.amount)}.`
+          appliedVoucher && serverDiscount > 0
+            ? `\nVoucher ${appliedVoucher.code}${appliedVoucher.name ? ` - ${appliedVoucher.name}` : ""} đã giảm ${formatMoney(serverDiscount)}.`
             : "";
 
         const askOpenOrderPage = await showDialog({

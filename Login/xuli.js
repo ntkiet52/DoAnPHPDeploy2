@@ -94,10 +94,49 @@ signUpForm.addEventListener("submit", function (e) {
 // 4. XỬ LÝ ĐĂNG NHẬP (QUAN TRỌNG: PHÂN QUYỀN TẠI ĐÂY)
 const signInForm = document.getElementById("form-login");
 
+function setButtonLoadingState(button, isLoading, loadingText = "Đang xử lý") {
+  if (!button) return;
+
+  if (!button.dataset.defaultText) {
+    button.dataset.defaultText = button.textContent.trim();
+  }
+
+  button.disabled = Boolean(isLoading);
+  button.classList.toggle("is-loading", Boolean(isLoading));
+  button.textContent = isLoading
+    ? loadingText
+    : button.dataset.defaultText || "Đăng Nhập";
+}
+
+function showCenteredLoginLoader(durationMs = 2000) {
+  const existing = document.querySelector(".ack-login-overlay");
+  if (existing) {
+    existing.remove();
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "ack-login-overlay";
+
+  const spinner = document.createElement("div");
+  spinner.className = "ack-login-loader";
+  overlay.appendChild(spinner);
+
+  document.body.appendChild(overlay);
+
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      resolve();
+    }, durationMs);
+  });
+}
+
 signInForm.addEventListener("submit", function (e) {
   e.preventDefault();
   const email = signInForm.querySelector('input[type="email"]').value;
   const password = document.getElementById("login-pass").value;
+  const loginSubmitBtn = signInForm.querySelector('button[type="submit"]');
+
+  setButtonLoadingState(loginSubmitBtn, true, "Đang đăng nhập");
 
   fetch("login.php", {
     method: "POST",
@@ -119,25 +158,34 @@ signInForm.addEventListener("submit", function (e) {
         typeof data === "object" && data !== null ? data.redirect : null;
 
       if (status === "success") {
-        alert("Đăng nhập thành công!");
-        window.location.href = redirect || "../TrangWeb/index.php";
+        showCenteredLoginLoader(2000).then(() => {
+          window.location.href = redirect || "../TrangWeb/index.php";
+        });
+        return;
       } else if (status === "forbidden_admin") {
+        setButtonLoadingState(loginSubmitBtn, false);
         alert(
           "Tài khoản này không có quyền vào trang admin. Chỉ tài khoản do admin tạo mới được truy cập.",
         );
       } else if (status === "inactive") {
+        setButtonLoadingState(loginSubmitBtn, false);
         alert("Tài khoản đang bị khóa hoặc chưa kích hoạt.");
       } else if (status === "wrong_password") {
+        setButtonLoadingState(loginSubmitBtn, false);
         alert("Sai mật khẩu!");
       } else if (status === "not_found") {
+        setButtonLoadingState(loginSubmitBtn, false);
         alert("Tài khoản không tồn tại!");
       } else if (status === "missing") {
+        setButtonLoadingState(loginSubmitBtn, false);
         alert("Vui lòng nhập email và mật khẩu.");
       } else {
+        setButtonLoadingState(loginSubmitBtn, false);
         alert("Lỗi đăng nhập!");
       }
     })
     .catch(() => {
+      setButtonLoadingState(loginSubmitBtn, false);
       alert("Không thể kết nối máy chủ khi đăng nhập.");
     });
 });

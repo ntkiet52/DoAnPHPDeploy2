@@ -254,6 +254,158 @@ function socialLoadEnvFile(string $path): array
     return $env;
 }
 
+function socialBase64UrlEncode(string $value): string
+{
+    return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+}
+
+function socialBase64UrlDecode(string $value): string
+{
+    $decoded = strtr($value, '-_', '+/');
+    $padding = strlen($decoded) % 4;
+    if ($padding !== 0) {
+        $decoded .= str_repeat('=', 4 - $padding);
+    }
+
+    $result = base64_decode($decoded, true);
+    return is_string($result) ? $result : '';
+}
+
+function socialStateSigningSecret(string $provider, string $clientSecret, array $fileEnv = []): string
+{
+    $appSecret = socialEnv('SOCIAL_STATE_SECRET', $fileEnv);
+    if ($appSecret !== '') {
+        return hash('sha256', $provider . '|' . $appSecret . '|oauth-state');
+    }
+
+    if ($clientSecret !== '') {
+        return hash('sha256', $provider . '|' . $clientSecret . '|oauth-state');
+    }
+
+    return hash('sha256', $provider . '|fallback-local-secret|oauth-state');
+}
+
+function socialCreateSignedState(string $provider, string $signingSecret): string
+{
+    $payload = [
+        'p' => $provider,
+        't' => time(),
+        'n' => bin2hex(random_bytes(12)),
+    ];
+
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    if (!is_string($json) || $json === '') {
+        $json = '{"p":"' . addslashes($provider) . '","t":' . time() . ',"n":"' . bin2hex(random_bytes(8)) . '"}';
+    }
+
+    $payloadEncoded = socialBase64UrlEncode($json);
+    $signature = hash_hmac('sha256', $payloadEncoded, $signingSecret);
+
+    return $payloadEncoded . '.' . $signature;
+}
+
+function socialValidateSignedState(string $provider, string $state, string $signingSecret, int $maxAgeSeconds = 900): bool
+{
+    if ($state === '' || !str_contains($state, '.')) {
+        return false;
+    }
+
+    [$payloadEncoded, $incomingSignature] = explode('.', $state, 2);
+    $expectedSignature = hash_hmac('sha256', $payloadEncoded, $signingSecret);
+
+    if ($incomingSignature === '' || !hash_equals($expectedSignature, $incomingSignature)) {
+        return false;
+    }
+
+    $json = socialBase64UrlDecode($payloadEncoded);
+    $payload = json_decode($json, true);
+    if (!is_array($payload)) {
+        return false;
+    }
+
+    $payloadProvider = strtolower(trim((string) ($payload['p'] ?? '')));
+    $issuedAt = (int) ($payload['t'] ?? 0);
+    $nonce = (string) ($payload['n'] ?? '');
+
+    if ($payloadProvider !== $provider || $issuedAt <= 0 || $nonce === '') {
+        return false;
+    }
+
+    return (time() - $issuedAt) <= $maxAgeSeconds;
+}
+
+function socialProviderErrorMessage(string $provider, array $query): string
+{
+    $providerLabel = $provider === 'google' ? 'Google' : 'Facebook';
+    $rawError = trim((string) ($query['error'] ?? ''));
+    $rawDescription = trim((string) ($query['error_description'] ?? ''));
+
+    if ($rawError === '' && $rawDescription === '') {
+        return '';
+    }
+
+    $text = $rawDescription !== '' ? $rawDescription : $rawError;
+    $text = preg_replace('/\s+/', ' ', (string) $text);
+    $text = trim((string) $text);
+
+    if ($text === '') {
+        return 'Đăng nhập ' . $providerLabel . ' không thành công. Vui lòng thử lại.';
+    }
+
+    return 'Đăng nhập ' . $providerLabel . ' thất bại: ' . $text;
+}
+
+function socialExtractProviderError(array $response): string
+{
+    $body = is_array($response['body'] ?? null) ? $response['body'] : [];
+    $error = trim((string) ($body['error_description'] ?? $body['error'] ?? ''));
+
+    if ($error !== '') {
+        return preg_replace('/\s+/', ' ', $error) ?: $error;
+    }
+
+    $transportError = trim((string) ($response['error'] ?? ''));
+    if ($transportError !== '') {
+        return 'Lỗi kết nối: ' . $transportError;
+    }
+
+    $status = (int) ($response['status'] ?? 0);
+    $raw = trim((string) ($response['raw'] ?? ''));
+    if ($status >= 400) {
+        if ($raw !== '') {
+            $snippet = mb_substr($raw, 0, 220, 'UTF-8');
+            return 'HTTP ' . $status . ': ' . $snippet;
+        }
+
+        return 'HTTP ' . $status;
+    }
+
+    return '';
+}
+
+function socialBuildTokenFailureMessage(string $provider, array $response): string
+{
+    $providerLabel = $provider === 'google' ? 'Google' : 'Facebook';
+    $providerError = socialExtractProviderError($response);
+    if ($providerError !== '') {
+        return 'Không thể xác thực ' . $providerLabel . ': ' . $providerError;
+    }
+
+    $status = (int) ($response['status'] ?? 0);
+    $raw = trim((string) ($response['raw'] ?? ''));
+
+    if ($status > 0 && $raw !== '') {
+        $snippet = mb_substr($raw, 0, 220, 'UTF-8');
+        return 'Không thể xác thực ' . $providerLabel . ' (HTTP ' . $status . '): ' . $snippet;
+    }
+
+    if ($status > 0) {
+        return 'Không thể xác thực ' . $providerLabel . ' (HTTP ' . $status . ').';
+    }
+
+    return 'Không thể xác thực ' . $providerLabel . '. Vui lòng thử lại.';
+}
+
 function socialEnv(string $key, array $fileEnv = []): string
 {
     $value = getenv($key);
@@ -290,68 +442,118 @@ function socialRedirectToLogin(string $message): void
     exit;
 }
 
-function socialHttpPostForm(string $url, array $payload): array
+function socialParseHttpStatusFromHeaders(array $headers): int
 {
+    foreach ($headers as $headerLine) {
+        if (preg_match('/^HTTP\/\S+\s+(\d{3})/', (string) $headerLine, $matches) === 1) {
+            return (int) $matches[1];
+        }
+    }
+
+    return 0;
+}
+
+function socialHttpRequest(string $method, string $url, ?array $payload = null): array
+{
+    $normalizedMethod = strtoupper(trim($method));
+    $requestBody = $payload !== null ? http_build_query($payload) : '';
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if ($ch !== false) {
+            $headers = [
+                'Accept: application/json',
+                'User-Agent: ACK-Store-OAuth/1.0',
+            ];
+
+            $curlOpts = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_CUSTOMREQUEST => $normalizedMethod,
+            ];
+
+            if ($normalizedMethod === 'POST') {
+                $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+                $curlOpts[CURLOPT_POSTFIELDS] = $requestBody;
+                $curlOpts[CURLOPT_HTTPHEADER] = $headers;
+            }
+
+            curl_setopt_array($ch, $curlOpts);
+            $response = curl_exec($ch);
+            $curlError = curl_error($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $raw = is_string($response) ? $response : '';
+            $decoded = json_decode($raw, true);
+
+            return [
+                'status' => $status,
+                'body' => is_array($decoded) ? $decoded : [],
+                'raw' => $raw,
+                'error' => $curlError,
+            ];
+        }
+    }
+
+    $headers = [
+        'Accept: application/json',
+        'User-Agent: ACK-Store-OAuth/1.0',
+    ];
+    if ($normalizedMethod === 'POST') {
+        $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+    }
+
     $opts = [
         'http' => [
-            'method' => 'POST',
-            'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
-            'content' => http_build_query($payload),
+            'method' => $normalizedMethod,
+            'header' => implode("\r\n", $headers) . "\r\n",
             'ignore_errors' => true,
             'timeout' => 20,
         ],
     ];
 
+    if ($normalizedMethod === 'POST') {
+        $opts['http']['content'] = $requestBody;
+    }
+
     $context = stream_context_create($opts);
     $response = @file_get_contents($url, false, $context);
     $status = 0;
-
+    $streamHeaders = [];
     if (isset($http_response_header) && is_array($http_response_header)) {
-        foreach ($http_response_header as $headerLine) {
-            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $headerLine, $matches) === 1) {
-                $status = (int) $matches[1];
-                break;
-            }
-        }
+        $streamHeaders = $http_response_header;
+        $status = socialParseHttpStatusFromHeaders($streamHeaders);
     }
 
-    $decoded = json_decode((string) $response, true);
+    $lastError = error_get_last();
+    $streamError = '';
+    if ($response === false && is_array($lastError)) {
+        $streamError = trim((string) ($lastError['message'] ?? ''));
+    }
+
+    $raw = is_string($response) ? $response : '';
+    $decoded = json_decode($raw, true);
+
     return [
         'status' => $status,
         'body' => is_array($decoded) ? $decoded : [],
-        'raw' => (string) $response,
+        'raw' => $raw,
+        'error' => $streamError,
     ];
+}
+
+function socialHttpPostForm(string $url, array $payload): array
+{
+    return socialHttpRequest('POST', $url, $payload);
 }
 
 function socialHttpGetJson(string $url): array
 {
-    $opts = [
-        'http' => [
-            'method' => 'GET',
-            'ignore_errors' => true,
-            'timeout' => 20,
-        ],
-    ];
-
-    $context = stream_context_create($opts);
-    $response = @file_get_contents($url, false, $context);
-    $status = 0;
-
-    if (isset($http_response_header) && is_array($http_response_header)) {
-        foreach ($http_response_header as $headerLine) {
-            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $headerLine, $matches) === 1) {
-                $status = (int) $matches[1];
-                break;
-            }
-        }
-    }
-
-    $decoded = json_decode((string) $response, true);
-    return [
-        'status' => $status,
-        'body' => is_array($decoded) ? $decoded : [],
-        'raw' => (string) $response,
-    ];
+    return socialHttpRequest('GET', $url, null);
 }
 
 function socialFindOrCreateUser(mysqli $conn, string $email, string $displayName): ?array
@@ -555,8 +757,15 @@ if ($clientId === '' || $clientSecret === '') {
     socialRedirectToLogin('Chưa cấu hình đăng nhập ' . ($provider === 'google' ? 'Google' : 'Facebook') . '. Vui lòng cập nhật file .env.');
 }
 
+$signingSecret = socialStateSigningSecret($provider, $clientSecret, $fileEnv);
+
+$providerErrorMessage = socialProviderErrorMessage($provider, $_GET);
+if ($providerErrorMessage !== '') {
+    socialRedirectToLogin($providerErrorMessage);
+}
+
 if ($action === 'start') {
-    $state = bin2hex(random_bytes(16));
+    $state = socialCreateSignedState($provider, $signingSecret);
     $_SESSION['oauth_state_' . $provider] = $state;
 
     if ($provider === 'google') {
@@ -587,7 +796,10 @@ $incomingState = trim((string) ($_GET['state'] ?? ''));
 $sessionState = (string) ($_SESSION['oauth_state_' . $provider] ?? '');
 unset($_SESSION['oauth_state_' . $provider]);
 
-if ($incomingState === '' || $sessionState === '' || !hash_equals($sessionState, $incomingState)) {
+$isSignedStateValid = socialValidateSignedState($provider, $incomingState, $signingSecret);
+$isLegacySessionStateValid = $sessionState !== '' && $incomingState !== '' && hash_equals($sessionState, $incomingState);
+
+if (!$isSignedStateValid && !$isLegacySessionStateValid) {
     socialRedirectToLogin('Phiên đăng nhập xã hội không hợp lệ, vui lòng thử lại.');
 }
 
@@ -610,7 +822,7 @@ if ($provider === 'google') {
 
     $accessToken = (string) ($tokenResponse['body']['access_token'] ?? '');
     if ($accessToken === '') {
-        socialRedirectToLogin('Không thể xác thực Google. Vui lòng thử lại.');
+        socialRedirectToLogin(socialBuildTokenFailureMessage('google', $tokenResponse));
     }
 
     $profileResponse = socialHttpGetJson('https://www.googleapis.com/oauth2/v3/userinfo?access_token=' . rawurlencode($accessToken));
@@ -629,7 +841,7 @@ if ($provider === 'google') {
 
     $accessToken = (string) ($tokenResponse['body']['access_token'] ?? '');
     if ($accessToken === '') {
-        socialRedirectToLogin('Không thể xác thực Facebook. Vui lòng thử lại.');
+        socialRedirectToLogin(socialBuildTokenFailureMessage('facebook', $tokenResponse));
     }
 
     $profileUrl = 'https://graph.facebook.com/me?' . http_build_query([

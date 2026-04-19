@@ -289,6 +289,22 @@ function ensureOrderPaymentMetaTablePdo(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureOrderVoucherMetaTablePdo(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS phieuxuat_voucher_map (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ma_don_hang VARCHAR(100) NOT NULL,
+        ma_voucher VARCHAR(100) DEFAULT NULL,
+        tong_tam_tinh DECIMAL(18,2) NOT NULL DEFAULT 0,
+        so_tien_giam DECIMAL(18,2) NOT NULL DEFAULT 0,
+        tong_thanh_toan DECIMAL(18,2) NOT NULL DEFAULT 0,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_voucher_ma_don_hang (ma_don_hang),
+        INDEX idx_voucher_ma_voucher (ma_voucher)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $importProductCol, string $importQtyCol, string $exportProductCol, string $exportQtyCol): int
 {
     $productId = trim($productId);
@@ -639,6 +655,7 @@ try {
     ensureVoucherUsageTablePdo($pdo);
     ensureVoucherClaimTablePdo($pdo);
     ensureOrderPaymentMetaTablePdo($pdo);
+    ensureOrderVoucherMetaTablePdo($pdo);
     $voucherUserKey = currentVoucherUserKeyCheckout();
     $voucherUsed = null;
     $discountAmount = 0.0;
@@ -868,6 +885,30 @@ try {
             ':trang_thai_thanh_toan' => $paymentStatusLabel,
         ]);
 
+        $voucherCodeForMap = is_array($voucherUsed)
+            ? trim((string) ($voucherUsed['ma_voucher'] ?? ''))
+            : '';
+        if ($voucherCodeForMap === '') {
+            $voucherCodeForMap = null;
+        }
+
+        $upsertVoucherMetaStmt = $pdo->prepare(
+            "INSERT INTO phieuxuat_voucher_map (ma_don_hang, ma_voucher, tong_tam_tinh, so_tien_giam, tong_thanh_toan)
+             VALUES (:ma_don_hang, :ma_voucher, :tong_tam_tinh, :so_tien_giam, :tong_thanh_toan)
+             ON DUPLICATE KEY UPDATE
+                ma_voucher = VALUES(ma_voucher),
+                tong_tam_tinh = VALUES(tong_tam_tinh),
+                so_tien_giam = VALUES(so_tien_giam),
+                tong_thanh_toan = VALUES(tong_thanh_toan)"
+        );
+        $upsertVoucherMetaStmt->execute([
+            ':ma_don_hang' => $newOrderId,
+            ':ma_voucher' => $voucherCodeForMap,
+            ':tong_tam_tinh' => $orderTotal,
+            ':so_tien_giam' => $discountAmount,
+            ':tong_thanh_toan' => $finalOrderTotal,
+        ]);
+
         $pdo->commit();
 
         // Xóa toàn bộ giỏ hàng active sau khi đặt đơn thành công
@@ -887,6 +928,7 @@ try {
 
         respondCheckout(true, 'Đặt hàng thành công.', [
             'order_id' => $newOrderId,
+            'subtotal' => $orderTotal,
             'discount_amount' => $discountAmount,
             'final_total' => $finalOrderTotal,
             'voucher_used' => $voucherUsed,

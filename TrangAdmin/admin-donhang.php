@@ -152,6 +152,160 @@ function ensureOrderPaymentMetaTable(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureOrderVoucherMetaTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS phieuxuat_voucher_map (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ma_don_hang VARCHAR(100) NOT NULL,
+        ma_voucher VARCHAR(100) DEFAULT NULL,
+        tong_tam_tinh DECIMAL(18,2) NOT NULL DEFAULT 0,
+        so_tien_giam DECIMAL(18,2) NOT NULL DEFAULT 0,
+        tong_thanh_toan DECIMAL(18,2) NOT NULL DEFAULT 0,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_voucher_ma_don_hang (ma_don_hang),
+        INDEX idx_voucher_ma_voucher (ma_voucher)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function ensureVoucherUsageTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_dung (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_key VARCHAR(100) NOT NULL,
+        id_voucher INT NOT NULL,
+        ma_voucher VARCHAR(100) NOT NULL,
+        ma_don_hang VARCHAR(100) DEFAULT NULL,
+        thoi_gian_su_dung DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_voucher (user_key, id_voucher),
+        INDEX idx_user_key (user_key),
+        INDEX idx_id_voucher (id_voucher),
+        INDEX idx_ma_don_hang (ma_don_hang)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function restoreVoucherForCancelledOrder(PDO $pdo, string $orderId): int {
+    $orderId = trim($orderId);
+    if ($orderId === '') {
+        return 0;
+    }
+
+    $selectStmt = $pdo->prepare(
+        'SELECT id_voucher
+         FROM voucher_nguoi_dung_da_dung
+         WHERE ma_don_hang = :order_id
+         FOR UPDATE'
+    );
+    $selectStmt->execute([':order_id' => $orderId]);
+    $usageRows = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!is_array($usageRows) || count($usageRows) === 0) {
+        return 0;
+    }
+
+    $voucherIdUsageCount = [];
+    foreach ($usageRows as $usageRow) {
+        $voucherId = (int) ($usageRow['id_voucher'] ?? 0);
+        if ($voucherId <= 0) {
+            continue;
+        }
+
+        if (!isset($voucherIdUsageCount[$voucherId])) {
+            $voucherIdUsageCount[$voucherId] = 0;
+        }
+        $voucherIdUsageCount[$voucherId]++;
+    }
+
+    $deleteStmt = $pdo->prepare('DELETE FROM voucher_nguoi_dung_da_dung WHERE ma_don_hang = :order_id');
+    $deleteStmt->execute([':order_id' => $orderId]);
+
+    $deletedRows = (int) $deleteStmt->rowCount();
+    if ($deletedRows <= 0) {
+        return 0;
+    }
+
+    foreach ($voucherIdUsageCount as $voucherId => $usageCount) {
+        if ($voucherId <= 0 || $usageCount <= 0) {
+            continue;
+        }
+
+        $decStmt = $pdo->prepare(
+            'UPDATE voucher
+             SET so_luong_da_su_dung = CASE
+                 WHEN so_luong_da_su_dung >= :usage_count THEN so_luong_da_su_dung - :usage_count
+                 ELSE 0
+             END
+             WHERE id_voucher = :id_voucher'
+        );
+        $decStmt->execute([
+            ':usage_count' => $usageCount,
+            ':id_voucher' => $voucherId,
+        ]);
+    }
+
+    return $deletedRows;
+}
+
+function restoreStockForCancelledOrder(
+    PDO $pdo,
+    string $orderId,
+    ?string $detailOrderIdCol,
+    ?string $detailProductCol,
+    ?string $detailQtyCol,
+    ?string $hangIdCol,
+    ?string $hangStockCol
+): int {
+    if (
+        trim($orderId) === ''
+        || $detailOrderIdCol === null
+        || $detailProductCol === null
+        || $detailQtyCol === null
+        || $hangIdCol === null
+        || $hangStockCol === null
+    ) {
+        return 0;
+    }
+
+    $detailStmt = $pdo->prepare(
+        "SELECT `{$detailProductCol}` AS product_id, SUM(`{$detailQtyCol}`) AS total_qty
+         FROM chitietphieuxuat
+         WHERE `{$detailOrderIdCol}` = :order_id
+         GROUP BY `{$detailProductCol}`"
+    );
+    $detailStmt->execute([':order_id' => $orderId]);
+    $detailRows = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!is_array($detailRows) || count($detailRows) === 0) {
+        return 0;
+    }
+
+    $restoreStmt = $pdo->prepare(
+        "UPDATE hanghoa
+         SET `{$hangStockCol}` = `{$hangStockCol}` + :qty
+         WHERE `{$hangIdCol}` = :product_id"
+    );
+
+    $restoredItems = 0;
+    foreach ($detailRows as $detailRow) {
+        $productId = trim((string) ($detailRow['product_id'] ?? ''));
+        $qty = (int) ($detailRow['total_qty'] ?? 0);
+
+        if ($productId === '' || $qty <= 0) {
+            continue;
+        }
+
+        $restoreStmt->execute([
+            ':qty' => $qty,
+            ':product_id' => $productId,
+        ]);
+
+        if ($restoreStmt->rowCount() <= 0) {
+            throw new RuntimeException('Không thể hoàn kho cho sản phẩm ' . $productId . '.');
+        }
+
+        $restoredItems++;
+    }
+
+    return $restoredItems;
+}
+
 $orders = [];
 $dbError = '';
 $autoCleanupNotice = '';
@@ -176,6 +330,8 @@ try {
     );
 
     ensureOrderPaymentMetaTable($pdo);
+    ensureOrderVoucherMetaTable($pdo);
+    ensureVoucherUsageTable($pdo);
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
@@ -383,6 +539,120 @@ try {
                 }
             }
 
+            if ($action === 'cancel_order') {
+                $orderId = trim((string) ($_POST['order_id'] ?? ''));
+
+                if ($orderId === '') {
+                    $crudError = 'Không xác định được đơn hàng để hủy.';
+                } else {
+                    $phieuXuatColumnsForCancel = getExistingColumns($pdo, 'phieuxuat');
+                    $ctpxColumnsForCancel = getExistingColumns($pdo, 'chitietphieuxuat');
+                    $hhColumnsForCancel = getExistingColumns($pdo, 'hanghoa');
+
+                    $orderIdColumn = pickExistingColumn(
+                        $phieuXuatColumnsForCancel,
+                        ['maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'idphieuxuat', 'id_phieu_xuat', 'madon', 'id']
+                    );
+                    $statusColumnsToSync = [];
+                    foreach (['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'] as $candidate) {
+                        $resolved = pickExistingColumn($phieuXuatColumnsForCancel, [$candidate]);
+                        if ($resolved !== null && !in_array($resolved, $statusColumnsToSync, true)) {
+                            $statusColumnsToSync[] = $resolved;
+                        }
+                    }
+                    $paymentStatusColumn = pickExistingColumn(
+                        $phieuXuatColumnsForCancel,
+                        ['trangthaithanhtoan', 'trang_thai_thanh_toan', 'ttthanhtoan', 'payment_status']
+                    );
+
+                    $detailOrderIdCol = pickExistingColumn($ctpxColumnsForCancel, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon']);
+                    $detailProductCol = pickExistingColumn($ctpxColumnsForCancel, ['mahang', 'ma_hang', 'idhanghoa']);
+                    $detailQtyCol = pickExistingColumn($ctpxColumnsForCancel, ['soluongpx', 'so_luong_px', 'soluong', 'so_luong']);
+                    $hangIdCol = pickExistingColumn($hhColumnsForCancel, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+                    $hangStockCol = pickExistingColumn($hhColumnsForCancel, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho', 'soluong', 'so_luong']);
+
+                    if ($orderIdColumn === null || count($statusColumnsToSync) === 0) {
+                        $crudError = 'Không tìm thấy cột cần thiết để hủy đơn hàng.';
+                    } else {
+                        $pdo->beginTransaction();
+                        try {
+                            $checkStatusColumn = $statusColumnsToSync[0];
+                            $checkStmt = $pdo->prepare(
+                                "SELECT `{$checkStatusColumn}` AS current_status
+                                 FROM phieuxuat
+                                 WHERE `{$orderIdColumn}` = :order_id
+                                 LIMIT 1
+                                 FOR UPDATE"
+                            );
+                            $checkStmt->execute([':order_id' => $orderId]);
+                            $row = $checkStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+                            if (!is_array($row)) {
+                                throw new RuntimeException('Không tìm thấy đơn hàng để hủy.');
+                            }
+
+                            $statusMeta = normalizeOrderStatus((string) ($row['current_status'] ?? ''));
+                            if (($statusMeta['key'] ?? '') === 'cancelled') {
+                                throw new RuntimeException('Đơn hàng này đã ở trạng thái hủy.');
+                            }
+
+                            if (in_array((string) ($statusMeta['key'] ?? ''), ['shipping', 'near_delivery', 'completed'], true)) {
+                                throw new RuntimeException('Đơn đã giao/hoàn tất, không thể hủy.');
+                            }
+
+                            $setParts = [];
+                            foreach ($statusColumnsToSync as $statusColSync) {
+                                $setParts[] = "`{$statusColSync}` = :cancel_status";
+                            }
+                            $params = [
+                                ':cancel_status' => 'Đã hủy',
+                            ];
+
+                            if ($paymentStatusColumn !== null) {
+                                $setParts[] = "`{$paymentStatusColumn}` = :cancel_payment_status";
+                                $params[':cancel_payment_status'] = 'Đã hủy';
+                            }
+
+                            $params[':order_id'] = $orderId;
+
+                            $cancelStmt = $pdo->prepare(
+                                "UPDATE phieuxuat
+                                 SET " . implode(', ', $setParts) . "
+                                 WHERE `{$orderIdColumn}` = :order_id"
+                            );
+                            $cancelStmt->execute($params);
+
+                            if ($cancelStmt->rowCount() <= 0) {
+                                throw new RuntimeException('Không thể hủy đơn. Vui lòng thử lại.');
+                            }
+
+                            restoreStockForCancelledOrder(
+                                $pdo,
+                                $orderId,
+                                $detailOrderIdCol,
+                                $detailProductCol,
+                                $detailQtyCol,
+                                $hangIdCol,
+                                $hangStockCol
+                            );
+
+                            $restoredVoucherRows = restoreVoucherForCancelledOrder($pdo, $orderId);
+                            $pdo->commit();
+
+                            $crudMessage = 'Đã hủy đơn hàng ' . $orderId . ' thành công.';
+                            if ($restoredVoucherRows > 0) {
+                                $crudMessage .= ' Voucher đã được hoàn lại.';
+                            }
+                        } catch (Throwable $cancelError) {
+                            if ($pdo->inTransaction()) {
+                                $pdo->rollBack();
+                            }
+                            throw $cancelError;
+                        }
+                    }
+                }
+            }
+
             if ($action === 'delete_order') {
                 $orderId = trim((string) ($_POST['order_id'] ?? ''));
 
@@ -547,6 +817,25 @@ try {
     } catch (Throwable $ignored) {
     }
 
+    $voucherMetaMap = [];
+    try {
+        $voucherRows = $pdo->query("SELECT ma_don_hang, ma_voucher, tong_tam_tinh, so_tien_giam, tong_thanh_toan FROM phieuxuat_voucher_map")->fetchAll();
+        foreach ($voucherRows as $voucherRow) {
+            $voucherOrderId = trim((string) ($voucherRow['ma_don_hang'] ?? ''));
+            if ($voucherOrderId === '') {
+                continue;
+            }
+
+            $voucherMetaMap[$voucherOrderId] = [
+                'code' => trim((string) ($voucherRow['ma_voucher'] ?? '')),
+                'subtotal' => (float) ($voucherRow['tong_tam_tinh'] ?? 0),
+                'discount' => (float) ($voucherRow['so_tien_giam'] ?? 0),
+                'final_total' => (float) ($voucherRow['tong_thanh_toan'] ?? 0),
+            ];
+        }
+    } catch (Throwable $ignored) {
+    }
+
     foreach ($pxRows as $row) {
         $id = (string) pickOrderValue($row, ['maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'idphieuxuat', 'id_phieu_xuat', 'madon', 'id']);
 
@@ -557,6 +846,10 @@ try {
         }
 
         $totalRaw = (float) pickOrderValue($row, ['tongtien', 'tong_tien', 'thanhtien', 'thanh_tien', 'total'], 0);
+        $voucherMeta = $voucherMetaMap[$id] ?? null;
+        if (is_array($voucherMeta)) {
+            $totalRaw = max(0, (float) ($voucherMeta['final_total'] ?? 0));
+        }
         if ($totalRaw <= 0 && isset($orderDetailMap[$id])) {
             foreach ($orderDetailMap[$id] as $detailItem) {
                 $totalRaw += (float) ($detailItem['total_number'] ?? 0);
@@ -1067,6 +1360,11 @@ foreach ($orders as $order) {
                 <input type="hidden" name="order_id" id="deleteOrderId" value="">
             </form>
 
+            <form method="post" id="cancelOrderForm" class="d-none">
+                <input type="hidden" name="crud_action" value="cancel_order">
+                <input type="hidden" name="order_id" id="cancelOrderId" value="">
+            </form>
+
             <?php if ($dbError !== ''): ?>
             <div class="alert alert-warning" role="alert">
                 Không thể kết nối/lấy dữ liệu từ MySQL: <?php echo htmlspecialchars($dbError); ?>
@@ -1135,6 +1433,9 @@ foreach ($orders as $order) {
                 </button>
                 <button type="button" class="btn btn-secondary fw-semibold" id="btnNearDeliveryOrder" disabled>
                     <i class="fas fa-location-dot me-1"></i> Gần giao
+                </button>
+                <button type="button" class="btn btn-warning fw-semibold text-dark" id="btnCancelOrder" disabled>
+                    <i class="fas fa-ban me-1"></i> Hủy đơn
                 </button>
                 <button type="button" class="btn btn-danger fw-semibold" id="btnDeleteOrder" disabled>
                     <i class="fas fa-trash-alt me-1"></i> Xóa đơn
@@ -1304,9 +1605,12 @@ foreach ($orders as $order) {
     const approveOrderForm = document.getElementById('approveOrderForm');
     const approveOrderIdInput = document.getElementById('approveOrderId');
     const btnDeleteOrder = document.getElementById('btnDeleteOrder');
+    const btnCancelOrder = document.getElementById('btnCancelOrder');
     const orderPaymentHint = document.getElementById('orderPaymentHint');
     const deleteOrderForm = document.getElementById('deleteOrderForm');
     const deleteOrderIdInput = document.getElementById('deleteOrderId');
+    const cancelOrderForm = document.getElementById('cancelOrderForm');
+    const cancelOrderIdInput = document.getElementById('cancelOrderId');
     const orderConfirmModalEl = document.getElementById('orderConfirmModal');
     const orderConfirmModalLabel = document.getElementById('orderConfirmModalLabel');
     const orderConfirmMessage = document.getElementById('orderConfirmMessage');
@@ -1383,6 +1687,11 @@ foreach ($orders as $order) {
             orderConfirmMessage.textContent = `Cập nhật đơn hàng ${orderId} sang trạng thái "Gần giao"?`;
             btnConfirmOrderAction.textContent = 'Cập nhật';
             btnConfirmOrderAction.classList.add('btn-primary');
+        } else if (actionType === 'cancel') {
+            orderConfirmModalLabel.textContent = 'Xác nhận hủy đơn';
+            orderConfirmMessage.textContent = `Bạn có chắc chắn muốn hủy đơn hàng ${orderId} không? Hệ thống sẽ hoàn tồn kho và hoàn voucher (nếu có).`;
+            btnConfirmOrderAction.textContent = 'Hủy đơn';
+            btnConfirmOrderAction.classList.add('btn-danger');
         } else {
             orderConfirmModalLabel.textContent = 'Xác nhận xóa';
             orderConfirmMessage.textContent = `Bạn có chắc chắn muốn xóa thủ công đơn hàng ${orderId} không?`;
@@ -1502,6 +1811,7 @@ foreach ($orders as $order) {
             btnApproveOrder.disabled = !(statusKey === 'pending' && paymentReady);
             btnShipOrder.disabled = !(statusKey === 'approved' && paymentReady);
             btnNearDeliveryOrder.disabled = !(statusKey === 'shipping' && paymentReady);
+            btnCancelOrder.disabled = !['pending', 'pending_payment', 'approved'].includes(statusKey);
             btnDeleteOrder.disabled = false;
 
             if (orderPaymentHint) {
@@ -1560,6 +1870,24 @@ foreach ($orders as $order) {
         }
 
         openOrderConfirmModal('delete', orderId);
+    });
+
+    btnCancelOrder.addEventListener('click', function() {
+        if (!selectedOrderRow || !cancelOrderForm || !cancelOrderIdInput) {
+            return;
+        }
+
+        const statusKey = selectedOrderRow.getAttribute('data-status-key') || '';
+        if (!['pending', 'pending_payment', 'approved'].includes(statusKey)) {
+            return;
+        }
+
+        const orderId = selectedOrderRow.getAttribute('data-id') || '';
+        if (!orderId) {
+            return;
+        }
+
+        openOrderConfirmModal('cancel', orderId);
     });
 
     btnShipOrder.addEventListener('click', function() {
@@ -1634,6 +1962,15 @@ foreach ($orders as $order) {
             }
             deleteOrderIdInput.value = orderId;
             deleteOrderForm.submit();
+            return;
+        }
+
+        if (type === 'cancel') {
+            if (!cancelOrderForm || !cancelOrderIdInput || !orderId) {
+                return;
+            }
+            cancelOrderIdInput.value = orderId;
+            cancelOrderForm.submit();
         }
     });
 

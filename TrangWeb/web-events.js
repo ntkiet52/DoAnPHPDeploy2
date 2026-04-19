@@ -2944,7 +2944,72 @@
     });
   }
 
+  function bindStaticInfoNavLinks() {
+    const navMap = new Map([
+      ["san pham", "trangchu.php"],
+      ["sản phẩm", "trangchu.php"],
+      ["tin tuc", "tin-tuc.php"],
+      ["tin tức", "tin-tuc.php"],
+      ["tuyen dung", "tuyen-dung.php"],
+      ["tuyển dụng", "tuyen-dung.php"],
+      ["chuyen nhuong", "chuyen-nhuong.php"],
+      ["chuyển nhượng", "chuyen-nhuong.php"],
+    ]);
+
+    const normalize = (value) =>
+      String(value || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const anchors = Array.from(
+      document.querySelectorAll(".main-nav a.nav-link, a[data-ack-nav], a")
+    );
+    anchors.forEach((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+
+      const rawHref = String(anchor.getAttribute("href") || "").trim();
+      const text = normalize(anchor.textContent);
+      if (!text) return;
+
+      const mappedHref = navMap.get(text);
+      if (!mappedHref) {
+        return;
+      }
+
+      const shouldReplaceHref =
+        !rawHref ||
+        rawHref === "#" ||
+        rawHref.startsWith("javascript:") ||
+        rawHref.startsWith("./") ||
+        rawHref.startsWith("../");
+
+      if (shouldReplaceHref || anchor.closest(".main-nav")) {
+        anchor.setAttribute("href", mappedHref);
+      }
+
+      anchor.dataset.ackNavLinked = "1";
+
+      if (anchor.dataset.ackNavClickBound === "1") {
+        return;
+      }
+
+      anchor.addEventListener("click", (event) => {
+        const href = String(anchor.getAttribute("href") || "").trim();
+        if (href && href !== "#") {
+          return;
+        }
+        event.preventDefault();
+        window.location.href = mappedHref;
+      });
+      anchor.dataset.ackNavClickBound = "1";
+    });
+  }
+
   function init() {
+    bindStaticInfoNavLinks();
     keepHeroOnlyOnHomepage();
     injectGlobalFooterLayoutStyles();
     normalizeFooterPaymentLogos();

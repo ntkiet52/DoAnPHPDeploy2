@@ -3,10 +3,10 @@ require_once __DIR__ . '/catalog_data.php';
 
 // Dữ liệu danh mục hiển thị theo layout trang chủ
 $categories = [
-    ['name' => 'Thức ăn', 'icon' => 'fa-hamburger', 'desc' => 'Ăn uống đa dạng'],
-    ['name' => 'Sức khỏe', 'icon' => 'fa-heartbeat', 'desc' => 'Chăm sóc toàn diện'],
-    ['name' => 'Dụng cụ', 'icon' => 'fa-tools', 'desc' => 'Đồ dùng đa năng'],
-    ['name' => 'Quà tặng', 'icon' => 'fa-gift', 'desc' => 'Ý tưởng quà tặng'],
+    ['name' => 'Thức ăn', 'icon' => 'fa-hamburger', 'desc' => 'Ăn uống đa dạng', 'link' => 'Trangthucannhanh.php'],
+    ['name' => 'Sức khỏe', 'icon' => 'fa-heartbeat', 'desc' => 'Chăm sóc toàn diện', 'link' => 'Trangmypham.php'],
+    ['name' => 'Dụng cụ', 'icon' => 'fa-tools', 'desc' => 'Đồ dùng đa năng', 'link' => 'Tranggiadung.php'],
+    ['name' => 'Quà tặng', 'icon' => 'fa-gift', 'desc' => 'Ý tưởng quà tặng', 'link' => 'Trangdohop.php'],
 ];
 
 $products = loadFeaturedProductsFromDb(8);
@@ -103,6 +103,12 @@ $feedbacks = [
 
     .category-card:hover {
         transform: translateY(-5px);
+    }
+
+    .category-link {
+        text-decoration: none;
+        display: block;
+        height: 100%;
     }
 
     .category-icon {
@@ -426,11 +432,13 @@ $feedbacks = [
         <div class="row g-4">
             <?php foreach($categories as $cat): ?>
             <div class="col-md-3 col-6">
-                <div class="category-card p-4">
-                    <i class="fas <?php echo $cat['icon']; ?> category-icon"></i>
-                    <h5 class="fw-bold"><?php echo $cat['name']; ?></h5>
-                    <small class="opacity-75"><?php echo $cat['desc']; ?></small>
-                </div>
+                <a class="category-link" href="<?php echo htmlspecialchars((string)($cat['link'] ?? '#'), ENT_QUOTES, 'UTF-8'); ?>">
+                    <div class="category-card p-4">
+                        <i class="fas <?php echo $cat['icon']; ?> category-icon"></i>
+                        <h5 class="fw-bold"><?php echo $cat['name']; ?></h5>
+                        <small class="opacity-75"><?php echo $cat['desc']; ?></small>
+                    </div>
+                </a>
             </div>
             <?php endforeach; ?>
         </div>

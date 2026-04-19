@@ -64,6 +64,21 @@ function ensureOrderPaymentMetaTable(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureOrderVoucherMetaTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS phieuxuat_voucher_map (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ma_don_hang VARCHAR(100) NOT NULL,
+        ma_voucher VARCHAR(100) DEFAULT NULL,
+        tong_tam_tinh DECIMAL(18,2) NOT NULL DEFAULT 0,
+        so_tien_giam DECIMAL(18,2) NOT NULL DEFAULT 0,
+        tong_thanh_toan DECIMAL(18,2) NOT NULL DEFAULT 0,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_voucher_ma_don_hang (ma_don_hang),
+        INDEX idx_voucher_ma_voucher (ma_voucher)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 function ensureVoucherUsageTable(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_dung (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -79,52 +94,65 @@ function ensureVoucherUsageTable(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-function restoreVoucherForCancelledOrder(PDO $pdo, string $orderId): bool {
+function restoreVoucherForCancelledOrder(PDO $pdo, string $orderId): int {
     $orderId = trim($orderId);
     if ($orderId === '') {
-        return false;
+        return 0;
     }
 
     $selectStmt = $pdo->prepare(
-        'SELECT id, id_voucher
+        'SELECT id_voucher
          FROM voucher_nguoi_dung_da_dung
          WHERE ma_don_hang = :order_id
-         LIMIT 1
          FOR UPDATE'
     );
     $selectStmt->execute([':order_id' => $orderId]);
-    $usageRow = $selectStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-    if (!is_array($usageRow)) {
-        return false;
+    $usageRows = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!is_array($usageRows) || count($usageRows) === 0) {
+        return 0;
     }
 
-    $usageId = (int) ($usageRow['id'] ?? 0);
-    $voucherId = (int) ($usageRow['id_voucher'] ?? 0);
-    if ($usageId <= 0) {
-        return false;
+    $voucherIdUsageCount = [];
+    foreach ($usageRows as $usageRow) {
+        $voucherId = (int) ($usageRow['id_voucher'] ?? 0);
+        if ($voucherId <= 0) {
+            continue;
+        }
+
+        if (!isset($voucherIdUsageCount[$voucherId])) {
+            $voucherIdUsageCount[$voucherId] = 0;
+        }
+        $voucherIdUsageCount[$voucherId]++;
     }
 
-    $deleteStmt = $pdo->prepare('DELETE FROM voucher_nguoi_dung_da_dung WHERE id = :id LIMIT 1');
-    $deleteStmt->execute([':id' => $usageId]);
+    $deleteStmt = $pdo->prepare('DELETE FROM voucher_nguoi_dung_da_dung WHERE ma_don_hang = :order_id');
+    $deleteStmt->execute([':order_id' => $orderId]);
 
-    if ($deleteStmt->rowCount() <= 0) {
-        return false;
+    $deletedRows = (int) $deleteStmt->rowCount();
+    if ($deletedRows <= 0) {
+        return 0;
     }
 
-    if ($voucherId > 0) {
+    foreach ($voucherIdUsageCount as $voucherId => $usageCount) {
+        if ($voucherId <= 0 || $usageCount <= 0) {
+            continue;
+        }
+
         $decStmt = $pdo->prepare(
             'UPDATE voucher
              SET so_luong_da_su_dung = CASE
-                 WHEN so_luong_da_su_dung > 0 THEN so_luong_da_su_dung - 1
+                 WHEN so_luong_da_su_dung >= :usage_count THEN so_luong_da_su_dung - :usage_count
                  ELSE 0
              END
              WHERE id_voucher = :id_voucher'
         );
-        $decStmt->execute([':id_voucher' => $voucherId]);
+        $decStmt->execute([
+            ':usage_count' => $usageCount,
+            ':id_voucher' => $voucherId,
+        ]);
     }
 
-    return true;
+    return $deletedRows;
 }
 
 function upsertOrderPaymentMeta(PDO $pdo, string $orderId, string $method, string $status): void {
@@ -322,6 +350,7 @@ try {
     );
 
     ensureOrderPaymentMetaTable($pdo);
+    ensureOrderVoucherMetaTable($pdo);
     ensureVoucherUsageTable($pdo);
 
     $khColumns = getExistingColumns($pdo, 'khachhang');
@@ -564,14 +593,14 @@ try {
                     $hangStockCol
                 );
 
-                $voucherRestored = restoreVoucherForCancelledOrder($pdo, $cancelOrderId);
+                $restoredVoucherRows = restoreVoucherForCancelledOrder($pdo, $cancelOrderId);
 
                 $cancelMethod = $statusKey === 'pending_payment' ? 'QR chuyển khoản' : 'Thanh toán khi nhận hàng';
                 upsertOrderPaymentMeta($pdo, $cancelOrderId, $cancelMethod, 'Đã hủy');
 
                 $pdo->commit();
                 $flashMessage = 'Đã hủy đơn ' . $cancelOrderId . ' thành công và hoàn lại tồn kho.';
-                if ($voucherRestored) {
+                if ($restoredVoucherRows > 0) {
                     $flashMessage .= ' Voucher đã được hoàn về tài khoản của bạn.';
                 }
                 $flashType = 'success';
@@ -595,6 +624,26 @@ try {
         $orderStmt = $pdo->prepare("SELECT * FROM phieuxuat WHERE `{$orderCustomerCol}` IN ({$placeholders}) ORDER BY {$orderOrderBy}");
         $orderStmt->execute($customerIds);
         $orderRows = $orderStmt->fetchAll();
+
+        $autoRestoredVoucherCount = 0;
+        foreach ($orderRows as $orderRowForRestore) {
+            $orderStatusMeta = resolveStatusMetaFromOrderRow($orderRowForRestore);
+            if ((string) ($orderStatusMeta['key'] ?? '') !== 'cancelled') {
+                continue;
+            }
+
+            $orderIdForRestore = trim((string) pickOrderValue($orderRowForRestore, [$orderIdCol], ''));
+            if ($orderIdForRestore === '') {
+                continue;
+            }
+
+            $autoRestoredVoucherCount += restoreVoucherForCancelledOrder($pdo, $orderIdForRestore);
+        }
+
+        if ($autoRestoredVoucherCount > 0 && $flashMessage === '') {
+            $flashMessage = 'Đã đồng bộ hoàn ' . $autoRestoredVoucherCount . ' lượt voucher từ các đơn đã hủy trước đó.';
+            $flashType = 'info';
+        }
 
         $orderIdList = [];
         foreach ($orderRows as $orderRow) {
@@ -669,6 +718,26 @@ try {
             }
         }
 
+        $voucherMetaMap = [];
+        if (count($orderIdList) > 0) {
+            $voucherPlaceholders = implode(', ', array_fill(0, count($orderIdList), '?'));
+            $voucherStmt = $pdo->prepare("SELECT ma_don_hang, ma_voucher, tong_tam_tinh, so_tien_giam, tong_thanh_toan FROM phieuxuat_voucher_map WHERE ma_don_hang IN ({$voucherPlaceholders})");
+            $voucherStmt->execute($orderIdList);
+            foreach ($voucherStmt->fetchAll(PDO::FETCH_ASSOC) as $voucherRow) {
+                $voucherOrderId = trim((string) ($voucherRow['ma_don_hang'] ?? ''));
+                if ($voucherOrderId === '') {
+                    continue;
+                }
+
+                $voucherMetaMap[$voucherOrderId] = [
+                    'code' => trim((string) ($voucherRow['ma_voucher'] ?? '')),
+                    'subtotal' => (float) ($voucherRow['tong_tam_tinh'] ?? 0),
+                    'discount' => (float) ($voucherRow['so_tien_giam'] ?? 0),
+                    'final_total' => (float) ($voucherRow['tong_thanh_toan'] ?? 0),
+                ];
+            }
+        }
+
         foreach ($orderRows as $orderRow) {
             $orderId = (string) pickOrderValue($orderRow, [$orderIdCol], '');
             if ($orderId === '') {
@@ -729,6 +798,10 @@ try {
             }
 
             $total = $orderTotalCol !== null ? (float) pickOrderValue($orderRow, [$orderTotalCol], 0) : 0;
+            $voucherMeta = $voucherMetaMap[$orderId] ?? null;
+            if (is_array($voucherMeta)) {
+                $total = max(0, (float) ($voucherMeta['final_total'] ?? 0));
+            }
             if ($total <= 0 && isset($orderDetailMap[$orderId])) {
                 foreach ($orderDetailMap[$orderId] as $detailItem) {
                     $total += (float) ($detailItem['line_total'] ?? 0);
@@ -744,6 +817,8 @@ try {
                 'status_class' => $statusMeta['class'],
                 'shipping_progress' => $statusMeta['progress'] ?? '',
                 'total' => $total,
+                'voucher_code' => is_array($voucherMeta) ? (string) ($voucherMeta['code'] ?? '') : '',
+                'voucher_discount' => is_array($voucherMeta) ? (float) ($voucherMeta['discount'] ?? 0) : 0,
                 'payment_method' => $rawPaymentMethod,
                 'payment_status' => $rawPaymentStatus,
                 'is_qr_order' => $isQrOrder,
@@ -1637,6 +1712,12 @@ $hasOrders = count($orders) > 0;
                                                 ₫</span>
                                         </div>
                                         <?php endforeach; ?>
+                                        <?php if ((float) ($order['voucher_discount'] ?? 0) > 0): ?>
+                                        <div class="d-flex justify-content-between small mt-2 text-success fw-semibold">
+                                            <span>Giảm voucher<?php echo !empty($order['voucher_code']) ? ' (' . htmlspecialchars((string) $order['voucher_code']) . ')' : ''; ?></span>
+                                            <span>-<?php echo number_format((float) ($order['voucher_discount'] ?? 0), 0, ',', '.'); ?> ₫</span>
+                                        </div>
+                                        <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                 </details>
