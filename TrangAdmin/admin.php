@@ -769,7 +769,7 @@ try {
                 <div class="chart-container">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="section-title mb-0">Đơn hàng gần đây</h5>
-                        <a href="#" class="text-primary text-decoration-none small">Xem tất cả</a>
+                        <a href="admin-donhang.php" class="text-primary text-decoration-none small">Xem tất cả</a>
                     </div>
 
                     <div>

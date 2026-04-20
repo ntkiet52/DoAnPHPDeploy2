@@ -79,6 +79,42 @@ function ensureOrderVoucherMetaTable(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+function ensureAccountAvatarTablePdo(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tai_khoan_anh_dai_dien (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL DEFAULT 0,
+        user_email VARCHAR(191) NOT NULL DEFAULT '',
+        avatar_path VARCHAR(255) NOT NULL,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_avatar_user_id (user_id),
+        UNIQUE KEY uq_avatar_user_email (user_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function getAccountAvatarPathPdo(PDO $pdo, int $userId, string $userEmail): string {
+    if ($userId > 0) {
+        $stmt = $pdo->prepare('SELECT avatar_path FROM tai_khoan_anh_dai_dien WHERE user_id = :user_id LIMIT 1');
+        $stmt->execute([':user_id' => $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (is_array($row)) {
+            return trim((string) ($row['avatar_path'] ?? ''));
+        }
+    }
+
+    $safeEmail = trim(strtolower($userEmail));
+    if ($safeEmail !== '') {
+        $stmt = $pdo->prepare('SELECT avatar_path FROM tai_khoan_anh_dai_dien WHERE user_email = :user_email LIMIT 1');
+        $stmt->execute([':user_email' => $safeEmail]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (is_array($row)) {
+            return trim((string) ($row['avatar_path'] ?? ''));
+        }
+    }
+
+    return '';
+}
+
 function ensureVoucherUsageTable(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_dung (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -321,6 +357,7 @@ $roleLabelMap = [
     'user' => 'Khách hàng',
 ];
 $roleLabel = $roleLabelMap[$userRole] ?? 'Khách hàng';
+$avatarPath = trim((string) ($_SESSION['user_avatar'] ?? ''));
 
 $orders = [];
 $dbError = '';
@@ -352,6 +389,13 @@ try {
     ensureOrderPaymentMetaTable($pdo);
     ensureOrderVoucherMetaTable($pdo);
     ensureVoucherUsageTable($pdo);
+    ensureAccountAvatarTablePdo($pdo);
+
+    $avatarPathFromDb = getAccountAvatarPathPdo($pdo, (int) ($_SESSION['user_id'] ?? 0), $userEmail);
+    if ($avatarPathFromDb !== '') {
+        $avatarPath = $avatarPathFromDb;
+        $_SESSION['user_avatar'] = $avatarPathFromDb;
+    }
 
     $khColumns = getExistingColumns($pdo, 'khachhang');
     $khIdCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
@@ -952,6 +996,13 @@ $hasOrders = count($orders) > 0;
         font-size: 1.5rem;
     }
 
+    .avatar-circle img.avatar-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+
     .menu-link {
         border-radius: 10px;
         color: #334155;
@@ -1529,7 +1580,13 @@ $hasOrders = count($orders) > 0;
             <div class="col-lg-4 account-left-col">
                 <div class="panel p-3 p-md-4">
                     <div class="d-flex align-items-center gap-3 mb-3">
-                        <span class="avatar-circle"><i class="fas fa-user"></i></span>
+                        <span class="avatar-circle">
+                            <?php if ($avatarPath !== ''): ?>
+                            <img src="<?php echo htmlspecialchars($avatarPath); ?>" alt="Avatar" class="avatar-image">
+                            <?php else: ?>
+                            <i class="fas fa-user"></i>
+                            <?php endif; ?>
+                        </span>
                         <div>
                             <div class="fw-bold"><?php echo htmlspecialchars($userName !== '' ? $userName : 'Khách hàng'); ?></div>
                             <div class="text-muted small"><?php echo htmlspecialchars($userEmail !== '' ? $userEmail : 'Chưa cập nhật email'); ?></div>

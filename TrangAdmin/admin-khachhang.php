@@ -756,12 +756,6 @@ try {
         </div>
 
         <div class="d-flex gap-2 mb-4">
-            <button class="btn btn-primary fw-semibold" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
-                <i class="fas fa-plus me-1"></i> Thêm khách hàng
-            </button>
-            <button class="btn btn-warning fw-semibold" id="btnEditCustomer" disabled>
-                <i class="fas fa-pen me-1"></i> Sửa khách hàng
-            </button>
             <button class="btn btn-info fw-semibold text-white" id="btnViewCustomer" disabled>
                 <i class="fas fa-eye me-1"></i> Xem chi tiết
             </button>
@@ -1058,9 +1052,15 @@ try {
 
     function syncCustomerActionButtons() {
         const hasSelected = !!selectedCustomerRow;
-        btnEditCustomer.disabled = !hasSelected;
-        btnViewCustomer.disabled = !hasSelected;
-        btnDeleteCustomer.disabled = !hasSelected;
+        if (btnEditCustomer) {
+            btnEditCustomer.disabled = !hasSelected;
+        }
+        if (btnViewCustomer) {
+            btnViewCustomer.disabled = !hasSelected;
+        }
+        if (btnDeleteCustomer) {
+            btnDeleteCustomer.disabled = !hasSelected;
+        }
     }
 
     function clearCustomerSelection() {
@@ -1080,31 +1080,33 @@ try {
 
     document.querySelectorAll('.customer-row').forEach(bindCustomerRowEvents);
 
-    btnEditCustomer.addEventListener('click', function() {
-        if (!selectedCustomerRow) {
-            alert('Vui lòng chọn khách hàng để sửa.');
-            return;
-        }
+    if (btnEditCustomer) {
+        btnEditCustomer.addEventListener('click', function() {
+            if (!selectedCustomerRow) {
+                alert('Vui lòng chọn khách hàng để sửa.');
+                return;
+            }
 
-        document.getElementById('editCustomerId').value = selectedCustomerRow.getAttribute(
-            'data-customer-id') || '';
-        document.getElementById('editCustomerName').value = selectedCustomerRow.getAttribute(
-            'data-customer-name') || '';
-        document.getElementById('editCustomerGender').value = selectedCustomerRow.getAttribute(
-            'data-customer-gender') || '';
-        document.getElementById('editCustomerEmail').value = selectedCustomerRow.getAttribute(
-            'data-customer-email') || '';
-        document.getElementById('editCustomerPhone').value = selectedCustomerRow.getAttribute(
-            'data-customer-phone') || '';
-        document.getElementById('editCustomerBirthday').value = selectedCustomerRow.getAttribute(
-            'data-customer-birthday') || '';
-        document.getElementById('editCustomerAddress').value = selectedCustomerRow.getAttribute(
-            'data-customer-address') || '';
-        document.getElementById('editCustomerTotal').value = selectedCustomerRow.getAttribute(
-            'data-customer-total') || '0 đ';
+            document.getElementById('editCustomerId').value = selectedCustomerRow.getAttribute(
+                'data-customer-id') || '';
+            document.getElementById('editCustomerName').value = selectedCustomerRow.getAttribute(
+                'data-customer-name') || '';
+            document.getElementById('editCustomerGender').value = selectedCustomerRow.getAttribute(
+                'data-customer-gender') || '';
+            document.getElementById('editCustomerEmail').value = selectedCustomerRow.getAttribute(
+                'data-customer-email') || '';
+            document.getElementById('editCustomerPhone').value = selectedCustomerRow.getAttribute(
+                'data-customer-phone') || '';
+            document.getElementById('editCustomerBirthday').value = selectedCustomerRow.getAttribute(
+                'data-customer-birthday') || '';
+            document.getElementById('editCustomerAddress').value = selectedCustomerRow.getAttribute(
+                'data-customer-address') || '';
+            document.getElementById('editCustomerTotal').value = selectedCustomerRow.getAttribute(
+                'data-customer-total') || '0 đ';
 
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('editCustomerModal')).show();
-    });
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('editCustomerModal')).show();
+        });
+    }
 
     btnViewCustomer.addEventListener('click', function() {
         if (!selectedCustomerRow) {

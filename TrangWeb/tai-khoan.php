@@ -210,6 +210,119 @@ function currentVoucherUserKeyAccount(): string {
     return 'CUST_' . $customerCode;
 }
 
+function ensureAccountAvatarTableMysqli(mysqli $conn): void {
+    $conn->query("CREATE TABLE IF NOT EXISTS tai_khoan_anh_dai_dien (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL DEFAULT 0,
+        user_email VARCHAR(191) NOT NULL DEFAULT '',
+        avatar_path VARCHAR(255) NOT NULL,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_avatar_user_id (user_id),
+        UNIQUE KEY uq_avatar_user_email (user_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function getAccountAvatarPathMysqli(mysqli $conn, int $userId, string $userEmail): string {
+    $safeEmail = trim(strtolower($userEmail));
+
+    if ($userId > 0) {
+        $stmt = $conn->prepare('SELECT avatar_path FROM tai_khoan_anh_dai_dien WHERE user_id = ? LIMIT 1');
+        if ($stmt) {
+            $stmt->bind_param('i', $userId);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $row = $res ? $res->fetch_assoc() : null;
+            $stmt->close();
+
+            if (is_array($row)) {
+                return trim((string) ($row['avatar_path'] ?? ''));
+            }
+        }
+    }
+
+    if ($safeEmail !== '') {
+        $stmt = $conn->prepare('SELECT avatar_path FROM tai_khoan_anh_dai_dien WHERE user_email = ? LIMIT 1');
+        if ($stmt) {
+            $stmt->bind_param('s', $safeEmail);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $row = $res ? $res->fetch_assoc() : null;
+            $stmt->close();
+
+            if (is_array($row)) {
+                return trim((string) ($row['avatar_path'] ?? ''));
+            }
+        }
+    }
+
+    return '';
+}
+
+function saveAccountAvatarPathMysqli(mysqli $conn, int $userId, string $userEmail, string $avatarPath): bool {
+    $safeEmail = trim(strtolower($userEmail));
+    $avatarPath = trim($avatarPath);
+    if ($avatarPath === '') {
+        return false;
+    }
+
+    if ($userId > 0) {
+        $stmt = $conn->prepare(
+            'INSERT INTO tai_khoan_anh_dai_dien (user_id, user_email, avatar_path)
+             VALUES (?, ?, ?)
+               ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), user_email = VALUES(user_email), avatar_path = VALUES(avatar_path)'
+        );
+        if ($stmt) {
+            $stmt->bind_param('iss', $userId, $safeEmail, $avatarPath);
+            $ok = $stmt->execute();
+            $stmt->close();
+            return $ok;
+        }
+    }
+
+    if ($safeEmail !== '') {
+        $stmt = $conn->prepare(
+            'INSERT INTO tai_khoan_anh_dai_dien (user_id, user_email, avatar_path)
+             VALUES (0, ?, ?)
+             ON DUPLICATE KEY UPDATE avatar_path = VALUES(avatar_path)'
+        );
+        if ($stmt) {
+            $stmt->bind_param('ss', $safeEmail, $avatarPath);
+            $ok = $stmt->execute();
+            $stmt->close();
+            return $ok;
+        }
+    }
+
+    return false;
+}
+
+function deleteAccountAvatarPathMysqli(mysqli $conn, int $userId, string $userEmail): bool {
+    $safeEmail = trim(strtolower($userEmail));
+
+    if ($userId > 0) {
+        $stmt = $conn->prepare('DELETE FROM tai_khoan_anh_dai_dien WHERE user_id = ?');
+        if ($stmt) {
+            $stmt->bind_param('i', $userId);
+            $ok = $stmt->execute();
+            $stmt->close();
+            return $ok;
+        }
+    }
+
+    if ($safeEmail !== '') {
+        $stmt = $conn->prepare('DELETE FROM tai_khoan_anh_dai_dien WHERE user_email = ?');
+        if ($stmt) {
+            $stmt->bind_param('s', $safeEmail);
+            $ok = $stmt->execute();
+            $stmt->close();
+            return $ok;
+        }
+    }
+
+    return false;
+}
+
 function formatVoucherLabel(array $voucher): string {
     $type = strtolower((string) ($voucher['kieu_giam'] ?? 'fixed'));
     $value = (float) ($voucher['gia_tri_giam'] ?? 0);
@@ -295,6 +408,7 @@ $roleLabel = $roleLabelMap[$userRole] ?? 'Người dùng';
 
 $flashMessage = '';
 $flashType = 'success';
+$avatarPath = trim((string) ($_SESSION['user_avatar'] ?? ''));
 $customerProfile = [
     'id' => '',
     'name' => $userName,
@@ -323,6 +437,7 @@ $recentOrders = [];
 $voucherUserKey = currentVoucherUserKeyAccount();
 
 if (isset($conn) && $conn instanceof mysqli) {
+    ensureAccountAvatarTableMysqli($conn);
     $conn->query("CREATE TABLE IF NOT EXISTS voucher_nguoi_dung_da_nhan (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_key VARCHAR(100) NOT NULL,
@@ -333,6 +448,134 @@ if (isset($conn) && $conn instanceof mysqli) {
         INDEX idx_claim_user_key (user_key),
         INDEX idx_claim_voucher_id (id_voucher)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $avatarPathFromDb = getAccountAvatarPathMysqli($conn, $userId, $userEmail);
+    if ($avatarPathFromDb !== '') {
+        $avatarPath = $avatarPathFromDb;
+        $_SESSION['user_avatar'] = $avatarPathFromDb;
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_avatar') {
+    $tab = strtolower(trim((string) ($_POST['current_tab'] ?? 'settings')));
+    if (!in_array($tab, ['info', 'manage', 'favorites', 'settings'], true)) {
+        $tab = 'settings';
+    }
+
+    if (!isset($_FILES['avatar_file']) || !is_array($_FILES['avatar_file'])) {
+        $flashMessage = 'Vui lòng chọn ảnh đại diện để tải lên.';
+        $flashType = 'danger';
+    } else {
+        $avatarFile = $_FILES['avatar_file'];
+        $uploadError = (int) ($avatarFile['error'] ?? UPLOAD_ERR_NO_FILE);
+
+        if ($uploadError !== UPLOAD_ERR_OK) {
+            $flashMessage = 'Không thể tải ảnh lên. Vui lòng thử lại.';
+            $flashType = 'danger';
+        } else {
+            $tmpFile = (string) ($avatarFile['tmp_name'] ?? '');
+            $fileSize = (int) ($avatarFile['size'] ?? 0);
+            $maxSize = 2 * 1024 * 1024;
+
+            $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
+            $mimeType = $finfo ? (string) finfo_file($finfo, $tmpFile) : '';
+            if ($finfo) {
+                finfo_close($finfo);
+            }
+
+            $allowedMimeMap = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/webp' => 'webp',
+                'image/gif' => 'gif',
+            ];
+
+            if ($fileSize <= 0 || $fileSize > $maxSize) {
+                $flashMessage = 'Ảnh đại diện phải nhỏ hơn hoặc bằng 2MB.';
+                $flashType = 'warning';
+            } else if (!isset($allowedMimeMap[$mimeType])) {
+                $flashMessage = 'Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.';
+                $flashType = 'warning';
+            } else {
+                $extension = $allowedMimeMap[$mimeType];
+                $uploadDirAbsolute = __DIR__ . '/uploads/avatars';
+                if (!is_dir($uploadDirAbsolute)) {
+                    @mkdir($uploadDirAbsolute, 0777, true);
+                }
+
+                if (!is_dir($uploadDirAbsolute)) {
+                    $flashMessage = 'Không thể tạo thư mục lưu ảnh đại diện.';
+                    $flashType = 'danger';
+                } else {
+                    $safeUserId = $userId > 0 ? $userId : 0;
+                    $newFileName = 'avatar_u' . $safeUserId . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $extension;
+                    $newFileAbsolute = $uploadDirAbsolute . '/' . $newFileName;
+                    $newFileRelative = 'uploads/avatars/' . $newFileName;
+
+                    if (!move_uploaded_file($tmpFile, $newFileAbsolute)) {
+                        $flashMessage = 'Không thể lưu ảnh đại diện. Vui lòng thử lại.';
+                        $flashType = 'danger';
+                    } else {
+                        $savedToDb = isset($conn) && $conn instanceof mysqli
+                            ? saveAccountAvatarPathMysqli($conn, $userId, $userEmail, $newFileRelative)
+                            : false;
+
+                        if ($savedToDb || !isset($conn) || !($conn instanceof mysqli)) {
+                            $oldAvatarPath = trim((string) ($_SESSION['user_avatar'] ?? ''));
+                            $_SESSION['user_avatar'] = $newFileRelative;
+                            $avatarPath = $newFileRelative;
+                            $flashMessage = 'Đổi ảnh đại diện thành công.';
+                            $flashType = 'success';
+
+                            if ($oldAvatarPath !== '' && str_starts_with($oldAvatarPath, 'uploads/avatars/')) {
+                                $oldAvatarAbsolute = __DIR__ . '/' . str_replace(['\\', '../'], ['/', ''], $oldAvatarPath);
+                                if (is_file($oldAvatarAbsolute) && $oldAvatarAbsolute !== $newFileAbsolute) {
+                                    @unlink($oldAvatarAbsolute);
+                                }
+                            }
+                        } else {
+                            @unlink($newFileAbsolute);
+                            $flashMessage = 'Không thể lưu thông tin ảnh đại diện vào dữ liệu người dùng.';
+                            $flashType = 'danger';
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'remove_avatar') {
+    $tab = strtolower(trim((string) ($_POST['current_tab'] ?? 'settings')));
+    if (!in_array($tab, ['info', 'manage', 'favorites', 'settings'], true)) {
+        $tab = 'settings';
+    }
+
+    $oldAvatarPath = trim((string) ($_SESSION['user_avatar'] ?? $avatarPath));
+
+    if (!isset($conn) || !($conn instanceof mysqli)) {
+        $flashMessage = 'Không thể kết nối dữ liệu để gỡ ảnh đại diện.';
+        $flashType = 'danger';
+    } else {
+        $deleted = deleteAccountAvatarPathMysqli($conn, $userId, $userEmail);
+
+        if ($deleted) {
+            $_SESSION['user_avatar'] = '';
+            $avatarPath = '';
+            $flashMessage = 'Đã gỡ ảnh đại diện hiện tại.';
+            $flashType = 'success';
+
+            if ($oldAvatarPath !== '' && str_starts_with($oldAvatarPath, 'uploads/avatars/')) {
+                $oldAvatarAbsolute = __DIR__ . '/' . str_replace(['\\', '../'], ['/', ''], $oldAvatarPath);
+                if (is_file($oldAvatarAbsolute)) {
+                    @unlink($oldAvatarAbsolute);
+                }
+            }
+        } else {
+            $flashMessage = 'Không thể gỡ ảnh đại diện lúc này. Vui lòng thử lại.';
+            $flashType = 'warning';
+        }
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_profile') {
@@ -970,6 +1213,102 @@ if (isset($conn) && $conn instanceof mysqli) {
         font-size: 1.5rem;
     }
 
+    .avatar-circle img.avatar-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+
+    .avatar-upload-inline {
+        margin-top: 8px;
+    }
+
+    .avatar-upload-inline .form-control {
+        font-size: 0.82rem;
+        padding: 0.3rem 0.45rem;
+    }
+
+    .avatar-upload-inline .btn {
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .avatar-trigger-btn {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        line-height: 0;
+        border-radius: 50%;
+    }
+
+    .avatar-trigger-btn:focus-visible {
+        outline: 2px solid #007bff;
+        outline-offset: 2px;
+    }
+
+    .avatar-change-hint {
+        margin-top: 4px;
+        font-size: 0.78rem;
+        color: #64748b;
+        cursor: pointer;
+    }
+
+    .avatar-action-modal .modal-content {
+        border: 1px solid #dbeafe;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 45px rgba(2, 6, 23, 0.18);
+    }
+
+    .avatar-action-modal .modal-header {
+        background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .avatar-action-list .list-group-item {
+        border: 0;
+        border-bottom: 1px solid #eef2f7;
+        font-weight: 600;
+        padding: 0.95rem 1rem;
+        text-align: center;
+        transition: background-color .18s ease, color .18s ease;
+    }
+
+    .avatar-action-list .list-group-item:last-child {
+        border-bottom: 0;
+    }
+
+    .avatar-action-list .avatar-upload-option {
+        color: #0b74e5;
+        background: #f8fbff;
+    }
+
+    .avatar-action-list .avatar-upload-option:hover {
+        color: #0759ad;
+        background: #edf4ff;
+    }
+
+    .avatar-action-list .avatar-remove-option {
+        color: #dc2626;
+        background: #fff7f7;
+    }
+
+    .avatar-action-list .avatar-remove-option:hover {
+        color: #b91c1c;
+        background: #ffecec;
+    }
+
+    .avatar-action-list .avatar-cancel-option {
+        color: #475569;
+        background: #ffffff;
+    }
+
+    .avatar-action-list .avatar-cancel-option:hover {
+        color: #1e293b;
+        background: #f8fafc;
+    }
+
     .menu-link {
         border-radius: 10px;
         color: #334155;
@@ -1198,7 +1537,15 @@ if (isset($conn) && $conn instanceof mysqli) {
             <div class="col-lg-4 account-left-col">
                 <div class="panel p-3 p-md-4">
                     <div class="d-flex align-items-center gap-3 mb-3">
-                        <span class="avatar-circle"><i class="fas fa-user"></i></span>
+                        <button type="button" class="avatar-trigger-btn" data-bs-toggle="modal" data-bs-target="#avatarActionModal" aria-label="Đổi ảnh đại diện">
+                            <span class="avatar-circle">
+                                <?php if ($avatarPath !== ''): ?>
+                                <img src="<?php echo htmlspecialchars($avatarPath); ?>" alt="Avatar" class="avatar-image">
+                                <?php else: ?>
+                                <i class="fas fa-user"></i>
+                                <?php endif; ?>
+                            </span>
+                        </button>
                         <div>
                             <div class="fw-bold"><?php echo htmlspecialchars($userName); ?></div>
                             <div class="text-muted small">
@@ -1206,6 +1553,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                             </div>
                             <div class="text-primary small fw-semibold"><?php echo htmlspecialchars($roleLabel); ?>
                             </div>
+                            <div class="avatar-change-hint" data-bs-toggle="modal" data-bs-target="#avatarActionModal">Nhấn avatar để đổi ảnh đại diện</div>
                         </div>
                     </div>
 
@@ -1520,6 +1868,41 @@ if (isset($conn) && $conn instanceof mysqli) {
         </div>
     </div>
 
+    <form id="avatarUploadForm" method="post" enctype="multipart/form-data" class="d-none">
+        <input type="hidden" name="action" value="save_avatar">
+        <input type="hidden" name="current_tab" value="<?php echo htmlspecialchars($tab); ?>">
+        <input type="file" id="avatarFileInput" name="avatar_file" accept="image/jpeg,image/png,image/webp,image/gif">
+    </form>
+
+    <form id="avatarRemoveForm" method="post" class="d-none">
+        <input type="hidden" name="action" value="remove_avatar">
+        <input type="hidden" name="current_tab" value="<?php echo htmlspecialchars($tab); ?>">
+    </form>
+
+    <div class="modal fade avatar-action-modal" id="avatarActionModal" tabindex="-1" aria-labelledby="avatarActionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold" id="avatarActionModalLabel">Thay đổi ảnh đại diện</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="list-group list-group-flush avatar-action-list">
+                    <button type="button" class="list-group-item list-group-item-action avatar-upload-option" id="btnChooseAvatarUpload">
+                        Tải ảnh lên
+                    </button>
+                    <?php if ($avatarPath !== ''): ?>
+                    <button type="button" class="list-group-item list-group-item-action avatar-remove-option" id="btnRemoveAvatar">
+                        Gỡ ảnh hiện tại
+                    </button>
+                    <?php endif; ?>
+                    <button type="button" class="list-group-item list-group-item-action avatar-cancel-option" data-bs-dismiss="modal">
+                        Hủy
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     (function() {
@@ -1601,6 +1984,56 @@ if (isset($conn) && $conn instanceof mysqli) {
                 }
             });
         });
+    })();
+    </script>
+    <script>
+    (function() {
+        const avatarUploadForm = document.getElementById('avatarUploadForm');
+        const avatarFileInput = document.getElementById('avatarFileInput');
+        const btnChooseAvatarUpload = document.getElementById('btnChooseAvatarUpload');
+        const btnRemoveAvatar = document.getElementById('btnRemoveAvatar');
+        const avatarRemoveForm = document.getElementById('avatarRemoveForm');
+        const avatarActionModalEl = document.getElementById('avatarActionModal');
+
+        if (btnChooseAvatarUpload && avatarFileInput) {
+            btnChooseAvatarUpload.addEventListener('click', function() {
+                avatarFileInput.click();
+            });
+        }
+
+        if (avatarFileInput && avatarUploadForm) {
+            avatarFileInput.addEventListener('change', function() {
+                if (!avatarFileInput.files || avatarFileInput.files.length === 0) {
+                    return;
+                }
+
+                if (avatarActionModalEl) {
+                    const modalInstance = bootstrap.Modal.getInstance(avatarActionModalEl);
+                    if (modalInstance) {
+                        modalInstance.hide();
+                    }
+                }
+
+                avatarUploadForm.submit();
+            });
+        }
+
+        if (btnRemoveAvatar && avatarRemoveForm) {
+            btnRemoveAvatar.addEventListener('click', function() {
+                if (!confirm('Bạn muốn gỡ ảnh đại diện hiện tại?')) {
+                    return;
+                }
+
+                if (avatarActionModalEl) {
+                    const modalInstance = bootstrap.Modal.getInstance(avatarActionModalEl);
+                    if (modalInstance) {
+                        modalInstance.hide();
+                    }
+                }
+
+                avatarRemoveForm.submit();
+            });
+        }
     })();
     </script>
     <script src="web-events.js?v=20260414-3"></script>

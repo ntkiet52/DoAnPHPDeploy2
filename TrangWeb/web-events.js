@@ -341,6 +341,22 @@
         font-size: 1.2rem;
       }
 
+      .ack-user-menu .ack-user-avatar-chip img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .user-avatar-chip img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+        display: block;
+      }
+
       .ack-user-menu .ack-user-mini-info {
         line-height: 1.1;
         text-align: left;
@@ -838,6 +854,11 @@
     const name = escapeHtml(userData?.name || "Khách hàng");
     const role = escapeHtml(userData?.role_label || "Khách");
     const email = escapeHtml(userData?.email || "Chưa cập nhật email");
+    const avatar = String(userData?.avatar || "").trim();
+    const hasAvatar = avatar !== "";
+    const avatarMarkup = hasAvatar
+      ? `<img src="${escapeHtml(avatar)}" alt="${name}" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=&quot;fas fa-user&quot;></i>';">`
+      : '<i class="fas fa-user"></i>';
 
     const promoFormItem = shouldHideQuickPromoFormOnPage()
       ? ""
@@ -871,7 +892,7 @@
     return `
       <div class="dropdown ack-user-menu">
         <button class="dropdown-toggle ack-user-menu-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <span class="ack-user-avatar-chip"><i class="fas fa-user"></i></span>
+          <span class="ack-user-avatar-chip">${avatarMarkup}</span>
           <span class="d-none d-md-block ack-user-mini-info">
             <span class="d-block ack-user-mini-name">${name}</span>
             <span class="d-block ack-user-mini-role">${role}</span>
@@ -887,6 +908,54 @@
         </ul>
       </div>
     `;
+  }
+
+  function buildAvatarChipMarkup(userData) {
+    const name = escapeHtml(userData?.name || "Khách hàng");
+    const avatar = String(userData?.avatar || "").trim();
+    if (!avatar) {
+      return '<i class="fas fa-user"></i>';
+    }
+
+    return `<img src="${escapeHtml(avatar)}" alt="${name}" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=&quot;fas fa-user&quot;></i>';">`;
+  }
+
+  function syncLegacyUserMenu(userData) {
+    const legacyToggle = document.querySelector(".user-menu-toggle");
+    if (!legacyToggle) return;
+
+    const nameRaw =
+      String(userData?.name || "Khách hàng").trim() || "Khách hàng";
+    const roleRaw = String(userData?.role_label || "Khách").trim() || "Khách";
+    const emailRaw =
+      String(userData?.email || "").trim() || "Chưa cập nhật email";
+
+    const avatarChip = legacyToggle.querySelector(".user-avatar-chip");
+    if (avatarChip) {
+      avatarChip.innerHTML = buildAvatarChipMarkup(userData);
+    }
+
+    const miniName = legacyToggle.querySelector(".user-mini-name");
+    if (miniName) {
+      miniName.textContent = nameRaw;
+    }
+
+    const miniRole = legacyToggle.querySelector(".user-mini-role");
+    if (miniRole) {
+      miniRole.textContent = roleRaw;
+    }
+
+    const dropdownHead = document.querySelector(".user-dropdown-head");
+    if (dropdownHead) {
+      const headName = dropdownHead.querySelector(".name");
+      if (headName) headName.textContent = nameRaw;
+
+      const headEmail = dropdownHead.querySelector(".email");
+      if (headEmail) headEmail.textContent = emailRaw;
+
+      const headRole = dropdownHead.querySelector(".role");
+      if (headRole) headRole.textContent = roleRaw;
+    }
   }
 
   async function fetchCurrentUserSession() {
@@ -926,8 +995,12 @@
 
   async function setupGlobalUserMenu() {
     syncExistingDropdown();
+    injectGlobalUserMenuStyles();
 
-    if (document.querySelector(".user-menu-toggle, .ack-user-menu-toggle")) {
+    const userData = await fetchCurrentUserSession();
+    syncLegacyUserMenu(userData);
+
+    if (document.querySelector(".ack-user-menu-toggle")) {
       return;
     }
 
@@ -940,10 +1013,6 @@
     if (!userAnchor) {
       return;
     }
-
-    const userData = await fetchCurrentUserSession();
-
-    injectGlobalUserMenuStyles();
 
     const wrapper = document.createElement("div");
     wrapper.innerHTML = buildUserMenuHtml(userData).trim();

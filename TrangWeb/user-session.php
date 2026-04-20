@@ -11,6 +11,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && (int) $_SESSION['user_id'] > 0;
 $currentUserName = trim((string) ($_SESSION['user_name'] ?? 'Khách hàng'));
 $currentUserEmail = trim((string) ($_SESSION['user_email'] ?? ''));
 $currentUserRole = strtolower(trim((string) ($_SESSION['user_role'] ?? 'guest')));
+$currentUserAvatar = trim((string) ($_SESSION['user_avatar'] ?? ''));
 
 if (!$isLoggedIn && $currentUserEmail !== '' && isset($conn) && $conn instanceof mysqli) {
     $idColumn = null;
@@ -84,6 +85,58 @@ if (!$isLoggedIn && $currentUserEmail !== '' && isset($conn) && $conn instanceof
     }
 }
 
+if (isset($conn) && $conn instanceof mysqli) {
+    $conn->query("CREATE TABLE IF NOT EXISTS tai_khoan_anh_dai_dien (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL DEFAULT 0,
+        user_email VARCHAR(191) NOT NULL DEFAULT '',
+        avatar_path VARCHAR(255) NOT NULL,
+        tao_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        cap_nhat_luc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_avatar_user_id (user_id),
+        UNIQUE KEY uq_avatar_user_email (user_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    if ($currentUserAvatar === '') {
+        $sessionUserId = (int) ($_SESSION['user_id'] ?? 0);
+        $safeEmailLower = strtolower(trim((string) ($_SESSION['user_email'] ?? '')));
+
+        if ($sessionUserId > 0) {
+            $avatarStmt = $conn->prepare('SELECT avatar_path FROM tai_khoan_anh_dai_dien WHERE user_id = ? LIMIT 1');
+            if ($avatarStmt) {
+                $avatarStmt->bind_param('i', $sessionUserId);
+                $avatarStmt->execute();
+                $avatarRes = $avatarStmt->get_result();
+                $avatarRow = $avatarRes ? $avatarRes->fetch_assoc() : null;
+                $avatarStmt->close();
+
+                if (is_array($avatarRow)) {
+                    $currentUserAvatar = trim((string) ($avatarRow['avatar_path'] ?? ''));
+                }
+            }
+        }
+
+        if ($currentUserAvatar === '' && $safeEmailLower !== '') {
+            $avatarStmt = $conn->prepare('SELECT avatar_path FROM tai_khoan_anh_dai_dien WHERE user_email = ? LIMIT 1');
+            if ($avatarStmt) {
+                $avatarStmt->bind_param('s', $safeEmailLower);
+                $avatarStmt->execute();
+                $avatarRes = $avatarStmt->get_result();
+                $avatarRow = $avatarRes ? $avatarRes->fetch_assoc() : null;
+                $avatarStmt->close();
+
+                if (is_array($avatarRow)) {
+                    $currentUserAvatar = trim((string) ($avatarRow['avatar_path'] ?? ''));
+                }
+            }
+        }
+
+        if ($currentUserAvatar !== '') {
+            $_SESSION['user_avatar'] = $currentUserAvatar;
+        }
+    }
+}
+
 $roleLabelMap = [
     'admin' => 'Quản trị viên',
     'khachhang' => 'Khách hàng',
@@ -101,6 +154,7 @@ $payload = [
     'user_id' => (int) ($_SESSION['user_id'] ?? 0),
     'name' => $currentUserName,
     'email' => $currentUserEmail,
+    'avatar' => $currentUserAvatar,
     'role' => $currentUserRole,
     'role_label' => $roleLabelMap[$currentUserRole] ?? 'Người dùng',
 ];
