@@ -420,6 +420,79 @@ $categories = $__catalogData['categories'];
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     }
 
+    .main-banner .carousel-inner,
+    .main-banner .carousel-item {
+        height: 360px;
+    }
+
+    .main-banner .carousel-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        display: block;
+        transform: scale(1.08);
+        transform-origin: center;
+    }
+
+    .main-banner .banner-control {
+        width: 52px;
+        opacity: 1;
+    }
+
+    .main-banner .banner-control-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background-color: rgba(17, 24, 39, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background-size: 52% 52%;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.3);
+        transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .main-banner .banner-control:hover .banner-control-icon,
+    .main-banner .banner-control:focus-visible .banner-control-icon {
+        transform: scale(1.07);
+        background-color: rgba(37, 99, 235, 0.82);
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.45);
+    }
+
+    .main-banner .carousel-control-prev {
+        justify-content: flex-start;
+        padding-left: 14px;
+    }
+
+    .main-banner .carousel-control-next {
+        justify-content: flex-end;
+        padding-right: 14px;
+    }
+
+    @media (max-width: 991.98px) {
+
+        .main-banner .carousel-inner,
+        .main-banner .carousel-item {
+            height: 300px;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+
+        .main-banner .carousel-inner,
+        .main-banner .carousel-item {
+            height: 220px;
+        }
+
+        .main-banner .banner-control {
+            width: 42px;
+        }
+
+        .main-banner .banner-control-icon {
+            width: 38px;
+            height: 38px;
+        }
+    }
+
     .sale-banner img {
         width: 100%;
         border-radius: 10px;
@@ -1453,22 +1526,31 @@ $categories = $__catalogData['categories'];
 
             <div class="col-lg-9">
 
-                <div id="tetCarousel" class="carousel slide main-banner mb-4" data-bs-ride="carousel">
+                <div id="tetCarousel" class="carousel slide main-banner mb-4" data-bs-ride="carousel" data-bs-interval="3000">
                     <div class="carousel-inner">
                         <div class="carousel-item active">
-                            <img src="../anhtrangchu/muctet.png" class="d-block w-100" alt="Tet Banner 1">
+                            <img src="../AnhBaner/1.jpg" class="d-block w-100" alt="Banner trang chủ 1">
                         </div>
                         <div class="carousel-item">
-                            <img src="../anhtrangchu/drthanh.png" class="d-block w-100" alt="Tet Banner 2">
+                            <img src="../AnhBaner/2.jpg" class="d-block w-100" alt="Banner trang chủ 2">
+                        </div>
+                        <div class="carousel-item">
+                            <img src="../AnhBaner/3.jpg" class="d-block w-100" alt="Banner trang chủ 3">
+                        </div>
+                        <div class="carousel-item">
+                            <img src="../AnhBaner/4.jpg" class="d-block w-100" alt="Banner trang chủ 4">
+                        </div>
+                        <div class="carousel-item">
+                            <img src="../AnhBaner/5.png" class="d-block w-100" alt="Banner trang chủ 5">
                         </div>
                     </div>
-                    <button class="carousel-control-prev" type="button" data-bs-target="#tetCarousel"
+                    <button class="carousel-control-prev banner-control" type="button" data-bs-target="#tetCarousel"
                         data-bs-slide="prev">
-                        <span class="carousel-control-prev-icon bg-dark rounded-circle p-3" aria-hidden="true"></span>
+                        <span class="carousel-control-prev-icon banner-control-icon" aria-hidden="true"></span>
                     </button>
-                    <button class="carousel-control-next" type="button" data-bs-target="#tetCarousel"
+                    <button class="carousel-control-next banner-control" type="button" data-bs-target="#tetCarousel"
                         data-bs-slide="next">
-                        <span class="carousel-control-next-icon bg-dark rounded-circle p-3" aria-hidden="true"></span>
+                        <span class="carousel-control-next-icon banner-control-icon" aria-hidden="true"></span>
                     </button>
                 </div>
 
@@ -1476,10 +1558,6 @@ $categories = $__catalogData['categories'];
                     <h4 class="fw-bold mb-0" data-admin-text-key="home_product_heading">Sản phẩm</h4>
                     <a href="#" class="text-primary text-decoration-none fw-bold">Xem tất cả <i
                             class="fas fa-chevron-right"></i></a>
-                </div>
-
-                <div class="sale-banner mb-4">
-                    <img src="../anhtrangchu/sale.png">
                 </div>
 
                 <div class="section-container">

@@ -3083,7 +3083,129 @@
     });
   }
 
+  function injectCategoryActiveStyles() {
+    if (document.getElementById("ack-category-active-style")) {
+      return;
+    }
+
+    const style = document.createElement("style");
+    style.id = "ack-category-active-style";
+    style.textContent = `
+      .cat-item,
+      .cat-scroll-item {
+        transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .cat-item.ack-active-category {
+        color: #4f46e5 !important;
+        font-weight: 700;
+        transform: translateX(2px);
+        animation: ackCategorySidebarIn 0.28s ease-out;
+      }
+
+      .cat-item.ack-active-category .cat-icon {
+        border-color: #c7d2fe;
+      }
+
+      .cat-item.ack-active-category .fa-chevron-right {
+        color: #7c83ff;
+        opacity: 0.95 !important;
+        transform: translateX(2px);
+      }
+
+      .cat-scroll-item.ack-active-category {
+        color: #4f46e5 !important;
+        font-weight: 700;
+        transform: translateY(-3px);
+        animation: ackCategoryScrollIn 0.28s ease-out;
+      }
+
+      .cat-scroll-item.ack-active-category .cat-scroll-img {
+        border-color: #c7d2fe;
+      }
+
+      @keyframes ackCategorySidebarIn {
+        0% {
+          opacity: 0.78;
+          transform: translateX(0);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(2px);
+        }
+      }
+
+      @keyframes ackCategoryScrollIn {
+        0% {
+          opacity: 0.78;
+          transform: translateY(0);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(-3px);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .cat-item,
+        .cat-scroll-item {
+          transition: none !important;
+        }
+
+        .cat-item.ack-active-category,
+        .cat-scroll-item.ack-active-category {
+          animation: none !important;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  function highlightActiveCategoryLinks() {
+    const currentPage = getCurrentPageBasename();
+    if (!currentPage) return;
+
+    const links = Array.from(
+      document.querySelectorAll("a.cat-item, a.cat-scroll-item"),
+    );
+    if (!links.length) return;
+
+    injectCategoryActiveStyles();
+
+    links.forEach((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+
+      const rawHref = String(anchor.getAttribute("href") || "").trim();
+      if (!rawHref || rawHref === "#" || rawHref.startsWith("javascript:")) {
+        anchor.classList.remove("ack-active-category");
+        anchor.removeAttribute("aria-current");
+        return;
+      }
+
+      let targetBase = "";
+      try {
+        const url = new URL(rawHref, window.location.href);
+        const path = String(url.pathname || "");
+        const segments = path.split("/").filter(Boolean);
+        targetBase = String(segments[segments.length - 1] || "").toLowerCase();
+      } catch (_) {
+        targetBase = "";
+      }
+
+      const isActive = !!targetBase && targetBase === currentPage;
+      if (isActive) {
+        anchor.classList.add("ack-active-category");
+        anchor.setAttribute("aria-current", "page");
+      } else {
+        anchor.classList.remove("ack-active-category");
+        anchor.removeAttribute("aria-current");
+      }
+    });
+  }
+
   function init() {
+    highlightActiveCategoryLinks();
     bindStaticInfoNavLinks();
     keepHeroOnlyOnHomepage();
     injectGlobalFooterLayoutStyles();

@@ -144,6 +144,87 @@ function ensureStaffImageColumn(PDO $pdo): ?string {
     return pickExistingColumn($columns, ['hinhanh', 'hinh_anh', 'avatar', 'image', 'img', 'anh']);
 }
 
+function storeUploadedStaffImage(array $uploadFile, string &$errorMessage = ''): ?string {
+    $errorCode = (int) ($uploadFile['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        $errorMessage = 'Không thể tải ảnh nhân viên lên. Vui lòng thử lại.';
+        return null;
+    }
+
+    $tmpFile = (string) ($uploadFile['tmp_name'] ?? '');
+    $fileSize = (int) ($uploadFile['size'] ?? 0);
+    if ($tmpFile === '' || $fileSize <= 0) {
+        $errorMessage = 'Tệp ảnh nhân viên không hợp lệ.';
+        return null;
+    }
+
+    if ($fileSize > 5 * 1024 * 1024) {
+        $errorMessage = 'Ảnh nhân viên vượt quá 5MB.';
+        return null;
+    }
+
+    $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
+    $mimeType = $finfo ? (string) finfo_file($finfo, $tmpFile) : '';
+    if ($finfo) {
+        finfo_close($finfo);
+    }
+
+    $allowedMimeMap = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+    if (!isset($allowedMimeMap[$mimeType])) {
+        $errorMessage = 'Ảnh nhân viên chỉ hỗ trợ JPG, PNG, WEBP hoặc GIF.';
+        return null;
+    }
+
+    $projectRoot = dirname(__DIR__);
+    $uploadDir = $projectRoot . DIRECTORY_SEPARATOR . 'file anh' . DIRECTORY_SEPARATOR . 'staff';
+    if (!is_dir($uploadDir)) {
+        @mkdir($uploadDir, 0777, true);
+    }
+    if (!is_dir($uploadDir)) {
+        $errorMessage = 'Không thể tạo thư mục lưu ảnh nhân viên.';
+        return null;
+    }
+
+    try {
+        $random = bin2hex(random_bytes(6));
+    } catch (Throwable $ignored) {
+        $random = (string) mt_rand(100000, 999999);
+    }
+
+    $extension = $allowedMimeMap[$mimeType];
+    $fileName = 'nv_' . date('Ymd_His') . '_' . $random . '.' . $extension;
+    $targetAbsolute = $uploadDir . DIRECTORY_SEPARATOR . $fileName;
+    if (!move_uploaded_file($tmpFile, $targetAbsolute)) {
+        $errorMessage = 'Không thể lưu ảnh nhân viên.';
+        return null;
+    }
+
+    return '../file anh/staff/' . $fileName;
+}
+
+function removeUploadedStaffImageIfManaged(?string $imagePath): void {
+    $imagePath = trim((string) $imagePath);
+    if ($imagePath === '' || !str_starts_with($imagePath, '../file anh/staff/')) {
+        return;
+    }
+
+    $projectRoot = dirname(__DIR__);
+    $relativePath = ltrim(str_replace('../', '', $imagePath), '/\\');
+    $absolutePath = $projectRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
+    if (is_file($absolutePath)) {
+        @unlink($absolutePath);
+    }
+}
+
 function ensureUsersRoleColumn(PDO $pdo): ?string {
     $columns = getExistingColumns($pdo, 'users', true);
     $roleColumn = pickExistingColumn($columns, ['role', 'user_role']);
@@ -251,7 +332,11 @@ try {
                 $phone = trim((string) ($_POST['phone'] ?? ''));
                 $gender = trim((string) ($_POST['status'] ?? ''));
                 $birthDate = normalizeStaffBirthDate((string) ($_POST['date'] ?? ''));
-                $hinhAnh = trim((string) ($_POST['hinh_anh'] ?? ''));
+                $uploadError = '';
+                $uploadedImagePath = storeUploadedStaffImage($_FILES['hinh_anh_file'] ?? [], $uploadError);
+                if ($uploadError !== '') {
+                    $crudError = $uploadError;
+                }
                 $accountPassword = (string) ($_POST['password'] ?? '');
 
                 if ($id === '') {
@@ -302,7 +387,7 @@ try {
                                         2,
                                         $maBp,
                                         $maCv,
-                                        $hinhAnh !== '' ? $hinhAnh : null,
+                                        $uploadedImagePath !== null ? $uploadedImagePath : null,
                                     ]);
                                 } else {
                                     $stmt = $pdo->prepare(
@@ -370,7 +455,13 @@ try {
                 $phone = trim((string) ($_POST['phone'] ?? ''));
                 $gender = trim((string) ($_POST['status'] ?? ''));
                 $birthDate = normalizeStaffBirthDate((string) ($_POST['date'] ?? ''));
-                $hinhAnh = trim((string) ($_POST['hinh_anh'] ?? ''));
+                $hinhAnhCu = trim((string) ($_POST['hinh_anh_cu'] ?? ''));
+                $uploadError = '';
+                $uploadedImagePath = storeUploadedStaffImage($_FILES['hinh_anh_file'] ?? [], $uploadError);
+                if ($uploadError !== '') {
+                    $crudError = $uploadError;
+                }
+                $hinhAnh = $uploadedImagePath !== null ? $uploadedImagePath : ($hinhAnhCu !== '' ? $hinhAnhCu : null);
                 $newPassword = (string) ($_POST['password'] ?? '');
 
                 if ($id === '' || $name === '' || $loginEmail === '' || $maCv === '' || $maBp === '' || $phone === '' || $gender === '' || $birthDate === '') {
@@ -413,7 +504,7 @@ try {
                                 $stmt = $pdo->prepare(
                                     "UPDATE nhanvien SET TenNV = ?, GioiTinhNV = ?, NamSinh = ?, SDTNV = ?, UserName = ?, MaBP = ?, MaCV = ?, {$staffImageColumn} = ? WHERE MaNV = ?"
                                 );
-                                $stmt->execute([$name, $gender, $birthDate, $phone, $loginEmail, $maBp, $maCv, $hinhAnh !== '' ? $hinhAnh : null, $id]);
+                                $stmt->execute([$name, $gender, $birthDate, $phone, $loginEmail, $maBp, $maCv, $hinhAnh, $id]);
                             } else {
                                 $stmt = $pdo->prepare(
                                     'UPDATE nhanvien SET TenNV = ?, GioiTinhNV = ?, NamSinh = ?, SDTNV = ?, UserName = ?, MaBP = ?, MaCV = ? WHERE MaNV = ?'
@@ -473,6 +564,9 @@ try {
                             }
 
                             $pdo->commit();
+                            if ($uploadedImagePath !== null && $hinhAnhCu !== '' && $hinhAnhCu !== $uploadedImagePath) {
+                                removeUploadedStaffImageIfManaged($hinhAnhCu);
+                            }
                             $crudMessage = 'Đã cập nhật nhân viên thành công.';
                         } catch (Throwable $updateError) {
                             if ($pdo->inTransaction()) {
@@ -1267,7 +1361,7 @@ foreach ($staff as $member) {
                         <h5 class="modal-title fw-bold" id="addStaffModalLabel">Thêm nhân viên</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-                    <form id="addStaffForm" method="post">
+                    <form id="addStaffForm" method="post" enctype="multipart/form-data">
                         <input type="hidden" name="crud_action" value="add_staff">
                         <input type="hidden" name="staff_id" id="staffId" value="">
                         <div class="modal-body">
@@ -1312,9 +1406,10 @@ foreach ($staff as $member) {
                                         name="phone" required>
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="staffImage" class="form-label">Link ảnh</label>
-                                    <input type="text" class="form-control" id="staffImage" name="hinh_anh"
-                                        placeholder="VD: ../AnhTrangChu/staff-admin.png">
+                                    <label for="staffImageFile" class="form-label">Ảnh nhân viên</label>
+                                    <input type="file" class="form-control" id="staffImageFile" name="hinh_anh_file"
+                                        accept="image/jpeg,image/png,image/webp,image/gif">
+                                    <div class="form-text">Hỗ trợ JPG, PNG, WEBP, GIF. Tối đa 5MB.</div>
                                 </div>
                                 <div class="col-md-6">
                                     <label for="staffPassword" class="form-label">Mật khẩu đăng nhập</label>
@@ -1348,7 +1443,8 @@ foreach ($staff as $member) {
         <div id="detailOverlay" class="detail-overlay" onclick="closeDetailPanel()"></div>
 
         <!-- Detail Panel -->
-        <div id="detailPanel" class="detail-panel">
+        <form id="detailPanel" class="detail-panel" method="post" enctype="multipart/form-data">
+            <input type="hidden" name="crud_action" value="update_staff">
             <div class="detail-header">
                 <h5>Chi tiết nhân viên</h5>
                 <button type="button" class="btn-close" onclick="closeDetailPanel()"></button>
@@ -1364,23 +1460,23 @@ foreach ($staff as $member) {
                 </div>
                 <div class="detail-field">
                     <label>Mã nhân viên</label>
-                    <input type="text" id="detailId" readonly>
+                    <input type="text" id="detailId" name="staff_id" readonly>
                 </div>
                 <div class="detail-field">
                     <label>Tên nhân viên</label>
-                    <input type="text" id="detailName">
+                    <input type="text" id="detailName" name="name">
                 </div>
                 <div class="detail-field">
                     <label>Tên đăng nhập</label>
-                    <input type="email" id="detailEmail">
+                    <input type="email" id="detailEmail" name="email">
                 </div>
                 <div class="detail-field">
                     <label>Số điện thoại</label>
-                    <input type="text" id="detailPhone">
+                    <input type="text" id="detailPhone" name="phone">
                 </div>
                 <div class="detail-field">
                     <label>Chức vụ</label>
-                    <select id="detailRole" class="form-select">
+                    <select id="detailRole" class="form-select" name="ma_cv">
                         <option value="">Chọn chức vụ</option>
                         <?php foreach ($chucVuOptions as $roleOption): ?>
                         <option value="<?php echo htmlspecialchars((string) ($roleOption['code'] ?? '')); ?>">
@@ -1391,7 +1487,7 @@ foreach ($staff as $member) {
                 </div>
                 <div class="detail-field">
                     <label>Bộ phận</label>
-                    <select id="detailDepartment" class="form-select">
+                    <select id="detailDepartment" class="form-select" name="ma_bp">
                         <option value="">Chọn bộ phận</option>
                         <?php foreach ($boPhanOptions as $departmentOption): ?>
                         <option value="<?php echo htmlspecialchars((string) ($departmentOption['code'] ?? '')); ?>">
@@ -1401,12 +1497,15 @@ foreach ($staff as $member) {
                     </select>
                 </div>
                 <div class="detail-field">
-                    <label>Link ảnh</label>
-                    <input type="text" id="detailImage" placeholder="VD: ../AnhTrangChu/staff-admin.png">
+                    <label>Đổi ảnh</label>
+                    <input type="hidden" id="detailImageCurrent" name="hinh_anh_cu">
+                    <input type="file" class="form-control" id="detailImageFile" name="hinh_anh_file"
+                        accept="image/jpeg,image/png,image/webp,image/gif">
+                    <div class="form-text">Để trống nếu muốn giữ ảnh hiện tại.</div>
                 </div>
                 <div class="detail-field">
                     <label>Giới tính</label>
-                    <select id="detailGender" class="form-select">
+                    <select id="detailGender" class="form-select" name="status">
                         <option value="">Chọn giới tính</option>
                         <option value="Nam">Nam</option>
                         <option value="Nữ">Nữ</option>
@@ -1415,18 +1514,18 @@ foreach ($staff as $member) {
                 </div>
                 <div class="detail-field">
                     <label>Ngày sinh</label>
-                    <input type="date" id="detailBirthYear">
+                    <input type="date" id="detailBirthYear" name="date">
                 </div>
                 <div class="detail-field detail-field--span-2">
                     <label>Mật khẩu mới (nếu đổi)</label>
-                    <input type="password" id="detailPassword" placeholder="Để trống nếu không đổi">
+                    <input type="password" id="detailPassword" name="password" placeholder="Để trống nếu không đổi">
                 </div>
             </div>
             <div class="detail-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeDetailPanel()">Đóng</button>
                 <button type="button" class="btn btn-primary" id="btnDetailSave">Lưu thay đổi</button>
             </div>
-        </div>
+        </form>
 
         <div id="deleteOverlay" class="delete-overlay" onclick="closeDeleteModal()"></div>
 
@@ -1505,20 +1604,6 @@ foreach ($staff as $member) {
             </div>
         </div>
 
-        <form method="post" id="staffEditForm" class="d-none">
-            <input type="hidden" name="crud_action" value="update_staff">
-            <input type="hidden" name="staff_id" id="editStaffId">
-            <input type="hidden" name="name" id="editStaffName">
-            <input type="hidden" name="email" id="editStaffEmail">
-            <input type="hidden" name="phone" id="editStaffPhone">
-            <input type="hidden" name="ma_cv" id="editStaffRoleCode">
-            <input type="hidden" name="ma_bp" id="editStaffDepartmentCode">
-            <input type="hidden" name="status" id="editStaffStatus">
-            <input type="hidden" name="date" id="editStaffDate">
-            <input type="hidden" name="password" id="editStaffPassword">
-            <input type="hidden" name="hinh_anh" id="editStaffImage">
-        </form>
-
         <form method="post" id="staffDeleteForm" class="d-none">
             <input type="hidden" name="crud_action" value="delete_staff">
             <input type="hidden" name="staff_id" id="deleteStaffId">
@@ -1567,7 +1652,7 @@ foreach ($staff as $member) {
         isStaffDetailReadOnly = !!readOnly;
 
         const editableFields = ['detailName', 'detailEmail', 'detailPhone', 'detailRole', 'detailDepartment',
-            'detailImage', 'detailGender', 'detailBirthYear', 'detailPassword'
+            'detailImageFile', 'detailGender', 'detailBirthYear', 'detailPassword'
         ];
         editableFields.forEach((fieldId) => {
             const field = document.getElementById(fieldId);
@@ -1575,6 +1660,8 @@ foreach ($staff as $member) {
                 return;
             }
             if (field.tagName === 'SELECT') {
+                field.disabled = isStaffDetailReadOnly;
+            } else if (field.type === 'file') {
                 field.disabled = isStaffDetailReadOnly;
             } else {
                 field.readOnly = isStaffDetailReadOnly;
@@ -1622,7 +1709,11 @@ foreach ($staff as $member) {
         document.getElementById('detailPhone').value = phone;
         ensureSelectOption('detailRole', roleCode, staffRoleMap);
         ensureSelectOption('detailDepartment', departmentCode, staffDepartmentMap);
-        document.getElementById('detailImage').value = image || '';
+        document.getElementById('detailImageCurrent').value = image || '';
+        const detailImageFileInput = document.getElementById('detailImageFile');
+        if (detailImageFileInput) {
+            detailImageFileInput.value = '';
+        }
         updateStaffDetailImagePreview(image || '');
         ensureSelectOption('detailGender', (gender || '').trim());
         document.getElementById('detailBirthYear').value = birthDate || '';
@@ -1688,10 +1779,15 @@ foreach ($staff as $member) {
         closeDetailPanel();
     });
 
-    const detailImageInput = document.getElementById('detailImage');
-    if (detailImageInput) {
-        detailImageInput.addEventListener('input', function() {
-            updateStaffDetailImagePreview(detailImageInput.value);
+    const detailImageFileInput = document.getElementById('detailImageFile');
+    if (detailImageFileInput) {
+        detailImageFileInput.addEventListener('change', function() {
+            const [file] = detailImageFileInput.files || [];
+            if (!file) {
+                updateStaffDetailImagePreview(document.getElementById('detailImageCurrent')?.value || '');
+                return;
+            }
+            updateStaffDetailImagePreview(URL.createObjectURL(file));
         });
     }
 
@@ -1710,7 +1806,7 @@ foreach ($staff as $member) {
         const gender = document.getElementById('detailGender').value.trim();
         const birthDate = document.getElementById('detailBirthYear').value.trim();
         const newPassword = document.getElementById('detailPassword').value;
-        const image = document.getElementById('detailImage').value.trim();
+        const detailForm = document.getElementById('detailPanel');
 
         // Validation
         if (!name) {
@@ -1742,17 +1838,9 @@ foreach ($staff as $member) {
             return;
         }
 
-        document.getElementById('editStaffId').value = id;
-        document.getElementById('editStaffName').value = name;
-        document.getElementById('editStaffEmail').value = email;
-        document.getElementById('editStaffPhone').value = phone;
-        document.getElementById('editStaffRoleCode').value = roleCode;
-        document.getElementById('editStaffDepartmentCode').value = departmentCode;
-        document.getElementById('editStaffStatus').value = gender;
-        document.getElementById('editStaffDate').value = birthDate;
-        document.getElementById('editStaffPassword').value = newPassword;
-        document.getElementById('editStaffImage').value = image;
-        document.getElementById('staffEditForm').submit();
+        if (detailForm) {
+            detailForm.submit();
+        }
     });
 
     // Delete modal functions

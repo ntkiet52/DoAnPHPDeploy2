@@ -359,6 +359,109 @@ function catalogSplitRows(array $products): array
     ];
 }
 
+function catalogTakeBySlugPriority(array $products, array $slugPriority, int $limit, array &$usedIds = []): array
+{
+    if ($limit <= 0) {
+        return [];
+    }
+
+    $slugPriority = array_values(array_filter(array_map(static function ($slug): string {
+        return trim(strtolower((string) $slug));
+    }, $slugPriority), static function (string $slug): bool {
+        return $slug !== '';
+    }));
+
+    $selected = [];
+
+    foreach ($slugPriority as $slug) {
+        foreach ($products as $item) {
+            $id = trim((string) ($item['id'] ?? ''));
+            $itemSlug = trim(strtolower((string) ($item['slug'] ?? '')));
+
+            if ($id === '' || in_array($id, $usedIds, true)) {
+                continue;
+            }
+
+            if ($itemSlug !== $slug) {
+                continue;
+            }
+
+            $selected[] = $item;
+            $usedIds[] = $id;
+
+            if (count($selected) >= $limit) {
+                return $selected;
+            }
+        }
+    }
+
+    return $selected;
+}
+
+function catalogTakeRemainingProducts(array $products, int $limit, array &$usedIds = []): array
+{
+    if ($limit <= 0) {
+        return [];
+    }
+
+    $selected = [];
+
+    foreach ($products as $item) {
+        $id = trim((string) ($item['id'] ?? ''));
+        if ($id === '' || in_array($id, $usedIds, true)) {
+            continue;
+        }
+
+        $selected[] = $item;
+        $usedIds[] = $id;
+
+        if (count($selected) >= $limit) {
+            break;
+        }
+    }
+
+    return $selected;
+}
+
+function catalogBuildHomeRows(array $products): array
+{
+    $usedIds = [];
+
+    $softDrinks = catalogTakeBySlugPriority($products, ['nuocngot', 'douong'], 4, $usedIds);
+    $beers = catalogTakeBySlugPriority($products, ['bia'], 4, $usedIds);
+    $gifts = catalogTakeBySlugPriority($products, ['banhngot', 'anvat', 'dohop', 'giavi'], 4, $usedIds);
+    $freshFoods = catalogTakeBySlugPriority($products, ['tuoisong', 'raucu', 'traicay'], 4, $usedIds);
+    $household = catalogTakeBySlugPriority($products, ['giadung', 'mypham', 'mianlien', 'thucannhanh', 'kem', 'sua'], 4, $usedIds);
+
+    if (count($softDrinks) < 4) {
+        $softDrinks = array_merge($softDrinks, catalogTakeRemainingProducts($products, 4 - count($softDrinks), $usedIds));
+    }
+
+    if (count($beers) < 4) {
+        $beers = array_merge($beers, catalogTakeRemainingProducts($products, 4 - count($beers), $usedIds));
+    }
+
+    if (count($gifts) < 4) {
+        $gifts = array_merge($gifts, catalogTakeRemainingProducts($products, 4 - count($gifts), $usedIds));
+    }
+
+    if (count($freshFoods) < 4) {
+        $freshFoods = array_merge($freshFoods, catalogTakeRemainingProducts($products, 4 - count($freshFoods), $usedIds));
+    }
+
+    if (count($household) < 4) {
+        $household = array_merge($household, catalogTakeRemainingProducts($products, 4 - count($household), $usedIds));
+    }
+
+    return [
+        'soft_drinks' => $softDrinks,
+        'beers' => $beers,
+        'gifts' => $gifts,
+        'fresh_foods' => $freshFoods,
+        'household' => $household,
+    ];
+}
+
 function catalogResolveCurrentPage(): int
 {
     $raw = $_GET['page'] ?? 1;
@@ -470,7 +573,9 @@ function loadCatalogDataForPage(string $fileName): array
     $offset = ($currentPage - 1) * $perPage;
     $pagedProducts = array_slice($filtered, $offset, $perPage);
 
-    $split = catalogSplitRows($pagedProducts);
+    $split = $pageSlug === 'home'
+        ? catalogBuildHomeRows($filtered)
+        : catalogSplitRows($pagedProducts);
 
     return array_merge($split, [
         'categories' => $categories,

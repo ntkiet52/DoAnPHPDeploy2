@@ -100,6 +100,87 @@ function ensureCategoryImageColumn(PDO $pdo): string {
     return $imgCol;
 }
 
+function storeUploadedCategoryImage(array $uploadFile, string &$errorMessage = ''): ?string {
+    $errorCode = (int) ($uploadFile['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        $errorMessage = 'Không thể tải ảnh nhóm hàng lên. Vui lòng thử lại.';
+        return null;
+    }
+
+    $tmpFile = (string) ($uploadFile['tmp_name'] ?? '');
+    $fileSize = (int) ($uploadFile['size'] ?? 0);
+    if ($tmpFile === '' || $fileSize <= 0) {
+        $errorMessage = 'Tệp ảnh nhóm hàng không hợp lệ.';
+        return null;
+    }
+
+    if ($fileSize > 5 * 1024 * 1024) {
+        $errorMessage = 'Ảnh nhóm hàng vượt quá 5MB.';
+        return null;
+    }
+
+    $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
+    $mimeType = $finfo ? (string) finfo_file($finfo, $tmpFile) : '';
+    if ($finfo) {
+        finfo_close($finfo);
+    }
+
+    $allowedMimeMap = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+    if (!isset($allowedMimeMap[$mimeType])) {
+        $errorMessage = 'Ảnh nhóm hàng chỉ hỗ trợ JPG, PNG, WEBP hoặc GIF.';
+        return null;
+    }
+
+    $projectRoot = dirname(__DIR__);
+    $uploadDir = $projectRoot . DIRECTORY_SEPARATOR . 'file anh' . DIRECTORY_SEPARATOR . 'categories';
+    if (!is_dir($uploadDir)) {
+        @mkdir($uploadDir, 0777, true);
+    }
+    if (!is_dir($uploadDir)) {
+        $errorMessage = 'Không thể tạo thư mục lưu ảnh nhóm hàng.';
+        return null;
+    }
+
+    try {
+        $random = bin2hex(random_bytes(6));
+    } catch (Throwable $ignored) {
+        $random = (string) mt_rand(100000, 999999);
+    }
+
+    $extension = $allowedMimeMap[$mimeType];
+    $fileName = 'nh_' . date('Ymd_His') . '_' . $random . '.' . $extension;
+    $targetAbsolute = $uploadDir . DIRECTORY_SEPARATOR . $fileName;
+    if (!move_uploaded_file($tmpFile, $targetAbsolute)) {
+        $errorMessage = 'Không thể lưu ảnh nhóm hàng.';
+        return null;
+    }
+
+    return '../file anh/categories/' . $fileName;
+}
+
+function removeUploadedCategoryImageIfManaged(?string $imagePath): void {
+    $imagePath = trim((string) $imagePath);
+    if ($imagePath === '' || !str_starts_with($imagePath, '../file anh/categories/')) {
+        return;
+    }
+
+    $projectRoot = dirname(__DIR__);
+    $relativePath = ltrim(str_replace('../', '', $imagePath), '/\\');
+    $absolutePath = $projectRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
+    if (is_file($absolutePath)) {
+        @unlink($absolutePath);
+    }
+}
+
 $categories = [];
 $dbError = '';
 $crudMessage = '';
@@ -168,13 +249,19 @@ try {
         if ($action === 'add_category') {
             $id = trim((string) ($_POST['category_id'] ?? ''));
             $name = trim((string) ($_POST['category_name'] ?? ''));
-            $img = trim((string) ($_POST['category_img'] ?? ''));
+            $uploadError = '';
+            $uploadedImagePath = storeUploadedCategoryImage($_FILES['category_img_file'] ?? [], $uploadError);
+            if ($uploadError !== '') {
+                $crudError = $uploadError;
+            }
 
             if ($id === '') {
                 $id = generateNextCategoryId($pdo);
             }
 
-            if ($id === '' || $name === '') {
+            if ($crudError !== '') {
+                // Đã có lỗi upload ảnh.
+            } elseif ($id === '' || $name === '') {
                 $crudError = 'Vui lòng nhập đầy đủ tên nhóm hàng.';
             } else {
                 try {
@@ -196,7 +283,7 @@ try {
                         if ($imgCol !== null) {
                             $insertColumns[] = $imgCol;
                             $insertPlaceholders[] = ':img';
-                            $params[':img'] = $img;
+                            $params[':img'] = $uploadedImagePath !== null ? $uploadedImagePath : null;
                         }
 
                         $sql = 'INSERT INTO nhomhang (' . implode(', ', $insertColumns) . ') VALUES (' . implode(', ', $insertPlaceholders) . ')';
@@ -214,9 +301,17 @@ try {
         if ($action === 'update_category') {
             $id = trim((string) ($_POST['category_id'] ?? ''));
             $name = trim((string) ($_POST['category_name'] ?? ''));
-            $img = trim((string) ($_POST['category_img'] ?? ''));
+            $imgCu = trim((string) ($_POST['category_img_current'] ?? ''));
+            $uploadError = '';
+            $uploadedImagePath = storeUploadedCategoryImage($_FILES['category_img_file'] ?? [], $uploadError);
+            if ($uploadError !== '') {
+                $crudError = $uploadError;
+            }
+            $img = $uploadedImagePath !== null ? $uploadedImagePath : ($imgCu !== '' ? $imgCu : null);
 
-            if ($id === '' || $name === '') {
+            if ($crudError !== '') {
+                // Đã có lỗi upload ảnh.
+            } elseif ($id === '' || $name === '') {
                 $crudError = 'Dữ liệu cập nhật không hợp lệ.';
             } else {
                 try {
@@ -242,6 +337,10 @@ try {
                         $sql = 'UPDATE nhomhang SET ' . implode(', ', $setParts) . " WHERE {$idCol} = :id";
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
+
+                        if ($uploadedImagePath !== null && $imgCu !== '' && $imgCu !== $uploadedImagePath) {
+                            removeUploadedCategoryImageIfManaged($imgCu);
+                        }
 
                         $crudMessage = 'Đã cập nhật nhóm hàng.';
                     }
@@ -902,7 +1001,7 @@ $totalCategories = count($categories);
                             <h5 class="modal-title fw-bold" id="addCategoryModalLabel">Thêm nhóm hàng</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
-                        <form method="post">
+                        <form method="post" enctype="multipart/form-data">
                             <input type="hidden" name="crud_action" value="add_category">
                             <div class="modal-body">
                                 <div class="row g-3">
@@ -917,9 +1016,10 @@ $totalCategories = count($categories);
                                             placeholder="Nhập tên nhóm hàng" required>
                                     </div>
                                     <div class="col-12">
-                                        <label for="categoryImg" class="form-label">Hình nhóm hàng (URL)</label>
-                                        <input type="text" class="form-control" id="categoryImg" name="category_img"
-                                            placeholder="TrangSale/douong.png hoặc https://...">
+                                        <label for="categoryImgFile" class="form-label">Hình nhóm hàng</label>
+                                        <input type="file" class="form-control" id="categoryImgFile"
+                                            name="category_img_file" accept="image/jpeg,image/png,image/webp,image/gif">
+                                        <div class="form-text">Hỗ trợ JPG, PNG, WEBP, GIF. Tối đa 5MB.</div>
                                     </div>
                                 </div>
                             </div>
@@ -935,7 +1035,8 @@ $totalCategories = count($categories);
             <div id="detailOverlay" class="detail-overlay" onclick="closeDetailPanel()"></div>
 
             <!-- Detail Panel -->
-            <div id="detailPanel" class="detail-panel">
+            <form id="detailPanel" class="detail-panel" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="crud_action" value="update_category">
                 <div class="detail-header">
                     <h5>Chi tiết nhóm hàng</h5>
                     <button type="button" class="btn-close" onclick="closeDetailPanel()"></button>
@@ -947,22 +1048,25 @@ $totalCategories = count($categories);
                     </div>
                     <div class="detail-field">
                         <label>Mã nhóm hàng</label>
-                        <input type="text" id="detailId" readonly>
+                        <input type="text" id="detailId" name="category_id" readonly>
                     </div>
                     <div class="detail-field">
                         <label>Tên nhóm hàng</label>
-                        <input type="text" id="detailName">
+                        <input type="text" id="detailName" name="category_name">
                     </div>
                     <div class="detail-field" style="grid-column: 1 / -1;">
-                        <label>Đường dẫn Ảnh</label>
-                        <input type="text" id="detailImgUrl">
+                        <label>Đổi ảnh nhóm hàng</label>
+                        <input type="hidden" id="detailImgCurrent" name="category_img_current">
+                        <input type="file" class="form-control" id="detailImgFile" name="category_img_file"
+                            accept="image/jpeg,image/png,image/webp,image/gif">
+                        <div class="form-text">Để trống nếu muốn giữ ảnh hiện tại.</div>
                     </div>
                 </div>
                 <div class="detail-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeDetailPanel()">Đóng</button>
                     <button type="button" class="btn btn-primary" id="btnDetailSave">Lưu thay đổi</button>
                 </div>
-            </div>
+            </form>
 
             <div class="modal fade" id="deleteCategoryModal" tabindex="-1" aria-labelledby="deleteCategoryModalLabel"
                 aria-hidden="true">
@@ -1015,12 +1119,6 @@ $totalCategories = count($categories);
                 </div>
             </div>
 
-            <form method="post" id="categoryEditForm" class="d-none">
-                <input type="hidden" name="crud_action" value="update_category">
-                <input type="hidden" name="category_id" id="editCategoryId">
-                <input type="hidden" name="category_name" id="editCategoryName">
-                <input type="hidden" name="category_img" id="editCategoryImg">
-            </form>
         </div>
 
     </div>
@@ -1150,12 +1248,12 @@ $totalCategories = count($categories);
         isCategoryDetailReadOnly = !!readOnly;
 
         const nameField = document.getElementById('detailName');
-        const imgField = document.getElementById('detailImgUrl');
+        const imgField = document.getElementById('detailImgFile');
         if (nameField) {
             nameField.readOnly = isCategoryDetailReadOnly;
         }
         if (imgField) {
-            imgField.readOnly = isCategoryDetailReadOnly;
+            imgField.disabled = isCategoryDetailReadOnly;
         }
 
         const saveBtn = document.getElementById('btnDetailSave');
@@ -1168,7 +1266,11 @@ $totalCategories = count($categories);
     function showDetailPanel(id, name, img, readOnly = false) {
         document.getElementById('detailId').value = id;
         document.getElementById('detailName').value = name;
-        document.getElementById('detailImgUrl').value = img;
+        document.getElementById('detailImgCurrent').value = img || '';
+        const detailImgFile = document.getElementById('detailImgFile');
+        if (detailImgFile) {
+            detailImgFile.value = '';
+        }
         document.getElementById('detailImg').src = img;
         setCategoryDetailReadOnly(readOnly);
         document.getElementById('detailPanel').classList.add('show');
@@ -1220,20 +1322,31 @@ $totalCategories = count($categories);
             return;
         }
 
-        const id = document.getElementById('detailId').value;
         const name = document.getElementById('detailName').value.trim();
-        const img = document.getElementById('detailImgUrl').value.trim();
 
         if (!name) {
             alert('Tên nhóm hàng không được để trống');
             return;
         }
 
-        document.getElementById('editCategoryId').value = id;
-        document.getElementById('editCategoryName').value = name;
-        document.getElementById('editCategoryImg').value = img;
-        document.getElementById('categoryEditForm').submit();
+        const detailForm = document.getElementById('detailPanel');
+        if (detailForm) {
+            detailForm.submit();
+        }
     });
+
+    const detailImgFileInput = document.getElementById('detailImgFile');
+    if (detailImgFileInput) {
+        detailImgFileInput.addEventListener('change', function() {
+            const [file] = detailImgFileInput.files || [];
+            if (!file) {
+                document.getElementById('detailImg').src = document.getElementById('detailImgCurrent')?.value ||
+                    '../TrangUser/ack.png';
+                return;
+            }
+            document.getElementById('detailImg').src = URL.createObjectURL(file);
+        });
+    }
 
     // Delete button click
     document.getElementById('btnDeleteCategory').addEventListener('click', function() {

@@ -51,6 +51,90 @@ function ensureProductImageColumn(PDO $pdo): ?string {
     return pickExistingColumn($columns, ['hinhanh', 'hinh_anh', 'image', 'img', 'anh', 'duongdananh', 'duong_dan_anh']);
 }
 
+function storeUploadedProductImage(array $uploadFile, string &$errorMessage = ''): ?string {
+    $errorCode = (int) ($uploadFile['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        $errorMessage = 'Không thể tải ảnh lên. Vui lòng thử lại.';
+        return null;
+    }
+
+    $tmpFile = (string) ($uploadFile['tmp_name'] ?? '');
+    $fileSize = (int) ($uploadFile['size'] ?? 0);
+    if ($tmpFile === '' || $fileSize <= 0) {
+        $errorMessage = 'Tệp ảnh không hợp lệ.';
+        return null;
+    }
+
+    $maxSize = 5 * 1024 * 1024;
+    if ($fileSize > $maxSize) {
+        $errorMessage = 'Ảnh vượt quá dung lượng cho phép (tối đa 5MB).';
+        return null;
+    }
+
+    $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
+    $mimeType = $finfo ? (string) finfo_file($finfo, $tmpFile) : '';
+    if ($finfo) {
+        finfo_close($finfo);
+    }
+
+    $allowedMimeMap = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+
+    if (!isset($allowedMimeMap[$mimeType])) {
+        $errorMessage = 'Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.';
+        return null;
+    }
+
+    $projectRoot = dirname(__DIR__);
+    $uploadDir = $projectRoot . DIRECTORY_SEPARATOR . 'file anh' . DIRECTORY_SEPARATOR . 'uploads';
+    if (!is_dir($uploadDir)) {
+        @mkdir($uploadDir, 0777, true);
+    }
+
+    if (!is_dir($uploadDir)) {
+        $errorMessage = 'Không thể tạo thư mục lưu ảnh.';
+        return null;
+    }
+
+    $extension = $allowedMimeMap[$mimeType];
+    try {
+        $random = bin2hex(random_bytes(6));
+    } catch (Throwable $ignored) {
+        $random = (string) mt_rand(100000, 999999);
+    }
+
+    $fileName = 'sp_' . date('Ymd_His') . '_' . $random . '.' . $extension;
+    $targetAbsolute = $uploadDir . DIRECTORY_SEPARATOR . $fileName;
+    if (!move_uploaded_file($tmpFile, $targetAbsolute)) {
+        $errorMessage = 'Không thể lưu ảnh tải lên.';
+        return null;
+    }
+
+    return '../file anh/uploads/' . $fileName;
+}
+
+function removeUploadedProductImageIfManaged(?string $imagePath): void {
+    $imagePath = trim((string) $imagePath);
+    if ($imagePath === '' || !str_starts_with($imagePath, '../file anh/uploads/')) {
+        return;
+    }
+
+    $projectRoot = dirname(__DIR__);
+    $relativePath = ltrim(str_replace('../', '', $imagePath), '/\\');
+    $absolutePath = $projectRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
+    if (is_file($absolutePath)) {
+        @unlink($absolutePath);
+    }
+}
+
 function pickExistingColumn(array $existingColumns, array $candidates): ?string {
     foreach ($candidates as $candidate) {
         if (in_array(strtolower($candidate), $existingColumns, true)) {
@@ -167,8 +251,13 @@ try {
             $dvt = trim((string) ($_POST['dvt'] ?? ''));
             $donGia = (float) ($_POST['don_gia'] ?? 0);
             $vat = (float) ($_POST['vat'] ?? 0);
-            $hinhAnh = trim((string) ($_POST['hinh_anh'] ?? ''));
+            $uploadError = '';
+            $uploadedImagePath = storeUploadedProductImage($_FILES['hinh_anh_file'] ?? [], $uploadError);
+            if ($uploadError !== '') {
+                $crudError = $uploadError;
+            }
 
+            if ($crudError === '') {
             try {
                 $columns = getExistingColumns($pdo, 'hanghoa');
 
@@ -234,7 +323,7 @@ try {
                     if ($imageColumnForHangHoa !== null) {
                         $insertColumns[] = $imageColumnForHangHoa;
                         $insertPlaceholders[] = ':hinhanh';
-                        $params[':hinhanh'] = $hinhAnh !== '' ? $hinhAnh : null;
+                        $params[':hinhanh'] = $uploadedImagePath !== null ? $uploadedImagePath : null;
                     }
 
                     $sql = 'INSERT INTO hanghoa (' . implode(', ', $insertColumns) . ') VALUES (' . implode(', ', $insertPlaceholders) . ')';
@@ -245,6 +334,7 @@ try {
             } catch (Throwable $insertError) {
                 $crudError = 'Không thể thêm sản phẩm: ' . $insertError->getMessage();
             }
+            }
         }
 
         if ($action === 'update_product') {
@@ -254,9 +344,17 @@ try {
             $dvt = trim((string) ($_POST['dvt'] ?? ''));
             $donGia = (float) ($_POST['don_gia'] ?? 0);
             $vat = (float) ($_POST['vat'] ?? 0);
-            $hinhAnh = trim((string) ($_POST['hinh_anh'] ?? ''));
+            $hinhAnhCu = trim((string) ($_POST['hinh_anh_cu'] ?? ''));
+            $uploadError = '';
+            $uploadedImagePath = storeUploadedProductImage($_FILES['hinh_anh_file'] ?? [], $uploadError);
+            if ($uploadError !== '') {
+                $crudError = $uploadError;
+            }
+            $hinhAnh = $uploadedImagePath !== null ? $uploadedImagePath : ($hinhAnhCu !== '' ? $hinhAnhCu : null);
 
-            if ($maHang === '' || $tenHang === '') {
+            if ($crudError !== '') {
+                // Đã có lỗi từ upload ảnh.
+            } elseif ($maHang === '' || $tenHang === '') {
                 $crudError = 'Dữ liệu cập nhật sản phẩm không hợp lệ.';
             } else {
                 try {
@@ -306,12 +404,15 @@ try {
 
                         if ($imageColumnForHangHoa !== null) {
                             $setParts[] = "{$imageColumnForHangHoa} = :hinhanh";
-                            $params[':hinhanh'] = $hinhAnh !== '' ? $hinhAnh : null;
+                            $params[':hinhanh'] = $hinhAnh;
                         }
 
                         $sql = 'UPDATE hanghoa SET ' . implode(', ', $setParts) . " WHERE {$maHangCol} = :mahang";
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
+                        if ($uploadedImagePath !== null && $hinhAnhCu !== '' && $hinhAnhCu !== $uploadedImagePath) {
+                            removeUploadedProductImageIfManaged($hinhAnhCu);
+                        }
                         $crudMessage = 'Đã cập nhật sản phẩm.';
                     }
                 } catch (Throwable $updateError) {
@@ -1290,7 +1391,7 @@ foreach ($products as $p) {
                             <h5 class="modal-title fw-bold" id="addProductModalLabel">Thêm sản phẩm mới</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
-                        <form method="post">
+                        <form method="post" enctype="multipart/form-data">
                             <input type="hidden" name="crud_action" value="add_product">
                             <div class="modal-body">
                                 <div class="row g-3">
@@ -1316,11 +1417,10 @@ foreach ($products as $p) {
                                             placeholder="Nhập tên sản phẩm" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label for="hinhAnh" class="form-label">Link ảnh</label>
-                                        <input type="text" class="form-control" id="hinhAnh" name="hinh_anh"
-                                            list="productImageFolderList"
-                                            placeholder="VD: ../file anh/AnhNuocNgot/ten-anh.png">
-                                        <div class="form-text">Chọn nhóm hàng để tự gợi ý đúng thư mục ảnh.</div>
+                                        <label for="hinhAnhFile" class="form-label">Ảnh sản phẩm</label>
+                                        <input type="file" class="form-control" id="hinhAnhFile"
+                                            name="hinh_anh_file" accept="image/jpeg,image/png,image/webp,image/gif">
+                                        <div class="form-text">Hỗ trợ JPG, PNG, WEBP, GIF. Tối đa 5MB.</div>
                                     </div>
                                     <div class="col-md-4">
                                         <label for="dvt" class="form-label">Đơn vị tính</label>
@@ -1402,9 +1502,8 @@ foreach ($products as $p) {
                         <input type="text" id="detailTenHang">
                     </div>
                     <div class="detail-field detail-field--link">
-                        <label>Link ảnh</label>
-                        <input type="text" id="detailHinhAnh" list="productImageFolderList"
-                            placeholder="VD: ../file anh/AnhNuocNgot/ten-anh.png">
+                        <label>Đường dẫn ảnh</label>
+                        <input type="text" id="detailHinhAnh" readonly>
                     </div>
                     <div class="detail-field">
                         <label>Đơn vị tính</label>
@@ -1495,7 +1594,7 @@ foreach ($products as $p) {
                 <input type="hidden" name="ma_hang" id="editMaHang">
                 <input type="hidden" name="ma_nhom_hang" id="editMaNhomHang">
                 <input type="hidden" name="ten_hang" id="editTenHang">
-                <input type="hidden" name="hinh_anh" id="editHinhAnh">
+                <input type="hidden" name="hinh_anh_cu" id="editHinhAnh">
                 <input type="hidden" name="dvt" id="editDvt">
                 <input type="hidden" name="don_gia" id="editDonGia">
                 <input type="hidden" name="vat" id="editVat">
@@ -1704,7 +1803,6 @@ foreach ($products as $p) {
         const selectedValue = groupSelect.value;
         groupNameInput.value = selectedValue && productGroupNameMap[selectedValue] ? productGroupNameMap[
             selectedValue] : '';
-        maybeApplyImageFolderPreset('editProductImage', 'editProductGroupId');
     }
 
     function syncDetailGroupName() {
@@ -1804,7 +1902,14 @@ foreach ($products as $p) {
         ensureGroupSelectValue('editProductGroupId', maNhom);
         document.getElementById('editProductGroupName').value = tenNhom || productGroupNameMap[maNhom] || '';
         document.getElementById('editProductName').value = tenHang;
-        document.getElementById('editProductImage').value = hinhAnh;
+        const currentImageField = document.getElementById('editProductImageCurrent');
+        if (currentImageField) {
+            currentImageField.value = hinhAnh;
+        }
+        const editImageFileInput = document.getElementById('editProductImageFile');
+        if (editImageFileInput) {
+            editImageFileInput.value = '';
+        }
         document.getElementById('editProductUnit').value = dvt;
         document.getElementById('editProductPrice').value = donGia;
         document.getElementById('editProductVat').value = vat;
@@ -1860,7 +1965,6 @@ foreach ($products as $p) {
         const priceInput = document.getElementById('editProductPrice');
         const vatInput = document.getElementById('editProductVat');
         const groupSelect = document.getElementById('editProductGroupId');
-        const addGroupSelect = document.getElementById('maNhomHang');
         const detailGroupSelect = document.getElementById('detailMaNhomHang');
         const detailImageInput = document.getElementById('detailHinhAnh');
         const detailDonGiaInput = document.getElementById('detailDonGia');
@@ -1875,12 +1979,6 @@ foreach ($products as $p) {
         }
         if (groupSelect) {
             groupSelect.addEventListener('change', syncEditGroupName);
-        }
-        if (addGroupSelect) {
-            addGroupSelect.addEventListener('change', function() {
-                maybeApplyImageFolderPreset('hinhAnh', 'maNhomHang');
-            });
-            maybeApplyImageFolderPreset('hinhAnh', 'maNhomHang');
         }
         if (detailGroupSelect) {
             detailGroupSelect.addEventListener('change', function() {
@@ -1905,45 +2003,28 @@ foreach ($products as $p) {
         }
 
         if (editForm) {
-            // Khi submit modal sửa, đổ giá trị vào form ẩn và submit
             editForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                // Lấy giá trị từ modal
-                const id = document.getElementById('editProductId').value.trim();
                 const groupId = document.getElementById('editProductGroupId').value.trim();
                 const name = document.getElementById('editProductName').value.trim();
-                const image = document.getElementById('editProductImage').value.trim();
                 const unit = document.getElementById('editProductUnit').value.trim();
-                const price = document.getElementById('editProductPrice').value;
-                const vat = document.getElementById('editProductVat').value;
 
                 if (!name) {
+                    e.preventDefault();
                     alert('Tên sản phẩm không được để trống');
                     return;
                 }
 
                 if (!unit) {
+                    e.preventDefault();
                     alert('Đơn vị tính không được để trống');
                     return;
                 }
 
                 if (!groupId) {
+                    e.preventDefault();
                     alert('Vui lòng chọn nhóm hàng');
                     return;
                 }
-
-                // Cập nhật các trường ẩn
-                document.getElementById('editMaHang').value = id;
-                document.getElementById('editMaNhomHang').value = groupId;
-                document.getElementById('editTenHang').value = name;
-                document.getElementById('editHinhAnh').value = image;
-                document.getElementById('editDvt').value = unit;
-                document.getElementById('editDonGia').value = price;
-                document.getElementById('editVat').value = vat;
-
-                // Submit form ẩn
-                document.getElementById('productEditForm').submit();
             });
         }
     }
@@ -2122,16 +2203,18 @@ foreach ($products as $p) {
                 <h5 class="modal-title" id="editProductModalLabel">Sửa sản phẩm</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="editProductForm">
+            <form id="editProductForm" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="crud_action" value="update_product">
+                <input type="hidden" name="hinh_anh_cu" id="editProductImageCurrent">
                 <div class="modal-body">
                     <div class="row g-2">
                         <div class="col-md-6">
                             <label for="editProductId" class="form-label">Mã hàng</label>
-                            <input type="text" class="form-control" id="editProductId" name="id" readonly>
+                            <input type="text" class="form-control" id="editProductId" name="ma_hang" readonly>
                         </div>
                         <div class="col-md-6">
                             <label for="editProductGroupId" class="form-label">Mã nhóm hàng</label>
-                            <select class="form-select" id="editProductGroupId" required>
+                            <select class="form-select" id="editProductGroupId" name="ma_nhom_hang" required>
                                 <option value="">Chọn nhóm hàng</option>
                                 <?php foreach ($nhomHangMap as $nhomCode => $nhomName): ?>
                                 <option value="<?php echo htmlspecialchars($nhomCode); ?>">
@@ -2146,25 +2229,26 @@ foreach ($products as $p) {
                         </div>
                         <div class="col-md-6">
                             <label for="editProductName" class="form-label">Tên sản phẩm</label>
-                            <input type="text" class="form-control" id="editProductName" name="name" required>
+                            <input type="text" class="form-control" id="editProductName" name="ten_hang" required>
                         </div>
                         <div class="col-md-6">
-                            <label for="editProductImage" class="form-label">Link ảnh</label>
-                            <input type="text" class="form-control" id="editProductImage" list="productImageFolderList"
-                                placeholder="VD: ../file anh/AnhNuocNgot/ten-anh.png">
+                            <label for="editProductImageFile" class="form-label">Đổi ảnh sản phẩm</label>
+                            <input type="file" class="form-control" id="editProductImageFile"
+                                name="hinh_anh_file" accept="image/jpeg,image/png,image/webp,image/gif">
+                            <div class="form-text">Để trống nếu muốn giữ ảnh hiện tại.</div>
                         </div>
                         <div class="col-md-6">
                             <label for="editProductUnit" class="form-label">Đơn vị tính</label>
-                            <input type="text" class="form-control" id="editProductUnit" required>
+                            <input type="text" class="form-control" id="editProductUnit" name="dvt" required>
                         </div>
                         <div class="col-md-4">
                             <label for="editProductPrice" class="form-label">Giá</label>
-                            <input type="number" min="0" class="form-control" id="editProductPrice" name="price"
+                            <input type="number" min="0" class="form-control" id="editProductPrice" name="don_gia"
                                 required>
                         </div>
                         <div class="col-md-4">
                             <label for="editProductVat" class="form-label">VAT (%)</label>
-                            <input type="number" min="0" max="100" class="form-control" id="editProductVat" required>
+                            <input type="number" min="0" max="100" class="form-control" id="editProductVat" name="vat" required>
                         </div>
                         <div class="col-md-4">
                             <label for="editProductTaxedPrice" class="form-label">Giá có thuế</label>
