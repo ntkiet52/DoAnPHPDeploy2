@@ -45,6 +45,106 @@ function pickExistingColumn(array $existingColumns, array $candidates): ?string 
     return null;
 }
 
+function tableExists(PDO $pdo, string $table): bool {
+    static $cache = [];
+
+    $tableKey = strtolower($table);
+    if (array_key_exists($tableKey, $cache)) {
+        return $cache[$tableKey];
+    }
+
+    $tableEsc = str_replace('`', '``', $table);
+    $stmt = $pdo->query("SHOW TABLES LIKE '{$tableEsc}'");
+    $exists = $stmt !== false && $stmt->fetchColumn() !== false;
+    $cache[$tableKey] = $exists;
+
+    return $exists;
+}
+
+function resolveCustomerAccountEmail(PDO $pdo, string $customerId): ?string {
+    if ($customerId === '') {
+        return null;
+    }
+
+    $khColumns = getExistingColumns($pdo, 'khachhang');
+    $khIdCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
+    if ($khIdCol === null) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare("SELECT * FROM khachhang WHERE `{$khIdCol}` = :id LIMIT 1");
+    $stmt->execute([':id' => $customerId]);
+    $row = $stmt->fetch();
+    if (!is_array($row)) {
+        return null;
+    }
+
+    $email = trim((string) pickCustomerValue(
+        $row,
+        ['masothue', 'ma_so_thue', 'tax_code', 'email', 'mail'],
+        ''
+    ));
+
+    if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        return null;
+    }
+
+    return strtolower($email);
+}
+
+function normalizeUserStatusValue(?string $raw): string {
+    $status = strtolower(trim((string) $raw));
+    if ($status === '') {
+        return 'active';
+    }
+
+    return $status;
+}
+
+function resolveUserAccountMetaByEmail(PDO $pdo, string $email): array {
+    if ($email === '' || !tableExists($pdo, 'users')) {
+        return [
+            'exists' => false,
+            'status' => '',
+            'email_col' => null,
+            'status_col' => null,
+        ];
+    }
+
+    $usersColumns = getExistingColumns($pdo, 'users');
+    $userEmailCol = pickExistingColumn($usersColumns, ['email', 'mail', 'username', 'user_name']);
+    $statusCol = pickExistingColumn($usersColumns, ['status', 'trangthai', 'trang_thai', 'state']);
+
+    if ($userEmailCol === null || $statusCol === null) {
+        return [
+            'exists' => false,
+            'status' => '',
+            'email_col' => $userEmailCol,
+            'status_col' => $statusCol,
+        ];
+    }
+
+    $findStmt = $pdo->prepare("SELECT `{$statusCol}` AS account_status FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email) LIMIT 1");
+    $findStmt->execute([':email' => $email]);
+    $statusValue = $findStmt->fetchColumn();
+
+    if ($statusValue === false) {
+        return [
+            'exists' => false,
+            'status' => '',
+            'email_col' => $userEmailCol,
+            'status_col' => $statusCol,
+        ];
+    }
+
+    return [
+        'exists' => true,
+        'status' => normalizeUserStatusValue((string) $statusValue),
+        'email_col' => $userEmailCol,
+        'status_col' => $statusCol,
+    ];
+}
+
 function normalizeCustomerDate(?string $value): ?string {
     $raw = trim((string) $value);
     if ($raw === '') {
@@ -264,9 +364,157 @@ try {
                 if ($id === '') {
                     $crudError = 'Không xác định được khách hàng để xóa.';
                 } else {
-                    $stmt = $pdo->prepare("DELETE FROM khachhang WHERE MaKhachHang = ?");
-                    $stmt->execute([$id]);
-                    $crudMessage = 'Đã xóa khách hàng thành công.';
+                    $khColumns = getExistingColumns($pdo, 'khachhang');
+                    $khIdCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
+
+                    if ($khIdCol === null) {
+                        $crudError = 'Không tìm thấy cột mã khách hàng để xóa.';
+                    } else {
+                        $accountEmail = resolveCustomerAccountEmail($pdo, $id);
+                        $usersColumns = tableExists($pdo, 'users') ? getExistingColumns($pdo, 'users') : [];
+                        $userEmailCol = !empty($usersColumns)
+                            ? pickExistingColumn($usersColumns, ['email', 'mail', 'username', 'user_name'])
+                            : null;
+                        $userIdCol = !empty($usersColumns)
+                            ? pickExistingColumn($usersColumns, ['id', 'user_id', 'userid'])
+                            : null;
+
+                        $pdo->beginTransaction();
+
+                        try {
+                            if ($accountEmail !== null && $userEmailCol !== null) {
+                                $resolvedUserId = null;
+
+                                if ($userIdCol !== null) {
+                                    $findUserStmt = $pdo->prepare(
+                                        "SELECT `{$userIdCol}` FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email) LIMIT 1"
+                                    );
+                                    $findUserStmt->execute([':email' => $accountEmail]);
+                                    $resolvedUserId = $findUserStmt->fetchColumn();
+                                }
+
+                                if ($resolvedUserId !== false && $resolvedUserId !== null && tableExists($pdo, 'login_history')) {
+                                    $loginHistoryColumns = getExistingColumns($pdo, 'login_history');
+                                    $historyUserIdCol = pickExistingColumn($loginHistoryColumns, ['user_id', 'userid', 'id_user']);
+                                    if ($historyUserIdCol !== null) {
+                                        $historyDeleteStmt = $pdo->prepare("DELETE FROM login_history WHERE `{$historyUserIdCol}` = :user_id");
+                                        $historyDeleteStmt->execute([':user_id' => $resolvedUserId]);
+                                    }
+                                }
+
+                                $deleteUserStmt = $pdo->prepare("DELETE FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email)");
+                                $deleteUserStmt->execute([':email' => $accountEmail]);
+                            }
+
+                            $deleteCustomerStmt = $pdo->prepare("DELETE FROM khachhang WHERE `{$khIdCol}` = :id");
+                            $deleteCustomerStmt->execute([':id' => $id]);
+
+                            $pdo->commit();
+
+                            if ($accountEmail !== null) {
+                                $crudMessage = 'Đã xóa vĩnh viễn khách hàng và tài khoản đăng nhập liên kết.';
+                            } else {
+                                $crudMessage = 'Đã xóa vĩnh viễn khách hàng. Không tìm thấy email tài khoản đăng nhập liên kết.';
+                            }
+                        } catch (Throwable $deleteError) {
+                            if ($pdo->inTransaction()) {
+                                $pdo->rollBack();
+                            }
+                            throw $deleteError;
+                        }
+                    }
+                }
+            }
+
+            if ($action === 'lock_customer_account') {
+                $id = trim((string) ($_POST['customer_id'] ?? ''));
+
+                if ($id === '') {
+                    $crudError = 'Không xác định được khách hàng để khóa tài khoản.';
+                } else {
+                    if (!tableExists($pdo, 'users')) {
+                        $crudError = 'Không tìm thấy bảng users để khóa tài khoản.';
+                    } else {
+                        $accountEmail = resolveCustomerAccountEmail($pdo, $id);
+                        if ($accountEmail === null) {
+                            $crudError = 'Khách hàng này chưa có email đăng nhập hợp lệ để khóa tài khoản.';
+                        } else {
+                            $accountMeta = resolveUserAccountMetaByEmail($pdo, $accountEmail);
+                            $userEmailCol = $accountMeta['email_col'] ?? null;
+                            $statusCol = $accountMeta['status_col'] ?? null;
+
+                            if ($userEmailCol === null || $statusCol === null) {
+                                $crudError = 'Thiếu cột email/status trong bảng users nên chưa thể khóa tài khoản.';
+                            } else if (($accountMeta['exists'] ?? false) !== true) {
+                                $crudError = 'Không tìm thấy tài khoản đăng nhập liên kết để khóa.';
+                            } else if (($accountMeta['status'] ?? '') === 'inactive') {
+                                $crudMessage = 'Tài khoản này đã ở trạng thái khóa trước đó.';
+                            } else {
+                                $usersColumns = getExistingColumns($pdo, 'users');
+                                $setParts = ["`{$statusCol}` = :status"];
+                                $params = [
+                                    ':status' => 'inactive',
+                                    ':email' => $accountEmail,
+                                ];
+
+                                if (in_array('updated_at', $usersColumns, true)) {
+                                    $setParts[] = 'updated_at = NOW()';
+                                }
+
+                                $lockStmt = $pdo->prepare(
+                                    'UPDATE users SET ' . implode(', ', $setParts) . " WHERE LOWER(`{$userEmailCol}`) = LOWER(:email)"
+                                );
+                                $lockStmt->execute($params);
+                                $crudMessage = 'Đã khóa tài khoản khách hàng thành công.';
+                            }
+                        }
+                    }
+                }
+            }
+
+            if ($action === 'unlock_customer_account') {
+                $id = trim((string) ($_POST['customer_id'] ?? ''));
+
+                if ($id === '') {
+                    $crudError = 'Không xác định được khách hàng để mở khóa tài khoản.';
+                } else {
+                    if (!tableExists($pdo, 'users')) {
+                        $crudError = 'Không tìm thấy bảng users để mở khóa tài khoản.';
+                    } else {
+                        $accountEmail = resolveCustomerAccountEmail($pdo, $id);
+                        if ($accountEmail === null) {
+                            $crudError = 'Khách hàng này chưa có email đăng nhập hợp lệ để mở khóa.';
+                        } else {
+                            $accountMeta = resolveUserAccountMetaByEmail($pdo, $accountEmail);
+                            $userEmailCol = $accountMeta['email_col'] ?? null;
+                            $statusCol = $accountMeta['status_col'] ?? null;
+
+                            if ($userEmailCol === null || $statusCol === null) {
+                                $crudError = 'Thiếu cột email/status trong bảng users nên chưa thể mở khóa tài khoản.';
+                            } else if (($accountMeta['exists'] ?? false) !== true) {
+                                $crudError = 'Không tìm thấy tài khoản đăng nhập liên kết để mở khóa.';
+                            } else if (($accountMeta['status'] ?? '') !== 'inactive') {
+                                $crudMessage = 'Tài khoản này đang hoạt động, không cần mở khóa.';
+                            } else {
+                                $usersColumns = getExistingColumns($pdo, 'users');
+                                $setParts = ["`{$statusCol}` = :status"];
+                                $params = [
+                                    ':status' => 'active',
+                                    ':email' => $accountEmail,
+                                ];
+
+                                if (in_array('updated_at', $usersColumns, true)) {
+                                    $setParts[] = 'updated_at = NOW()';
+                                }
+
+                                $unlockStmt = $pdo->prepare(
+                                    'UPDATE users SET ' . implode(', ', $setParts) . " WHERE LOWER(`{$userEmailCol}`) = LOWER(:email)"
+                                );
+                                $unlockStmt->execute($params);
+                                $crudMessage = 'Đã mở khóa tài khoản khách hàng thành công.';
+                            }
+                        }
+                    }
                 }
             }
         } catch (Throwable $postError) {
@@ -351,6 +599,28 @@ try {
     } catch (Throwable $ignored) {
     }
 
+    $userAccountStatusByEmail = [];
+    $usersColumns = tableExists($pdo, 'users') ? getExistingColumns($pdo, 'users') : [];
+    $userEmailCol = !empty($usersColumns)
+        ? pickExistingColumn($usersColumns, ['email', 'mail', 'username', 'user_name'])
+        : null;
+    $userStatusCol = !empty($usersColumns)
+        ? pickExistingColumn($usersColumns, ['status', 'trangthai', 'trang_thai', 'state'])
+        : null;
+
+    if ($userEmailCol !== null && $userStatusCol !== null) {
+        $userRows = $pdo->query('SELECT * FROM users')->fetchAll();
+        foreach ($userRows as $userRow) {
+            $emailKey = strtolower(trim((string) pickCustomerValue($userRow, [$userEmailCol], '')));
+            if ($emailKey === '' || filter_var($emailKey, FILTER_VALIDATE_EMAIL) === false) {
+                continue;
+            }
+
+            $statusValue = normalizeUserStatusValue((string) pickCustomerValue($userRow, [$userStatusCol], 'active'));
+            $userAccountStatusByEmail[$emailKey] = $statusValue;
+        }
+    }
+
     $rows = $pdo->query("SELECT * FROM khachhang")->fetchAll();
     $customersWithPhone = 0;
     $customersWithOrders = 0;
@@ -361,6 +631,16 @@ try {
         $taxCode = (string) pickCustomerValue($row, ['masothue', 'ma_so_thue', 'tax_code', 'email', 'mail'], '');
         $phone = (string) pickCustomerValue($row, ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone'], '');
         $total = isset($totalByCustomer[$maKh]) ? (float) $totalByCustomer[$maKh] : 0;
+        $normalizedEmail = strtolower(trim($taxCode));
+        $hasLoginAccount = $normalizedEmail !== ''
+            && filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) !== false
+            && isset($userAccountStatusByEmail[$normalizedEmail]);
+        $accountStatus = $hasLoginAccount
+            ? (string) $userAccountStatusByEmail[$normalizedEmail]
+            : 'no_account';
+        $accountStatusText = $accountStatus === 'inactive'
+            ? 'Đã khóa'
+            : ($accountStatus === 'active' ? 'Đang hoạt động' : 'Chưa liên kết');
 
         if (!empty($phone)) {
             $customersWithPhone++;
@@ -380,6 +660,9 @@ try {
             'orders' => (int) ($orderCountByCustomer[$maKh] ?? 0),
             'total_number' => $total,
             'total' => number_format($total, 0, ',', '.') . ' đ',
+            'account_status' => $accountStatus,
+            'account_status_text' => $accountStatusText,
+            'has_login_account' => $hasLoginAccount,
         ];
     }
 } catch (Throwable $e) {
@@ -683,6 +966,26 @@ try {
         white-space: nowrap;
         text-align: right;
     }
+
+    .screen-notice-wrap {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 1100;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: min(360px, calc(100vw - 24px));
+        pointer-events: none;
+    }
+
+    .screen-notice-item {
+        pointer-events: auto;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+        border-radius: 10px;
+        border: 0;
+        overflow: hidden;
+    }
     </style>
     <link rel="stylesheet" href="admin-unified-ui.css?v=20260414-2">
 </head>
@@ -759,8 +1062,14 @@ try {
             <button class="btn btn-info fw-semibold text-white" id="btnViewCustomer" disabled>
                 <i class="fas fa-eye me-1"></i> Xem chi tiết
             </button>
+            <button class="btn btn-warning fw-semibold text-dark" id="btnLockCustomer" disabled>
+                <i class="fas fa-lock me-1"></i> Khóa tài khoản
+            </button>
+            <button class="btn btn-success fw-semibold" id="btnUnlockCustomer" disabled>
+                <i class="fas fa-unlock me-1"></i> Mở khóa tài khoản
+            </button>
             <button class="btn btn-danger fw-semibold" id="btnDeleteCustomer" disabled>
-                <i class="fas fa-trash me-1"></i> Xóa khách hàng
+                <i class="fas fa-trash me-1"></i> Xóa vĩnh viễn
             </button>
         </div>
 
@@ -783,8 +1092,8 @@ try {
                                 </div>
                                 <div class="col-md-6">
                                     <label for="customerEmail" class="form-label">Mã số thuế</label>
-                                    <input type="text" class="form-control" id="customerEmail"
-                                        placeholder="VD: MST01" name="email">
+                                    <input type="text" class="form-control" id="customerEmail" placeholder="VD: MST01"
+                                        name="email">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="customerGender" class="form-label">Giới tính</label>
@@ -797,7 +1106,8 @@ try {
                                 </div>
                                 <div class="col-md-6">
                                     <label for="customerPhone" class="form-label">Số điện thoại</label>
-                                    <input type="text" class="form-control" id="customerPhone" name="phone" placeholder="0xxxxxxxxx">
+                                    <input type="text" class="form-control" id="customerPhone" name="phone"
+                                        placeholder="0xxxxxxxxx">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="customerBirthday" class="form-label">Số tài khoản</label>
@@ -900,7 +1210,8 @@ try {
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label for="editCustomerId" class="form-label">Mã khách hàng</label>
-                                    <input type="text" class="form-control" id="editCustomerId" name="customer_id" readonly>
+                                    <input type="text" class="form-control" id="editCustomerId" name="customer_id"
+                                        readonly>
                                 </div>
                                 <div class="col-md-6">
                                     <label for="editCustomerName" class="form-label">Tên khách hàng</label>
@@ -933,7 +1244,8 @@ try {
                                 </div>
                                 <div class="col-12">
                                     <label for="editCustomerAddress" class="form-label">Địa chỉ</label>
-                                    <textarea class="form-control" id="editCustomerAddress" rows="3" name="address"></textarea>
+                                    <textarea class="form-control" id="editCustomerAddress" rows="3"
+                                        name="address"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -955,11 +1267,56 @@ try {
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        Bạn có chắc chắn muốn xóa khách hàng <strong id="deleteCustomerName"></strong> không?
+                        Bạn có chắc chắn muốn xóa vĩnh viễn khách hàng <strong id="deleteCustomerName"></strong>?
+                        <br><span class="text-danger">Tài khoản đăng nhập liên kết cũng sẽ bị xóa và không thể đăng nhập
+                            lại bằng tài khoản đó.</span>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                        <button type="button" class="btn btn-danger" id="btnConfirmDeleteCustomer">Xóa</button>
+                        <button type="button" class="btn btn-danger" id="btnConfirmDeleteCustomer">Xóa vĩnh
+                            viễn</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="lockCustomerModal" tabindex="-1" aria-labelledby="lockCustomerModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="lockCustomerModalLabel">Xác nhận khóa tài khoản</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        Bạn có chắc chắn muốn khóa tài khoản đăng nhập của khách hàng <strong
+                            id="lockCustomerName"></strong> không?
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="button" class="btn btn-warning" id="btnConfirmLockCustomer">Khóa tài
+                            khoản</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="unlockCustomerModal" tabindex="-1" aria-labelledby="unlockCustomerModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="unlockCustomerModalLabel">Xác nhận mở khóa tài khoản</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        Bạn có chắc chắn muốn mở khóa tài khoản đăng nhập của khách hàng <strong
+                            id="unlockCustomerName"></strong> không?
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="button" class="btn btn-success" id="btnConfirmUnlockCustomer">Mở khóa tài
+                            khoản</button>
                     </div>
                 </div>
             </div>
@@ -986,6 +1343,16 @@ try {
         <form method="post" id="deleteCustomerForm" class="d-none">
             <input type="hidden" name="crud_action" value="delete_customer">
             <input type="hidden" name="customer_id" id="deleteCustomerId">
+        </form>
+
+        <form method="post" id="lockCustomerForm" class="d-none">
+            <input type="hidden" name="crud_action" value="lock_customer_account">
+            <input type="hidden" name="customer_id" id="lockCustomerId">
+        </form>
+
+        <form method="post" id="unlockCustomerForm" class="d-none">
+            <input type="hidden" name="crud_action" value="unlock_customer_account">
+            <input type="hidden" name="customer_id" id="unlockCustomerId">
         </form>
 
         <div class="table-container customer-table-shell">
@@ -1023,7 +1390,9 @@ try {
                             data-customer-birthday="<?php echo htmlspecialchars($c['birthday'] ?? '', ENT_QUOTES); ?>"
                             data-customer-address="<?php echo htmlspecialchars($c['address'] ?? '', ENT_QUOTES); ?>"
                             data-customer-orders="<?php echo (int) ($c['orders'] ?? 0); ?>"
-                            data-customer-total="<?php echo htmlspecialchars($c['total'] ?? '', ENT_QUOTES); ?>">
+                            data-customer-total="<?php echo htmlspecialchars($c['total'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-account-status="<?php echo htmlspecialchars($c['account_status'] ?? 'no_account', ENT_QUOTES); ?>"
+                            data-customer-has-account="<?php echo !empty($c['has_login_account']) ? '1' : '0'; ?>">
                             <td class="fw-bold"><?php echo htmlspecialchars((string) ($c['id'] ?? '')); ?></td>
                             <td><?php echo htmlspecialchars((string) ($c['name'] ?? '')); ?></td>
                             <td><?php echo htmlspecialchars((string) ($c['gender'] ?? '')); ?></td>
@@ -1031,7 +1400,8 @@ try {
                             <td><?php echo htmlspecialchars((string) ($c['phone'] ?? '')); ?></td>
                             <td><?php echo htmlspecialchars((string) ($c['birthday'] ?? '')); ?></td>
                             <td class="text-end"><?php echo (int) ($c['orders'] ?? 0); ?></td>
-                            <td class="text-end fw-bold"><?php echo htmlspecialchars((string) ($c['total'] ?? '0 đ')); ?></td>
+                            <td class="text-end fw-bold">
+                                <?php echo htmlspecialchars((string) ($c['total'] ?? '0 đ')); ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -1041,14 +1411,62 @@ try {
 
     </div>
 
+    <div id="screenNoticeWrap" class="screen-notice-wrap" aria-live="polite" aria-atomic="true"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     let selectedCustomerRow = null;
     let pendingDeleteCustomerRow = null;
+    let pendingLockCustomerRow = null;
+    let pendingUnlockCustomerRow = null;
 
     const btnEditCustomer = document.getElementById('btnEditCustomer');
     const btnViewCustomer = document.getElementById('btnViewCustomer');
+    const btnLockCustomer = document.getElementById('btnLockCustomer');
+    const btnUnlockCustomer = document.getElementById('btnUnlockCustomer');
     const btnDeleteCustomer = document.getElementById('btnDeleteCustomer');
+    const screenNoticeWrap = document.getElementById('screenNoticeWrap');
+
+    function showScreenNotice(message, type = 'warning', timeout = 2600) {
+        if (!screenNoticeWrap || !message) {
+            return;
+        }
+
+        const toastEl = document.createElement('div');
+        toastEl.className = `alert alert-${type} alert-dismissible fade show screen-notice-item mb-0`;
+        toastEl.setAttribute('role', 'alert');
+        toastEl.innerHTML = `
+            <div>${message}</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+
+        screenNoticeWrap.appendChild(toastEl);
+
+        window.setTimeout(() => {
+            if (toastEl.parentElement) {
+                toastEl.classList.remove('show');
+                toastEl.classList.add('hide');
+                window.setTimeout(() => toastEl.remove(), 220);
+            }
+        }, timeout);
+    }
+
+    function getSelectedAccountStatus() {
+        if (!selectedCustomerRow) {
+            return {
+                hasAccount: false,
+                status: 'no_account',
+            };
+        }
+
+        const hasAccount = (selectedCustomerRow.getAttribute('data-customer-has-account') || '0') === '1';
+        const status = (selectedCustomerRow.getAttribute('data-customer-account-status') || 'no_account').toLowerCase();
+
+        return {
+            hasAccount,
+            status,
+        };
+    }
 
     function syncCustomerActionButtons() {
         const hasSelected = !!selectedCustomerRow;
@@ -1058,8 +1476,24 @@ try {
         if (btnViewCustomer) {
             btnViewCustomer.disabled = !hasSelected;
         }
+        if (btnLockCustomer) {
+            btnLockCustomer.disabled = !hasSelected;
+        }
+        if (btnUnlockCustomer) {
+            btnUnlockCustomer.disabled = !hasSelected;
+        }
         if (btnDeleteCustomer) {
             btnDeleteCustomer.disabled = !hasSelected;
+        }
+
+        if (hasSelected) {
+            const accountMeta = getSelectedAccountStatus();
+            if (btnLockCustomer) {
+                btnLockCustomer.disabled = !accountMeta.hasAccount || accountMeta.status === 'inactive';
+            }
+            if (btnUnlockCustomer) {
+                btnUnlockCustomer.disabled = !accountMeta.hasAccount || accountMeta.status !== 'inactive';
+            }
         }
     }
 
@@ -1083,7 +1517,7 @@ try {
     if (btnEditCustomer) {
         btnEditCustomer.addEventListener('click', function() {
             if (!selectedCustomerRow) {
-                alert('Vui lòng chọn khách hàng để sửa.');
+                showScreenNotice('Vui lòng chọn khách hàng để sửa.', 'warning');
                 return;
             }
 
@@ -1110,11 +1544,12 @@ try {
 
     btnViewCustomer.addEventListener('click', function() {
         if (!selectedCustomerRow) {
-            alert('Vui lòng chọn khách hàng để xem chi tiết.');
+            showScreenNotice('Vui lòng chọn khách hàng để xem chi tiết.', 'warning');
             return;
         }
 
-        document.getElementById('detailCustomerId').textContent = selectedCustomerRow.getAttribute('data-customer-id') ||
+        document.getElementById('detailCustomerId').textContent = selectedCustomerRow.getAttribute(
+                'data-customer-id') ||
             '--';
         document.getElementById('detailCustomerName').textContent = selectedCustomerRow.getAttribute(
             'data-customer-name') || '--';
@@ -1139,14 +1574,14 @@ try {
 
         if (!customerName) {
             event.preventDefault();
-            alert('Vui lòng nhập tên khách hàng.');
+            showScreenNotice('Vui lòng nhập tên khách hàng.', 'warning');
             return;
         }
     });
 
     btnDeleteCustomer.addEventListener('click', function() {
         if (!selectedCustomerRow) {
-            alert('Vui lòng chọn khách hàng để xóa.');
+            showScreenNotice('Vui lòng chọn khách hàng để xóa.', 'warning');
             return;
         }
 
@@ -1155,6 +1590,54 @@ try {
             'data-customer-name') || '';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteCustomerModal')).show();
     });
+
+    if (btnLockCustomer) {
+        btnLockCustomer.addEventListener('click', function() {
+            if (!selectedCustomerRow) {
+                showScreenNotice('Vui lòng chọn khách hàng để khóa tài khoản.', 'warning');
+                return;
+            }
+
+            const accountMeta = getSelectedAccountStatus();
+            if (!accountMeta.hasAccount) {
+                showScreenNotice('Khách hàng này chưa có tài khoản đăng nhập liên kết.', 'warning');
+                return;
+            }
+            if (accountMeta.status === 'inactive') {
+                showScreenNotice('Tài khoản này đã bị khóa. Hãy dùng nút Mở khóa tài khoản.', 'info');
+                return;
+            }
+
+            pendingLockCustomerRow = selectedCustomerRow;
+            document.getElementById('lockCustomerName').textContent = selectedCustomerRow.getAttribute(
+                'data-customer-name') || '';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('lockCustomerModal')).show();
+        });
+    }
+
+    if (btnUnlockCustomer) {
+        btnUnlockCustomer.addEventListener('click', function() {
+            if (!selectedCustomerRow) {
+                showScreenNotice('Vui lòng chọn khách hàng để mở khóa tài khoản.', 'warning');
+                return;
+            }
+
+            const accountMeta = getSelectedAccountStatus();
+            if (!accountMeta.hasAccount) {
+                showScreenNotice('Khách hàng này chưa có tài khoản đăng nhập liên kết.', 'warning');
+                return;
+            }
+            if (accountMeta.status !== 'inactive') {
+                showScreenNotice('Tài khoản này đang hoạt động. Chưa cần mở khóa.', 'info');
+                return;
+            }
+
+            pendingUnlockCustomerRow = selectedCustomerRow;
+            document.getElementById('unlockCustomerName').textContent = selectedCustomerRow.getAttribute(
+                'data-customer-name') || '';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('unlockCustomerModal')).show();
+        });
+    }
 
     document.getElementById('btnConfirmDeleteCustomer').addEventListener('click', function() {
         if (!pendingDeleteCustomerRow) {
@@ -1172,6 +1655,42 @@ try {
 
     document.getElementById('deleteCustomerModal').addEventListener('hidden.bs.modal', function() {
         pendingDeleteCustomerRow = null;
+    });
+
+    document.getElementById('btnConfirmLockCustomer').addEventListener('click', function() {
+        if (!pendingLockCustomerRow) {
+            return;
+        }
+
+        const id = pendingLockCustomerRow.getAttribute('data-customer-id') || '';
+        if (!id) {
+            return;
+        }
+
+        document.getElementById('lockCustomerId').value = id;
+        document.getElementById('lockCustomerForm').submit();
+    });
+
+    document.getElementById('lockCustomerModal').addEventListener('hidden.bs.modal', function() {
+        pendingLockCustomerRow = null;
+    });
+
+    document.getElementById('btnConfirmUnlockCustomer').addEventListener('click', function() {
+        if (!pendingUnlockCustomerRow) {
+            return;
+        }
+
+        const id = pendingUnlockCustomerRow.getAttribute('data-customer-id') || '';
+        if (!id) {
+            return;
+        }
+
+        document.getElementById('unlockCustomerId').value = id;
+        document.getElementById('unlockCustomerForm').submit();
+    });
+
+    document.getElementById('unlockCustomerModal').addEventListener('hidden.bs.modal', function() {
+        pendingUnlockCustomerRow = null;
     });
 
     syncCustomerActionButtons();

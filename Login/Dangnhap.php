@@ -131,7 +131,7 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
         </div>
     </div>
 
-    <script src="xuli.js?v=20260419-2"></script>
+    <script src="xuli.js?v=20260421-3"></script>
 </body>
 
 </html>

@@ -2,7 +2,76 @@ const container = document.getElementById("container");
 const registerBtn = document.getElementById("register");
 const loginBtn = document.getElementById("login");
 
-const ackNativeAlert = window.alert?.bind(window);
+function ackEnsureNoticeHost() {
+  let host = document.getElementById("ack-screen-notice-host");
+  if (host) {
+    return host;
+  }
+
+  host = document.createElement("div");
+  host.id = "ack-screen-notice-host";
+  host.setAttribute("aria-live", "polite");
+  host.style.position = "fixed";
+  host.style.top = "20px";
+  host.style.right = "20px";
+  host.style.zIndex = "3000";
+  host.style.display = "flex";
+  host.style.flexDirection = "column";
+  host.style.gap = "10px";
+  host.style.width = "min(360px, calc(100vw - 24px))";
+  document.body.appendChild(host);
+  return host;
+}
+
+function ackShowScreenNotice(message, type = "warning", duration = 2800) {
+  const text = String(message ?? "").trim();
+  if (!text) return;
+
+  const palette = {
+    success: {
+      bg: "#e8f7ee",
+      border: "#b7ebc6",
+      color: "#1a7f37",
+    },
+    info: {
+      bg: "#e9f2ff",
+      border: "#b8d3ff",
+      color: "#0f4fa8",
+    },
+    warning: {
+      bg: "#fff7e6",
+      border: "#ffe0a3",
+      color: "#8a5a00",
+    },
+    error: {
+      bg: "#fdecec",
+      border: "#f2b6bc",
+      color: "#842029",
+    },
+  };
+
+  const tone = palette[type] || palette.warning;
+  const host = ackEnsureNoticeHost();
+  const item = document.createElement("div");
+  item.style.background = tone.bg;
+  item.style.border = `1px solid ${tone.border}`;
+  item.style.color = tone.color;
+  item.style.padding = "10px 14px";
+  item.style.borderRadius = "10px";
+  item.style.fontSize = "14px";
+  item.style.boxShadow = "0 8px 24px rgba(0,0,0,0.12)";
+  item.style.opacity = "1";
+  item.style.transition = "opacity 0.2s ease";
+  item.textContent = text;
+
+  host.appendChild(item);
+
+  window.setTimeout(() => {
+    item.style.opacity = "0";
+    window.setTimeout(() => item.remove(), 220);
+  }, duration);
+}
+
 window.alert = function (message) {
   const normalized = String(message ?? "")
     .trim()
@@ -15,9 +84,7 @@ window.alert = function (message) {
     return;
   }
 
-  if (typeof ackNativeAlert === "function") {
-    ackNativeAlert(message);
-  }
+  ackShowScreenNotice(message, "warning");
 };
 
 // 1. CHỨC NĂNG TRƯỢT QUA LẠI

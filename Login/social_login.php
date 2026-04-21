@@ -587,6 +587,18 @@ function socialFindOrCreateUser(mysqli $conn, string $email, string $displayName
     $selectStmt->close();
 
     if (is_array($existing)) {
+        if ($statusColumn !== null) {
+            $statusValue = strtolower(trim((string) ($existing[$statusColumn] ?? 'active')));
+            if ($statusValue !== '' && $statusValue !== 'active') {
+                return [
+                    'blocked' => true,
+                    'row' => $existing,
+                    'role_column' => $roleColumn,
+                    'admin_created_column' => $adminCreatedColumn,
+                ];
+            }
+        }
+
         $setParts = ['name = ?'];
         $types = 's';
         $values = [$displayName];
@@ -602,12 +614,6 @@ function socialFindOrCreateUser(mysqli $conn, string $email, string $displayName
             $types .= 'i';
             $zero = 0;
             $values[] = $zero;
-        }
-
-        if ($statusColumn !== null) {
-            $setParts[] = "{$statusColumn} = ?";
-            $types .= 's';
-            $values[] = 'active';
         }
 
         if ($updatedAtColumn !== null) {
@@ -895,6 +901,10 @@ if ($userName === '') {
 $userInfo = socialFindOrCreateUser($conn, $userEmail, $userName);
 if (!is_array($userInfo) || !isset($userInfo['row']) || !is_array($userInfo['row'])) {
     socialRedirectToLogin('Không thể tạo/đăng nhập tài khoản lúc này.');
+}
+
+if (($userInfo['blocked'] ?? false) === true) {
+    socialRedirectToLogin('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.');
 }
 
 socialLoginUser(
