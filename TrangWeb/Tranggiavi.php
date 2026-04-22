@@ -839,258 +839,101 @@ $products = $__catalogData['all_products'];
 
             </div>
         </div>
-        </div>
+    </div>
 
-        <div class="bg-light py-4">
-            <div class="container">
-                <div class="row text-center">
-                    <div class="col-3"><i class="fas fa-truck fa-2x text-primary mb-2"></i><br><b>Giao hàng nhanh</b>
-                    </div>
-                    <div class="col-3"><i class="fas fa-shield-alt fa-2x text-primary mb-2"></i><br><b>An toàn bảo
-                            mật</b></div>
-                    <div class="col-3"><i class="fas fa-headset fa-2x text-primary mb-2"></i><br><b>Hỗ trợ 24/7</b>
-                    </div>
-                    <div class="col-3"><i class="fas fa-undo fa-2x text-primary mb-2"></i><br><b>Đổi trả nhanh</b></div>
-                </div>
-            </div>
-        </div>
 
-        <section class="feedback-section">
-            <div class="container">
-                <div class="text-center mb-5">
-                    <h3 class="fw-bold">Cảm nhận của khách hàng</h3>
-                    <p class="text-muted">Hàng ngàn khách hàng hài lòng về chúng tôi</p>
-                </div>
 
-                <div class="row g-4">
-                    <div class="col-md-4">
-                        <div class="feedback-card">
-                            <div class="star-rating">
-                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                    class="fas fa-star"></i><i class="fas fa-star"></i>
-                            </div>
-                            <p class="feedback-text">"Sản phẩm rất tươi ngon, giao hàng đúng hẹn. Tết này sẽ ủng hộ
-                                tiếp! Đóng gói rất cẩn thận."</p>
-                            <div class="user-info d-flex align-items-center">
-                                <img src="../TrangUser/messi.png" alt="User">
-                                <div>
-                                    <div class="user-name">Đinh Quốc Cường</div>
-                                    <div class="user-time">15 phút trước</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="feedback-card">
-                            <div class="star-rating">
-                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                    class="fas fa-star"></i><i class="fas fa-star"></i>
-                            </div>
-                            <p class="feedback-text">"Giá cả cạnh tranh, nhân viên tư vấn nhiệt tình. Sẽ giới thiệu cho
-                                bạn bè mua sắm tại đây."</p>
-                            <div class="user-info d-flex align-items-center">
-                                <img src="../TrangUser/kiet.png" alt="User">
-                                <div>
-                                    <div class="user-name">Nguyễn Thanh Kiệt</div>
-                                    <div class="user-time">1 giờ trước</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="feedback-card">
-                            <div class="star-rating">
-                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                    class="fas fa-star"></i><i class="fas fa-star-half-alt"></i>
-                            </div>
-                            <p class="feedback-text">"Dịch vụ tuyệt vời. Mua hàng online mà được freeship lại còn được
-                                quà tặng kèm."</p>
-                            <div class="user-info d-flex align-items-center">
-                                <img src="../TrangUser/anlecho.png" alt="User">
-                                <div>
-                                    <div class="user-name">Lê Quốc An</div>
-                                    <div class="user-time">2 giờ trước</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="web-events.js?v=20260414-3"></script>
 
-        <section class="newsletter-section">
-            <div class="container">
-                <div class="row justify-content-center">
-                    <div class="col-md-8">
-                        <i class="far fa-envelope newsletter-icon"></i>
-                        <h3 class="fw-bold">Đăng kí nhận khuyến mãi</h3>
-                        <p class="mb-4 text-white-50">Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt</p>
-                        <div class="d-flex justify-content-center">
-                            <input type="email" class="form-control newsletter-input w-50"
-                                placeholder="Email của bạn...">
-                            <button class="newsletter-btn">Đăng ký</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+    <script>
+    // === CATEGORY SCROLL HANDLER ===
+    const slider = document.querySelector('.category-scroll-inner');
+    let isDown = false;
+    let startX;
+    let scrollLeft;
 
-        <footer>
-            <div class="container">
-                <div class="row">
-                    <div class="col-md-4 mb-4">
-                        <div class="d-flex align-items-center mb-3">
-                            <img src="../TrangUser/ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
-                            <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
-                        </div>
-                        <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và
-                            dịch vụ tận tâm.</p>
-                        <div class="social-icons mt-3">
-                            <a href="#"><i class="fab fa-facebook-f"></i></a>
-                            <a href="#"><i class="fab fa-instagram"></i></a>
-                            <a href="#"><i class="fab fa-youtube"></i></a>
-                            <a href="#"><i class="fab fa-tiktok"></i></a>
-                        </div>
-                    </div>
+    slider.addEventListener('mousedown', (e) => {
+        isDown = true;
+        slider.classList.add('active');
+        startX = e.pageX - slider.offsetLeft;
+        scrollLeft = slider.scrollLeft;
+    });
 
-                    <div class="col-6 col-md-2 mb-4">
-                        <h5>Về ACK</h5>
-                        <a href="#">Giới thiệu</a>
-                        <a href="#">Tuyển dụng</a>
-                        <a href="#">Tin tức & Sự kiện</a>
-                        <a href="#">Hệ thống cửa hàng</a>
-                    </div>
+    slider.addEventListener('mouseleave', () => {
+        isDown = false;
+        slider.classList.remove('active');
+    });
 
-                    <div class="col-6 col-md-3 mb-4">
-                        <h5>Hỗ trợ khách hàng</h5>
-                        <a href="#">Chính sách đổi trả</a>
-                        <a href="#">Chính sách giao hàng</a>
-                        <a href="#">Phương thức thanh toán</a>
-                        <a href="#">Câu hỏi thường gặp (FAQ)</a>
-                    </div>
+    slider.addEventListener('mouseup', () => {
+        isDown = false;
+        slider.classList.remove('active');
+    });
 
-                    <div class="col-md-3 mb-4">
-                        <h5>Liên hệ</h5>
-                        <div class="d-flex mb-2 text-muted">
-                            <i class="fas fa-map-marker-alt mt-1 me-2"></i>
-                            <span>Phường 1, TP. Cao Lãnh, Đồng Tháp</span>
-                        </div>
-                        <div class="d-flex mb-2 text-muted">
-                            <i class="fas fa-envelope mt-1 me-2"></i>
-                            <span>hotro@ackmart.vn</span>
-                        </div>
-                        <div class="d-flex mb-2 text-muted">
-                            <i class="fas fa-phone-alt mt-1 me-2"></i>
-                            <span class="text-white fw-bold">1900 6789</span>
-                        </div>
-                    </div>
-                </div>
+    slider.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - slider.offsetLeft;
+        const walk = (x - startX) * 2;
+        slider.scrollLeft = scrollLeft - walk;
+    });
 
-                <div class="copyright-border d-flex flex-column flex-md-row justify-content-between align-items-center">
-                    <p class="m-0">© 2025 ACK Mart. Tất cả các quyền được bảo lưu.</p>
-                    <div class="mt-2 mt-md-0">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/Visa.svg" height="20"
-                            class="me-2 bg-white rounded p-1" alt="Visa">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" height="20"
-                            class="me-2 bg-white rounded p-1" alt="Mastercard">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" height="20"
-                            class="bg-white rounded p-1" alt="Paypal">
-                    </div>
-                </div>
-            </div>
-        </footer>
+    // === ADD TO CART HANDLER ===
+    document.addEventListener('DOMContentLoaded', function() {
+        const addToCartButtons = document.querySelectorAll('.btn-add-cart');
 
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="web-events.js?v=20260414-3"></script>
+        addToCartButtons.forEach(button => {
+            button.addEventListener('click', async function(e) {
+                e.preventDefault();
 
-        <script>
-        // === CATEGORY SCROLL HANDLER ===
-        const slider = document.querySelector('.category-scroll-inner');
-        let isDown = false;
-        let startX;
-        let scrollLeft;
+                const productId = this.dataset.productId;
+                const productCard = this.closest('.product-card');
+                const productName = productCard.dataset.productName;
+                const productPrice = productCard.dataset.productPrice;
+                const productImg = productCard.dataset.productImg;
 
-        slider.addEventListener('mousedown', (e) => {
-            isDown = true;
-            slider.classList.add('active');
-            startX = e.pageX - slider.offsetLeft;
-            scrollLeft = slider.scrollLeft;
-        });
+                try {
+                    const formData = new FormData();
+                    formData.append('action', 'add_to_cart');
+                    formData.append('ma_san_pham', productId);
+                    formData.append('ten_san_pham', productName);
+                    formData.append('mo_ta', '');
+                    formData.append('gia_ban', productPrice);
+                    formData.append('gia_goc', productPrice);
+                    formData.append('so_luong', 1);
+                    formData.append('hinh_anh', productImg);
+                    formData.append('voucher', '');
+                    formData.append('thong_tin_giao', '');
 
-        slider.addEventListener('mouseleave', () => {
-            isDown = false;
-            slider.classList.remove('active');
-        });
+                    const response = await fetch('cart-handler.php', {
+                        method: 'POST',
+                        body: formData
+                    });
 
-        slider.addEventListener('mouseup', () => {
-            isDown = false;
-            slider.classList.remove('active');
-        });
+                    const data = await response.json();
 
-        slider.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            e.preventDefault();
-            const x = e.pageX - slider.offsetLeft;
-            const walk = (x - startX) * 2;
-            slider.scrollLeft = scrollLeft - walk;
-        });
+                    if (data.success) {
+                        // Hiệu ứng thêm vào giỏ thành công
+                        this.style.background = '#28a745';
+                        this.innerHTML = '<i class="fas fa-check"></i>';
 
-        // === ADD TO CART HANDLER ===
-        document.addEventListener('DOMContentLoaded', function() {
-            const addToCartButtons = document.querySelectorAll('.btn-add-cart');
+                        setTimeout(() => {
+                            this.style.background = '#007bff';
+                            this.innerHTML = '<i class="fas fa-plus"></i>';
+                        }, 2000);
 
-            addToCartButtons.forEach(button => {
-                button.addEventListener('click', async function(e) {
-                    e.preventDefault();
-
-                    const productId = this.dataset.productId;
-                    const productCard = this.closest('.product-card');
-                    const productName = productCard.dataset.productName;
-                    const productPrice = productCard.dataset.productPrice;
-                    const productImg = productCard.dataset.productImg;
-
-                    try {
-                        const formData = new FormData();
-                        formData.append('action', 'add_to_cart');
-                        formData.append('ma_san_pham', productId);
-                        formData.append('ten_san_pham', productName);
-                        formData.append('mo_ta', '');
-                        formData.append('gia_ban', productPrice);
-                        formData.append('gia_goc', productPrice);
-                        formData.append('so_luong', 1);
-                        formData.append('hinh_anh', productImg);
-                        formData.append('voucher', '');
-                        formData.append('thong_tin_giao', '');
-
-                        const response = await fetch('cart-handler.php', {
-                            method: 'POST',
-                            body: formData
-                        });
-
-                        const data = await response.json();
-
-                        if (data.success) {
-                            // Hiệu ứng thêm vào giỏ thành công
-                            this.style.background = '#28a745';
-                            this.innerHTML = '<i class="fas fa-check"></i>';
-
-                            setTimeout(() => {
-                                this.style.background = '#007bff';
-                                this.innerHTML = '<i class="fas fa-plus"></i>';
-                            }, 2000);
-
-                            alert('✓ Thêm vào giỏ hàng thành công!');
-                        } else {
-                            alert('❌ Lỗi: ' + data.message);
-                        }
-                    } catch (error) {
-                        console.error('Error:', error);
-                        alert('Không thể kết nối đến server. Vui lòng thử lại.');
+                        alert('✓ Thêm vào giỏ hàng thành công!');
+                    } else {
+                        alert('❌ Lỗi: ' + data.message);
                     }
-                });
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Không thể kết nối đến server. Vui lòng thử lại.');
+                }
             });
         });
-        </script>
+    });
+    </script>
 </body>
 
 </html>

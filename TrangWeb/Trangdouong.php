@@ -521,22 +521,152 @@ $categories = $__catalogData['categories'];
         padding: 20px 0;
         color: #98a2b3;
     }
+
     /* === Unified full-width newsletter + footer (global override) === */
-    .bg-light.py-4, .feedback-section, .newsletter-section, footer { width: 100%; position: relative; left: 0; right: 0; margin-left: 0; margin-right: 0; }
-    .newsletter-section { min-height: 340px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px 16px; background: linear-gradient(135deg, #5865f8 0%, #3844c7 100%); color: #fff; }
-    .newsletter-section > .container { width: 100%; max-width: none !important; padding-left: 16px !important; padding-right: 16px !important; }
-    .newsletter-section .row { width: 100%; justify-content: center; }
-    .newsletter-section .col-md-8, .newsletter-section .col-lg-8 { width: 100%; max-width: 900px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-    .newsletter-section .d-flex { width: 100%; max-width: 760px; display: flex; align-items: center; justify-content: center; gap: 14px; }
-    .newsletter-input, .newsletter-section input[type="email"] { width: 100% !important; flex: 1 1 auto; min-height: 56px; border: none; border-radius: 999px !important; padding: 0 22px; font-size: 1.06rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12); }
-    .newsletter-btn, .newsletter-section button { min-height: 56px; border: none; border-radius: 999px !important; padding: 0 28px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b74e5 0%, #1f55ff 100%); box-shadow: 0 10px 25px rgba(15, 87, 209, 0.35); }
-    footer { background-color: #1e2743; color: #eaecf0; padding: 56px 16px 22px !important; margin-top: 0 !important; }
-    footer > .container { width: 100%; max-width: none !important; padding-left: 16px !important; padding-right: 16px !important; }
-    footer > .container > .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 30px; margin: 0 !important; }
-    footer > .container > .row > [class*="col"] { max-width: none !important; width: auto !important; padding-left: 0 !important; padding-right: 0 !important; margin-bottom: 0 !important; }
-    .copyright-border { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-    @media (min-width: 992px) { .bg-light.py-4, .feedback-section, .newsletter-section, footer { padding-left: 80px; padding-right: 80px; } .newsletter-section { min-height: 380px; } }
-    @media (max-width: 768px) { .newsletter-section .d-flex { flex-direction: column; max-width: 460px; gap: 12px; } .newsletter-input, .newsletter-btn, .newsletter-section button { width: 100% !important; } }
+    .bg-light.py-4,
+    .feedback-section,
+    .newsletter-section,
+    footer {
+        width: 100%;
+        position: relative;
+        left: 0;
+        right: 0;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .newsletter-section {
+        min-height: 340px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px 16px;
+        background: linear-gradient(135deg, #5865f8 0%, #3844c7 100%);
+        color: #fff;
+    }
+
+    .newsletter-section>.container {
+        width: 100%;
+        max-width: none !important;
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    .newsletter-section .row {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .newsletter-section .col-md-8,
+    .newsletter-section .col-lg-8 {
+        width: 100%;
+        max-width: 900px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .newsletter-section .d-flex {
+        width: 100%;
+        max-width: 760px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+    }
+
+    .newsletter-input,
+    .newsletter-section input[type="email"] {
+        width: 100% !important;
+        flex: 1 1 auto;
+        min-height: 56px;
+        border: none;
+        border-radius: 999px !important;
+        padding: 0 22px;
+        font-size: 1.06rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .newsletter-btn,
+    .newsletter-section button {
+        min-height: 56px;
+        border: none;
+        border-radius: 999px !important;
+        padding: 0 28px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, #0b74e5 0%, #1f55ff 100%);
+        box-shadow: 0 10px 25px rgba(15, 87, 209, 0.35);
+    }
+
+    footer {
+        background-color: #1e2743;
+        color: #eaecf0;
+        padding: 56px 16px 22px !important;
+        margin-top: 0 !important;
+    }
+
+    footer>.container {
+        width: 100%;
+        max-width: none !important;
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    footer>.container>.row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 30px;
+        margin: 0 !important;
+    }
+
+    footer>.container>.row>[class*="col"] {
+        max-width: none !important;
+        width: auto !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-bottom: 0 !important;
+    }
+
+    .copyright-border {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    @media (min-width: 992px) {
+
+        .bg-light.py-4,
+        .feedback-section,
+        .newsletter-section,
+        footer {
+            padding-left: 80px;
+            padding-right: 80px;
+        }
+
+        .newsletter-section {
+            min-height: 380px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .newsletter-section .d-flex {
+            flex-direction: column;
+            max-width: 460px;
+            gap: 12px;
+        }
+
+        .newsletter-input,
+        .newsletter-btn,
+        .newsletter-section button {
+            width: 100% !important;
+        }
+    }
+
     footer .text-muted,
     footer .text-muted *,
     footer p,
@@ -762,201 +892,43 @@ $categories = $__catalogData['categories'];
 
             </div>
         </div>
-        </div>
+    </div>
 
-        <div class="bg-light py-4">
-            <div class="container">
-                <div class="row text-center">
-                    <div class="col-3"><i class="fas fa-truck fa-2x text-primary mb-2"></i><br><b>Giao hàng nhanh</b>
-                    </div>
-                    <div class="col-3"><i class="fas fa-shield-alt fa-2x text-primary mb-2"></i><br><b>An toàn bảo
-                            mật</b></div>
-                    <div class="col-3"><i class="fas fa-headset fa-2x text-primary mb-2"></i><br><b>Hỗ trợ 24/7</b>
-                    </div>
-                    <div class="col-3"><i class="fas fa-undo fa-2x text-primary mb-2"></i><br><b>Đổi trả nhanh</b></div>
-                </div>
-            </div>
-        </div>
 
-        <section class="feedback-section">
-            <div class="container">
-                <div class="text-center mb-5">
-                    <h3 class="fw-bold">Cảm nhận của khách hàng</h3>
-                    <p class="text-muted">Hàng ngàn khách hàng hài lòng về chúng tôi</p>
-                </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="web-events.js?v=20260414-3"></script>
 
-                <div class="row g-4">
-                    <div class="col-md-4">
-                        <div class="feedback-card">
-                            <div class="star-rating">
-                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                    class="fas fa-star"></i><i class="fas fa-star"></i>
-                            </div>
-                            <p class="feedback-text">"Sản phẩm rất tươi ngon, giao hàng đúng hẹn. Tết này sẽ ủng hộ
-                                tiếp! Đóng gói rất cẩn thận."</p>
-                            <div class="user-info d-flex align-items-center">
-                                <img src="../TrangUser/messi.png" alt="User">
-                                <div>
-                                    <div class="user-name">Đinh Quốc Cường</div>
-                                    <div class="user-time">15 phút trước</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="feedback-card">
-                            <div class="star-rating">
-                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                    class="fas fa-star"></i><i class="fas fa-star"></i>
-                            </div>
-                            <p class="feedback-text">"Giá cả cạnh tranh, nhân viên tư vấn nhiệt tình. Sẽ giới thiệu cho
-                                bạn bè mua sắm tại đây."</p>
-                            <div class="user-info d-flex align-items-center">
-                                <img src="../TrangUser/kiet.png" alt="User">
-                                <div>
-                                    <div class="user-name">Nguyễn Thanh Kiệt</div>
-                                    <div class="user-time">1 giờ trước</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="feedback-card">
-                            <div class="star-rating">
-                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                    class="fas fa-star"></i><i class="fas fa-star-half-alt"></i>
-                            </div>
-                            <p class="feedback-text">"Dịch vụ tuyệt vời. Mua hàng online mà được freeship lại còn được
-                                quà tặng kèm."</p>
-                            <div class="user-info d-flex align-items-center">
-                                <img src="../TrangUser/anlecho.png" alt="User">
-                                <div>
-                                    <div class="user-name">Lê Quốc An</div>
-                                    <div class="user-time">2 giờ trước</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+    <script>
+    const slider = document.querySelector('.category-scroll-inner');
+    let isDown = false;
+    let startX;
+    let scrollLeft;
 
-        <section class="newsletter-section">
-            <div class="container">
-                <div class="row justify-content-center">
-                    <div class="col-md-8">
-                        <i class="far fa-envelope newsletter-icon"></i>
-                        <h3 class="fw-bold">Đăng kí nhận khuyến mãi</h3>
-                        <p class="mb-4 text-white-50">Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt</p>
-                        <div class="d-flex justify-content-center">
-                            <input type="email" class="form-control newsletter-input w-50"
-                                placeholder="Email của bạn...">
-                            <button class="newsletter-btn">Đăng ký</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+    slider.addEventListener('mousedown', (e) => {
+        isDown = true;
+        slider.classList.add('active'); // Thêm class để đổi con trỏ chuột
+        startX = e.pageX - slider.offsetLeft;
+        scrollLeft = slider.scrollLeft;
+    });
 
-        <footer>
-            <div class="container">
-                <div class="row">
-                    <div class="col-md-4 mb-4">
-                        <div class="d-flex align-items-center mb-3">
-                            <img src="../TrangUser/ack.png" alt="ACK Logo" style="height: 40px; filter: brightness(0) invert(1);">
-                            <span class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
-                        </div>
-                        <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và
-                            dịch vụ tận tâm.</p>
-                        <div class="social-icons mt-3">
-                            <a href="#"><i class="fab fa-facebook-f"></i></a>
-                            <a href="#"><i class="fab fa-instagram"></i></a>
-                            <a href="#"><i class="fab fa-youtube"></i></a>
-                            <a href="#"><i class="fab fa-tiktok"></i></a>
-                        </div>
-                    </div>
+    slider.addEventListener('mouseleave', () => {
+        isDown = false;
+        slider.classList.remove('active');
+    });
 
-                    <div class="col-6 col-md-2 mb-4">
-                        <h5>Về ACK</h5>
-                        <a href="#">Giới thiệu</a>
-                        <a href="#">Tuyển dụng</a>
-                        <a href="#">Tin tức & Sự kiện</a>
-                        <a href="#">Hệ thống cửa hàng</a>
-                    </div>
+    slider.addEventListener('mouseup', () => {
+        isDown = false;
+        slider.classList.remove('active');
+    });
 
-                    <div class="col-6 col-md-3 mb-4">
-                        <h5>Hỗ trợ khách hàng</h5>
-                        <a href="#">Chính sách đổi trả</a>
-                        <a href="#">Chính sách giao hàng</a>
-                        <a href="#">Phương thức thanh toán</a>
-                        <a href="#">Câu hỏi thường gặp (FAQ)</a>
-                    </div>
-
-                    <div class="col-md-3 mb-4">
-                        <h5>Liên hệ</h5>
-                        <div class="d-flex mb-2 text-muted">
-                            <i class="fas fa-map-marker-alt mt-1 me-2"></i>
-                            <span>Phường 1, TP. Cao Lãnh, Đồng Tháp</span>
-                        </div>
-                        <div class="d-flex mb-2 text-muted">
-                            <i class="fas fa-envelope mt-1 me-2"></i>
-                            <span>hotro@ackmart.vn</span>
-                        </div>
-                        <div class="d-flex mb-2 text-muted">
-                            <i class="fas fa-phone-alt mt-1 me-2"></i>
-                            <span class="text-white fw-bold">1900 6789</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="copyright-border d-flex flex-column flex-md-row justify-content-between align-items-center">
-                    <p class="m-0">© 2025 ACK Mart. Tất cả các quyền được bảo lưu.</p>
-                    <div class="mt-2 mt-md-0">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/Visa.svg" height="20"
-                            class="me-2 bg-white rounded p-1" alt="Visa">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" height="20"
-                            class="me-2 bg-white rounded p-1" alt="Mastercard">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" height="20"
-                            class="bg-white rounded p-1" alt="Paypal">
-                    </div>
-                </div>
-            </div>
-        </footer>
-
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="web-events.js?v=20260414-3"></script>
-
-        <script>
-        const slider = document.querySelector('.category-scroll-inner');
-        let isDown = false;
-        let startX;
-        let scrollLeft;
-
-        slider.addEventListener('mousedown', (e) => {
-            isDown = true;
-            slider.classList.add('active'); // Thêm class để đổi con trỏ chuột
-            startX = e.pageX - slider.offsetLeft;
-            scrollLeft = slider.scrollLeft;
-        });
-
-        slider.addEventListener('mouseleave', () => {
-            isDown = false;
-            slider.classList.remove('active');
-        });
-
-        slider.addEventListener('mouseup', () => {
-            isDown = false;
-            slider.classList.remove('active');
-        });
-
-        slider.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            e.preventDefault(); // Chặn việc bôi đen text
-            const x = e.pageX - slider.offsetLeft;
-            const walk = (x - startX) * 2; // Nhân 2 để kéo nhanh hơn một chút
-            slider.scrollLeft = scrollLeft - walk;
-        });
-        </script>
+    slider.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault(); // Chặn việc bôi đen text
+        const x = e.pageX - slider.offsetLeft;
+        const walk = (x - startX) * 2; // Nhân 2 để kéo nhanh hơn một chút
+        slider.scrollLeft = scrollLeft - walk;
+    });
+    </script>
 </body>
 
 </html>
