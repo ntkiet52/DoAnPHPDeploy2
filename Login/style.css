@@ -169,6 +169,40 @@ button.is-loading::after {
   box-shadow: 0 0 0 2px #90caf9; /* Viền sáng bao quanh thay vì border trái */
 }
 
+.otp-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.otp-row input {
+  margin: 0;
+}
+
+.btn-send-otp {
+  margin-top: 0;
+  padding: 10px 16px;
+  min-width: 106px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 123, 255, 0.25);
+}
+
+@media (max-width: 576px) {
+  .otp-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-send-otp {
+    width: 100%;
+  }
+}
+
 /* --- INPUT GROUP (ICON MẮT) --- */
 .input-group {
   position: relative;

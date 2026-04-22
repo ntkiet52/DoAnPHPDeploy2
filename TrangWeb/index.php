@@ -1,20 +1,114 @@
 <?php
 require_once __DIR__ . '/catalog_data.php';
 
-// Dữ liệu danh mục hiển thị theo layout trang chủ
+function e(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+}
+
+function buildDiverseFeaturedProducts(int $limit = 12, int $maxPerSlug = 2): array
+{
+    $limit = max(1, $limit);
+    $maxPerSlug = max(1, $maxPerSlug);
+
+    $allProducts = catalogFetchProducts();
+    if (empty($allProducts)) {
+        return [];
+    }
+
+    $inStock = [];
+    $outOfStock = [];
+
+    foreach ($allProducts as $item) {
+        $stock = (int) ($item['stock'] ?? 0);
+        if ($stock > 0) {
+            $inStock[] = $item;
+            continue;
+        }
+
+        $outOfStock[] = $item;
+    }
+
+    $pool = array_merge($inStock, $outOfStock);
+    $picked = [];
+    $pickedIds = [];
+    $slugCounter = [];
+
+    foreach ($pool as $item) {
+        $id = trim((string) ($item['id'] ?? ''));
+        if ($id === '' || isset($pickedIds[$id])) {
+            continue;
+        }
+
+        $slug = trim((string) ($item['slug'] ?? 'other'));
+        if ($slug === '') {
+            $slug = 'other';
+        }
+
+        $slugCounter[$slug] = (int) ($slugCounter[$slug] ?? 0);
+        if ($slugCounter[$slug] >= $maxPerSlug) {
+            continue;
+        }
+
+        $picked[] = $item;
+        $pickedIds[$id] = true;
+        $slugCounter[$slug]++;
+
+        if (count($picked) >= $limit) {
+            break;
+        }
+    }
+
+    if (count($picked) < $limit) {
+        foreach ($pool as $item) {
+            $id = trim((string) ($item['id'] ?? ''));
+            if ($id === '' || isset($pickedIds[$id])) {
+                continue;
+            }
+
+            $picked[] = $item;
+            $pickedIds[$id] = true;
+
+            if (count($picked) >= $limit) {
+                break;
+            }
+        }
+    }
+
+    return array_map(static function (array $item): array {
+        $slug = (string) ($item['slug'] ?? '');
+        $rating = 5;
+        if ($slug === 'mypham') {
+            $rating = 4;
+        }
+
+        return [
+            'id' => (string) ($item['id'] ?? ''),
+            'name' => (string) ($item['name'] ?? 'Sản phẩm'),
+            'price' => (string) ($item['price'] ?? '0 ₫'),
+            'old_price' => (string) ($item['old'] ?? '0 ₫'),
+            'discount' => (string) ($item['discount'] ?? '-10%'),
+            'image' => (string) ($item['img'] ?? '../TrangUser/ack.png'),
+            'rating' => $rating,
+            'link' => (string) ($item['link'] ?? '#'),
+            'price_raw' => (int) ($item['price_raw'] ?? 0),
+        ];
+    }, $picked);
+}
+
 $categories = [
-    ['name' => 'Thức ăn', 'icon' => 'fa-hamburger', 'desc' => 'Ăn uống đa dạng', 'link' => 'Trangthucannhanh.php'],
-    ['name' => 'Sức khỏe', 'icon' => 'fa-heartbeat', 'desc' => 'Chăm sóc toàn diện', 'link' => 'Trangmypham.php'],
-    ['name' => 'Dụng cụ', 'icon' => 'fa-tools', 'desc' => 'Đồ dùng đa năng', 'link' => 'Tranggiadung.php'],
-    ['name' => 'Quà tặng', 'icon' => 'fa-gift', 'desc' => 'Ý tưởng quà tặng', 'link' => 'Trangdohop.php'],
+    ['name' => 'Thức ăn nhanh', 'icon' => 'fa-burger', 'desc' => 'Nhiều món tiện lợi mỗi ngày', 'link' => 'Trangthucannhanh.php'],
+    ['name' => 'Đồ uống', 'icon' => 'fa-mug-hot', 'desc' => 'Giải khát và bổ sung năng lượng', 'link' => 'Trangdouong.php'],
+    ['name' => 'Gia dụng', 'icon' => 'fa-house', 'desc' => 'Vật dụng cần thiết cho gia đình', 'link' => 'Tranggiadung.php'],
+    ['name' => 'Mỹ phẩm', 'icon' => 'fa-spa', 'desc' => 'Chăm sóc cá nhân an toàn, tiện lợi', 'link' => 'Trangmypham.php'],
 ];
 
-$products = loadFeaturedProductsFromDb(8);
+$products = buildDiverseFeaturedProducts(12, 2);
 
 $feedbacks = [
-    ['name' => 'Đinh Quốc Cường', 'comment' => 'Sản phẩm chất lượng, giao hàng nhanh. Rất hài lòng.', 'avatar' => '../TrangUser/messi.png'],
-    ['name' => 'Nguyễn Thanh Kiệt', 'comment' => 'Dịch vụ tốt, nhân viên thân thiện. Sẽ quay lại.', 'avatar' => '../TrangUser/kiet.png'],
-    ['name' => 'Lê Quốc An', 'comment' => 'Giá cả hợp lý so với thị trường.', 'avatar' => '../TrangUser/anlecho.png'],
+    ['name' => 'Đinh Quốc Cường', 'comment' => 'Sản phẩm chất lượng, giao hàng nhanh. Rất hài lòng.', 'avatar' => '../TrangUser/messi.png', 'time' => '15 phút trước'],
+    ['name' => 'Nguyễn Thanh Kiệt', 'comment' => 'Nhân viên tư vấn nhiệt tình, đặt hàng rất dễ.', 'avatar' => '../TrangUser/kiet.png', 'time' => '1 giờ trước'],
+    ['name' => 'Lê Quốc An', 'comment' => 'Giá hợp lý và nhiều ưu đãi, sẽ quay lại mua tiếp.', 'avatar' => '../TrangUser/anlecho.png', 'time' => '2 giờ trước'],
 ];
 ?>
 
@@ -24,85 +118,154 @@ $feedbacks = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACK Store - Trang chủ</title>
+    <title>ACK Mart - Chào mừng bạn</title>
+    <meta name="description"
+        content="ACK Mart - Trang mua sắm đầu tiên trước đăng nhập: xem danh mục, sản phẩm nổi bật và ưu đãi mới nhất.">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800&display=swap" rel="stylesheet">
 
     <style>
     :root {
-        --primary-blue: #0099ff;
-        --light-blue: #e6f4ff;
-        --dark-blue: #0d6efd;
-        --footer-bg: #1a1a2e;
+        --brand-700: #0b66ff;
+        --brand-600: #2e7dff;
+        --brand-100: #eaf2ff;
+        --text-900: #101828;
+        --text-600: #475467;
+        --line: #e4e7ec;
+        --success: #16a34a;
+        --surface: #ffffff;
+        --bg-soft: #f8faff;
+    }
+
+    html {
+        scroll-behavior: smooth;
     }
 
     body {
         font-family: 'Roboto', sans-serif;
-        background-color: #f8f9fa;
+        background: var(--bg-soft);
+        color: var(--text-900);
     }
 
-    /* Navbar */
+    .navbar {
+        border-bottom: 1px solid #f0f2f5;
+        backdrop-filter: saturate(130%) blur(8px);
+    }
+
     .navbar-brand img {
-        height: 40px;
+        height: 42px;
     }
 
     .nav-link {
         font-weight: 500;
-        color: #333;
+        color: #344054;
     }
 
-    .nav-link:hover {
-        color: var(--primary-blue);
+    .nav-link:hover,
+    .nav-link.active {
+        color: var(--brand-700);
     }
 
-    /* Hero Section */
-    .hero-section {
-        background: linear-gradient(135deg, #007bff 0%, #00c6ff 100%);
-        color: white;
-        padding: 80px 0;
-        border-bottom-left-radius: 50px;
-        border-bottom-right-radius: 50px;
+    .btn-pill {
+        border-radius: 999px;
+        font-weight: 600;
+        padding: 10px 18px;
+    }
+
+    .hero {
         position: relative;
         overflow: hidden;
+        background: linear-gradient(120deg, #0b66ff 0%, #37a3ff 100%);
+        color: #fff;
+        padding: 86px 0 72px;
+        border-bottom-left-radius: 30px;
+        border-bottom-right-radius: 30px;
     }
 
-    .hero-img-container {
-        background: white;
-        padding: 20px;
+    .hero::before,
+    .hero::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        pointer-events: none;
+    }
+
+    .hero::before {
+        width: 420px;
+        height: 420px;
+        right: -120px;
+        top: -160px;
+    }
+
+    .hero::after {
+        width: 280px;
+        height: 280px;
+        left: -80px;
+        bottom: -120px;
+    }
+
+    .hero h1 {
+        font-size: clamp(2rem, 4vw, 3.35rem);
+        font-weight: 800;
+        line-height: 1.18;
+        margin-bottom: 12px;
+    }
+
+    .hero p {
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 1.05rem;
+    }
+
+    .hero-card {
+        background: #fff;
         border-radius: 20px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        padding: 14px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.16);
+        max-width: 520px;
+        margin-inline: auto;
     }
 
-    .btn-hero-white {
-        background: white;
-        color: var(--primary-blue);
-        font-weight: bold;
-        border-radius: 30px;
-        padding: 10px 30px;
+    .hero-card img {
+        border-radius: 14px;
     }
 
-    .btn-hero-outline {
-        border: 2px solid white;
-        color: white;
-        font-weight: bold;
-        border-radius: 30px;
-        padding: 10px 30px;
+    .hero-kpis {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
     }
 
-    /* Categories */
-    .category-card {
-        background-color: var(--dark-blue);
-        color: white;
-        border-radius: 15px;
-        padding: 20px;
-        text-align: left;
-        transition: transform 0.3s;
-        height: 100%;
+    .hero-kpi {
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 14px;
+        text-align: center;
+        padding: 10px 8px;
     }
 
-    .category-card:hover {
-        transform: translateY(-5px);
+    .hero-kpi .num {
+        display: block;
+        font-weight: 800;
+        font-size: 1.1rem;
+    }
+
+    .hero-kpi .label {
+        display: block;
+        font-size: 0.84rem;
+        opacity: 0.94;
+    }
+
+    .section-title {
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+
+    .section-sub {
+        color: var(--text-600);
+        margin-bottom: 0;
     }
 
     .category-link {
@@ -111,374 +274,446 @@ $feedbacks = [
         height: 100%;
     }
 
-    .category-icon {
-        font-size: 2rem;
-        margin-bottom: 10px;
+    .category-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 20px;
+        height: 100%;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
     }
 
-    /* Products */
+    .category-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 24px rgba(16, 24, 40, 0.08);
+        border-color: #d0d5dd;
+    }
+
+    .category-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: var(--brand-100);
+        color: var(--brand-700);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+        font-size: 1.25rem;
+    }
+
     .product-card {
-        border: none;
-        border-radius: 15px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        transition: 0.3s;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
     .product-card:hover {
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        transform: translateY(-4px);
+        box-shadow: 0 16px 30px rgba(16, 24, 40, 0.12);
     }
 
     .badge-discount {
         position: absolute;
         top: 10px;
         right: 10px;
-        background: var(--dark-blue);
-        color: white;
-        padding: 5px 10px;
-        border-radius: 10px;
+        z-index: 2;
+        background: #1d4ed8;
+        color: #fff;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        padding: 6px 10px;
+        font-weight: 700;
     }
 
     .product-img {
-        border-radius: 15px 15px 0 0;
-        object-fit: cover;
-        height: 180px;
         width: 100%;
-    }
-
-    .stars {
-        color: #ffc107;
-        font-size: 0.8rem;
+        height: 185px;
+        object-fit: cover;
     }
 
     .price-new {
-        color: var(--dark-blue);
-        font-weight: bold;
-        font-size: 1.1rem;
+        color: #0b66ff;
+        font-weight: 800;
+        font-size: 1.05rem;
     }
 
     .price-old {
         text-decoration: line-through;
-        color: #999;
-        font-size: 0.9rem;
+        color: #98a2b3;
+        font-size: 0.88rem;
     }
 
-    .btn-add-cart {
-        background: #4a6cf7;
-        color: white;
-        border-radius: 20px;
-        width: 100%;
-        font-weight: 500;
+    .stars {
+        color: #f59e0b;
+        font-size: 0.82rem;
     }
 
-    /* Banners */
-    .promo-banner {
-        border-radius: 20px;
-        padding: 30px;
-        position: relative;
-        overflow: hidden;
-        color: #333;
+    .btn-login-buy {
+        border-radius: 10px;
+        font-weight: 600;
     }
 
-    .bg-purple-light {
-        background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+    .btn-view-more {
+        min-width: 220px;
     }
 
-    .bg-blue-light {
-        background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
-    }
-
-    /* Features */
-    .feature-box {
+    .benefit-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px;
+        height: 100%;
         text-align: center;
-        padding: 20px;
     }
 
-    .feature-icon-circle {
-        background: #e9ecef;
-        width: 60px;
-        height: 60px;
+    .benefit-icon {
+        width: 56px;
+        height: 56px;
         border-radius: 50%;
-        display: flex;
+        background: #f2f7ff;
+        color: var(--brand-700);
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 10px;
-        color: var(--primary-blue);
-        font-size: 1.5rem;
+        font-size: 1.2rem;
+        margin-bottom: 10px;
     }
 
-    /* Testimonials */
-    .testimonial-card {
-        background: white;
-        border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        height: 100%;
-    }
-
-    /* Feedback Section */
     .feedback-section {
-        background-color: #f9fafb;
-        padding: 60px 0;
+        background: #f5f8ff;
+        border-top: 1px solid #edf2ff;
+        border-bottom: 1px solid #edf2ff;
     }
 
     .feedback-card {
         background: #fff;
-        border: 1px solid #eaecf0;
-        border-radius: 12px;
-        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 20px;
         height: 100%;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        transition: transform 0.2s;
-    }
-
-    .feedback-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-
-    .star-rating {
-        color: #fdb022;
-        margin-bottom: 15px;
-        font-size: 14px;
     }
 
     .feedback-text {
-        font-size: 0.95rem;
-        color: #101828;
-        font-weight: 500;
-        line-height: 1.5;
-        margin-bottom: 20px;
+        color: #344054;
         font-style: italic;
+        min-height: 72px;
     }
 
     .user-info img {
-        width: 48px;
-        height: 48px;
+        width: 44px;
+        height: 44px;
         border-radius: 50%;
         object-fit: cover;
-        margin-right: 12px;
+        margin-right: 10px;
+        border: 1px solid #eaecf0;
     }
 
-    .user-name {
+    .newsletter {
+        background: linear-gradient(130deg, #0b66ff 0%, #0058d6 100%);
+        color: #fff;
+        border-radius: 20px;
+        padding: 34px;
+    }
+
+    .newsletter .form-control {
+        border-radius: 999px;
+        border: none;
+        min-height: 46px;
+    }
+
+    .newsletter .btn {
+        border-radius: 999px;
         font-weight: 700;
-        color: #101828;
-        font-size: 0.9rem;
-        margin-bottom: 2px;
+        min-height: 46px;
     }
 
-    .user-time {
-        font-size: 0.8rem;
-        color: #667085;
-    }
-
-    /* Newsletter */
-    .newsletter-section {
-        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-        color: white;
-        padding: 60px 0;
-        width: 100%;
-        margin-left: calc(-50vw + 50%);
-        margin-right: calc(-50vw + 50%);
-        padding-left: calc(50vw - 50%);
-        padding-right: calc(50vw - 50%);
-    }
-
-    .newsletter-section .container {
-        max-width: 100%;
-        padding-left: 15px !important;
-        padding-right: 15px !important;
-    }
-
-    .newsletter-input {
-        border-radius: 30px 0 0 30px;
-        border: none;
-        padding: 12px 20px;
-    }
-
-    .newsletter-btn {
-        border-radius: 0 30px 30px 0;
-        background: white;
-        color: var(--primary-blue);
-        font-weight: bold;
-        border: none;
-        padding: 0 25px;
-    }
-
-    /* Footer */
     footer {
-        background-color: #1d2939;
-        color: #eaecf0;
-        padding-top: 60px;
-        font-size: 0.9rem;
-        margin-top: 0 !important;
-        width: 100%;
-        margin-left: calc(-50vw + 50%);
-        margin-right: calc(-50vw + 50%);
-        padding-left: calc(50vw - 50%);
-        padding-right: calc(50vw - 50%);
-    }
-
-    footer .container {
-        max-width: 100%;
-        padding-left: 15px !important;
-        padding-right: 15px !important;
+        background: #111827;
+        color: #d0d5dd;
+        margin-top: 50px;
+        padding-top: 48px;
     }
 
     footer h5 {
         color: #fff;
         font-weight: 700;
-        margin-bottom: 20px;
-        text-transform: uppercase;
+        margin-bottom: 14px;
         font-size: 1rem;
     }
 
     footer a {
         color: #d0d5dd;
         text-decoration: none;
-        display: block;
-        margin-bottom: 12px;
-        transition: color 0.2s;
+        display: inline-block;
+        margin-bottom: 10px;
     }
 
     footer a:hover {
         color: #fff;
-        padding-left: 5px;
     }
 
-    footer .social-icons a {
-        display: inline-block;
+    .social-icons a {
         width: 36px;
         height: 36px;
         line-height: 36px;
-        background: rgba(255, 255, 255, 0.1);
         text-align: center;
         border-radius: 50%;
-        margin-right: 10px;
-        color: #fff;
-    }
-
-    footer .social-icons a:hover {
-        background: var(--primary-blue);
+        margin-right: 8px;
+        background: rgba(255, 255, 255, 0.1);
     }
 
     .copyright-border {
-        border-top: 1px solid #344054;
-        margin-top: 40px;
-        padding: 20px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.16);
+        margin-top: 26px;
+        padding: 18px 0;
+        font-size: 0.9rem;
         color: #98a2b3;
     }
 
-    html {
-        scroll-behavior: smooth;
+    @media (max-width: 767.98px) {
+        .hero {
+            padding: 70px 0 56px;
+            border-bottom-left-radius: 22px;
+            border-bottom-right-radius: 22px;
+        }
+
+        .newsletter {
+            padding: 22px;
+        }
     }
     </style>
 </head>
 
 <body>
-
-    <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm">
+    <nav class="navbar navbar-expand-lg bg-white sticky-top shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold text-primary" href="#">
-                <img src="../TrangUser/ack.png" alt="Logo"> </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <a class="navbar-brand" href="#top" aria-label="ACK Mart">
+                <img src="../TrangUser/ack.png" alt="ACK Mart logo">
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Mở menu">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link active" href="../Login/Dangnhap.php">Trang chủ</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#">Sản phẩm</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#">Giới thiệu</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#">Liên hệ</a></li>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav mx-auto">
+                    <li class="nav-item"><a class="nav-link active" href="#top">Trang đầu</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#danhmuc">Danh mục</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#sanpham">Sản phẩm nổi bật</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#lydo">Lý do chọn ACK</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#phanhoi">Phản hồi</a></li>
                 </ul>
-            </div>
-            <div class="d-flex gap-3">
-                <a href="#" class="text-dark"><i class="fas fa-user fa-lg"></i></a>
-                <a href="giohang.php" class="text-dark position-relative">
-                    <i class="fas fa-shopping-cart fa-lg"></i>
-                    <span data-cart-count
-                        class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">0</span>
-                </a>
+
+                <div class="d-flex gap-2 align-items-center">
+                    <a href="../Login/Dangnhap.php" class="btn btn-outline-primary btn-pill">Đăng nhập</a>
+                    <a href="../Login/register.php" class="btn btn-primary btn-pill">Đăng ký</a>
+                </div>
             </div>
         </div>
     </nav>
 
-    <section class="hero-section">
+    <header class="hero" id="top">
         <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6 mb-4 mb-md-0">
-                    <h1 class="display-4 fw-bold mb-3">Bắt đầu <br> trải nghiệm</h1>
-                    <p class="mb-4 opacity-75">Cung cấp đa dạng hàng hóa chất lượng, nguồn gốc rõ ràng, đáp ứng mọi nhu
-                        cầu mua sắm của bạn.</p>
-                    <div class="d-flex gap-3">
-                        <a href="../Login/Dangnhap.php" class="btn btn-hero-white">Mua ngay <i
-                                class="fas fa-arrow-right ms-2"></i></a>
-                        <a href="../Login/Dangnhap.php" class="btn btn-hero-outline">Tìm hiểu thêm</a>
+            <div class="row align-items-center g-4">
+                <div class="col-lg-6">
+                    <span class="badge rounded-pill bg-light text-primary mb-3 px-3 py-2">ACK Mart • Mua sắm tiện
+                        lợi</span>
+                    <h1>Trang mua sắm đầu tiên bạn thấy trước khi đăng nhập</h1>
+                    <p class="mb-4">Khám phá danh mục đa dạng, xem sản phẩm nổi bật và ưu đãi mới. Khi sẵn sàng, đăng
+                        nhập để đặt hàng chỉ trong vài bước.</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="../Login/Dangnhap.php" class="btn btn-light btn-pill">Đăng nhập để mua ngay <i
+                                class="fas fa-arrow-right ms-1"></i></a>
+                        <a href="#sanpham" class="btn btn-outline-light btn-pill">Xem sản phẩm nổi bật</a>
+                    </div>
+
+                    <div class="hero-kpis">
+                        <div class="hero-kpi">
+                            <span class="num">1.000+</span>
+                            <span class="label">Sản phẩm</span>
+                        </div>
+                        <div class="hero-kpi">
+                            <span class="num">24/7</span>
+                            <span class="label">Hỗ trợ</span>
+                        </div>
+                        <div class="hero-kpi">
+                            <span class="num">99%</span>
+                            <span class="label">Khách hài lòng</span>
+                        </div>
                     </div>
                 </div>
-                <div class="col-md-6 text-center">
-                    <div class="hero-img-container d-inline-block">
-                        <img src="../TrangUser/chtl.png" class="img-fluid rounded" alt="Hero Image">
+
+                <div class="col-lg-6">
+                    <div class="hero-card">
+                        <img src="../TrangUser/chtl.png" class="img-fluid" alt="Không gian mua sắm ACK Mart">
                     </div>
                 </div>
             </div>
         </div>
-    </section>
+    </header>
 
-    <section class="container py-5">
-        <div class="text-center mb-5">
-            <h2 class="text-primary fw-bold">Danh mục sản phẩm</h2>
-            <p class="text-muted">Chọn từ các danh mục yêu thích của bạn</p>
+    <section class="container py-5" id="danhmuc">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-2">
+            <div>
+                <h2 class="section-title">Danh mục nổi bật</h2>
+                <p class="section-sub">Xem nhanh các nhóm hàng được quan tâm nhiều nhất.</p>
+            </div>
         </div>
-        <div class="row g-4">
-            <?php foreach($categories as $cat): ?>
-            <div class="col-md-3 col-6">
-                <a class="category-link" href="<?php echo htmlspecialchars((string)($cat['link'] ?? '#'), ENT_QUOTES, 'UTF-8'); ?>">
-                    <div class="category-card p-4">
-                        <i class="fas <?php echo $cat['icon']; ?> category-icon"></i>
-                        <h5 class="fw-bold"><?php echo $cat['name']; ?></h5>
-                        <small class="opacity-75"><?php echo $cat['desc']; ?></small>
-                    </div>
+
+        <div class="row g-3 g-md-4">
+            <?php foreach ($categories as $cat): ?>
+            <div class="col-sm-6 col-lg-3">
+                <a class="category-link" href="<?php echo e((string) ($cat['link'] ?? '#')); ?>">
+                    <article class="category-card">
+                        <span class="category-icon"><i
+                                class="fas <?php echo e((string) ($cat['icon'] ?? 'fa-box')); ?>"></i></span>
+                        <h5 class="fw-bold mb-1 text-dark"><?php echo e((string) ($cat['name'] ?? 'Danh mục')); ?></h5>
+                        <p class="text-muted mb-0 small"><?php echo e((string) ($cat['desc'] ?? '')); ?></p>
+                    </article>
                 </a>
             </div>
             <?php endforeach; ?>
         </div>
     </section>
 
-    <section id="product-section" class="bg-light py-5">
-        <div class="container">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h3 class="text-primary fw-bold mb-0">Danh mục sản phẩm</h3>
-                <a href="#" class="btn btn-light rounded-pill">Xem tất cả</a>
+    <section class="container pb-5" id="sanpham">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-2">
+            <div>
+                <h2 class="section-title">Sản phẩm nổi bật</h2>
+                <p class="section-sub">Xem trước sản phẩm đang bán chạy. Đăng nhập để thêm vào giỏ hàng.</p>
             </div>
-            <div class="row g-4">
-                <?php foreach($products as $prod): ?>
-                <div class="col-md-3 col-sm-6">
-                    <div class="card product-card h-100"
-                        data-product-id="<?php echo htmlspecialchars((string)($prod['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
-                        data-product-name="<?php echo htmlspecialchars((string)$prod['name'], ENT_QUOTES, 'UTF-8'); ?>"
-                        data-product-price="<?php echo htmlspecialchars((string)($prod['price_raw'] ?? $prod['price']), ENT_QUOTES, 'UTF-8'); ?>"
-                        data-product-old-price="<?php echo htmlspecialchars((string)$prod['old_price'], ENT_QUOTES, 'UTF-8'); ?>"
-                        data-product-img="<?php echo htmlspecialchars((string)$prod['image'], ENT_QUOTES, 'UTF-8'); ?>">
-                        <span class="badge-discount"><?php echo $prod['discount']; ?></span>
-                        <a href="<?php echo htmlspecialchars((string)($prod['link'] ?? '#'), ENT_QUOTES, 'UTF-8'); ?>"
-                            class="text-decoration-none">
-                            <img src="<?php echo $prod['image']; ?>" class="card-img-top product-img"
-                                alt="<?php echo $prod['name']; ?>">
-                        </a>
-                        <div class="card-body">
-                            <h6 class="card-title product-title fw-bold"><?php echo $prod['name']; ?></h6>
-                            <div class="stars mb-2">
-                                <?php for($i=0; $i<$prod['rating']; $i++) echo '<i class="fas fa-star"></i>'; ?>
-                                <span class="text-muted small">(<?php echo rand(10,50); ?>)</span>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <span class="price-new"><?php echo $prod['price']; ?></span>
-                                <span class="price-old"><?php echo $prod['old_price']; ?></span>
-                            </div>
-                            <button class="btn btn-add-cart btn-sm"><i class="fas fa-shopping-cart me-1"></i> Thêm vào
-                                giỏ</button>
+        </div>
+
+        <div class="row g-4">
+            <?php if (!empty($products)): ?>
+            <?php foreach ($products as $prod): ?>
+            <?php
+                    $prodId = (string) ($prod['id'] ?? '');
+                    $prodName = (string) ($prod['name'] ?? 'Sản phẩm');
+                    $prodPrice = (string) ($prod['price'] ?? '0 ₫');
+                    $prodOldPrice = (string) ($prod['old_price'] ?? '');
+                    $prodPriceRaw = (string) ($prod['price_raw'] ?? '0');
+                    $prodImage = (string) ($prod['image'] ?? '../TrangUser/ack.png');
+                    $prodDiscount = (string) ($prod['discount'] ?? '-10%');
+                    $prodLink = (string) ($prod['link'] ?? '#');
+                    $prodRating = (int) ($prod['rating'] ?? 5);
+                    $prodRating = max(1, min(5, $prodRating));
+                    ?>
+            <div class="col-sm-6 col-lg-3">
+                <article class="card product-card h-100" data-product-id="<?php echo e($prodId); ?>"
+                    data-product-name="<?php echo e($prodName); ?>" data-product-price="<?php echo e($prodPriceRaw); ?>"
+                    data-product-old-price="<?php echo e($prodOldPrice); ?>"
+                    data-product-img="<?php echo e($prodImage); ?>">
+                    <span class="badge-discount"><?php echo e($prodDiscount); ?></span>
+                    <a href="<?php echo e($prodLink); ?>" class="text-decoration-none">
+                        <img src="<?php echo e($prodImage); ?>" class="product-img" alt="<?php echo e($prodName); ?>">
+                    </a>
+                    <div class="card-body d-flex flex-column">
+                        <h6 class="product-title fw-bold mb-2"><?php echo e($prodName); ?></h6>
+                        <div class="stars mb-2" aria-label="Đánh giá sản phẩm">
+                            <?php for ($i = 0; $i < $prodRating; $i++): ?>
+                            <i class="fas fa-star"></i>
+                            <?php endfor; ?>
+                            <span class="text-muted small ms-1">(nổi bật)</span>
                         </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-3 mt-auto">
+                            <span class="price-new"><?php echo e($prodPrice); ?></span>
+                            <span class="price-old"><?php echo e($prodOldPrice); ?></span>
+                        </div>
+
+                        <a href="../Login/Dangnhap.php" class="btn btn-outline-primary btn-login-buy w-100">
+                            <i class="fas fa-right-to-bracket me-1"></i> Đăng nhập để mua
+                        </a>
                     </div>
+                </article>
+            </div>
+            <?php endforeach; ?>
+            <?php else: ?>
+            <div class="col-12">
+                <div class="alert alert-light border text-center py-4">
+                    Chưa có dữ liệu sản phẩm nổi bật. Bạn có thể đăng nhập để xem danh sách đầy đủ.
+                    <div class="mt-3">
+                        <a href="../Login/Dangnhap.php" class="btn btn-primary btn-pill">Đăng nhập ngay</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="text-center mt-4">
+            <a href="../Login/Dangnhap.php" class="btn btn-outline-primary btn-pill btn-view-more">
+                <i class="fas fa-plus me-1"></i> Xem thêm sản phẩm
+            </a>
+        </div>
+    </section>
+
+    <section class="container py-5" id="lydo">
+        <div class="text-center mb-4">
+            <h2 class="section-title">Vì sao nên chọn ACK Mart?</h2>
+            <p class="section-sub">Nhanh chóng, minh bạch và thân thiện ở mọi bước mua sắm.</p>
+        </div>
+
+        <div class="row g-3 g-md-4">
+            <div class="col-6 col-md-3">
+                <div class="benefit-card">
+                    <span class="benefit-icon"><i class="fas fa-truck-fast"></i></span>
+                    <h6 class="fw-bold mb-1">Giao nhanh</h6>
+                    <p class="small text-muted mb-0">Ưu tiên đơn nội thành trong ngày.</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="benefit-card">
+                    <span class="benefit-icon"><i class="fas fa-shield-heart"></i></span>
+                    <h6 class="fw-bold mb-1">An toàn</h6>
+                    <p class="small text-muted mb-0">Sản phẩm rõ nguồn gốc và thông tin.</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="benefit-card">
+                    <span class="benefit-icon"><i class="fas fa-headset"></i></span>
+                    <h6 class="fw-bold mb-1">Hỗ trợ 24/7</h6>
+                    <p class="small text-muted mb-0">Luôn có đội ngũ sẵn sàng hỗ trợ bạn.</p>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="benefit-card">
+                    <span class="benefit-icon"><i class="fas fa-rotate-left"></i></span>
+                    <h6 class="fw-bold mb-1">Đổi trả rõ ràng</h6>
+                    <p class="small text-muted mb-0">Xử lý nhanh với sản phẩm lỗi/hư hỏng.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="feedback-section py-5" id="phanhoi">
+        <div class="container">
+            <div class="text-center mb-4">
+                <h2 class="section-title">Khách hàng nói gì?</h2>
+                <p class="section-sub">Những phản hồi thực tế từ người dùng đã mua tại ACK Mart.</p>
+            </div>
+
+            <div class="row g-4">
+                <?php foreach ($feedbacks as $item): ?>
+                <div class="col-md-4">
+                    <article class="feedback-card">
+                        <div class="stars mb-2" aria-hidden="true">
+                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
+                                class="fas fa-star"></i><i class="fas fa-star"></i>
+                        </div>
+                        <p class="feedback-text">“<?php echo e((string) ($item['comment'] ?? '')); ?>”</p>
+                        <div class="user-info d-flex align-items-center mt-3">
+                            <img src="<?php echo e((string) ($item['avatar'] ?? '../TrangUser/ack.png')); ?>"
+                                alt="<?php echo e((string) ($item['name'] ?? 'Khách hàng')); ?>">
+                            <div>
+                                <div class="fw-bold"><?php echo e((string) ($item['name'] ?? 'Khách hàng')); ?></div>
+                                <small
+                                    class="text-muted"><?php echo e((string) ($item['time'] ?? 'Vừa xong')); ?></small>
+                            </div>
+                        </div>
+                    </article>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -486,190 +721,71 @@ $feedbacks = [
     </section>
 
     <section class="container py-5">
-        <div class="row g-4">
-            <div class="col-md-6">
-                <div class="promo-banner bg-purple-light h-100 d-flex flex-column justify-content-center">
-                    <span class="badge bg-primary w-25 mb-2">Flash Sale</span>
-                    <h3 class="fw-bold">Giảm giá lên đến <span class="text-primary">30%</span></h3>
-                    <p>Cơ hội mua sắm giá siêu hời ngay hôm nay</p>
-                    <a href="#" class="btn btn-primary btn-sm w-25 rounded-pill">Mua ngay</a>
+        <div class="newsletter">
+            <div class="row g-3 align-items-center">
+                <div class="col-lg-7">
+                    <h3 class="fw-bold mb-1">Nhận ưu đãi sớm từ ACK Mart</h3>
+                    <p class="mb-0 opacity-75">Đăng nhập hoặc tạo tài khoản để lưu voucher và theo dõi đơn hàng.</p>
                 </div>
-            </div>
-            <div class="col-md-6">
-                <div class="promo-banner bg-blue-light h-100 d-flex flex-column justify-content-center">
-                    <span class="badge bg-primary w-25 mb-2">Mới</span>
-                    <h3 class="fw-bold">Sản phẩm <span class="text-primary">mới nhất</span></h3>
-                    <p>Khám phá bộ sưu tập mới về cực chất</p>
-                    <a href="#" class="btn btn-light btn-sm w-25 rounded-pill">Xem ngay</a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="bg-white py-5">
-        <div class="container">
-            <div class="row">
-                <div class="col-6 col-md-3 feature-box">
-                    <div class="feature-icon-circle"><i class="fas fa-truck"></i></div>
-                    <h6 class="fw-bold">Giao hàng nhanh</h6>
-                    <small class="text-muted">Miễn phí giao hàng cho đơn từ 500k</small>
-                </div>
-                <div class="col-6 col-md-3 feature-box">
-                    <div class="feature-icon-circle"><i class="fas fa-shield-alt"></i></div>
-                    <h6 class="fw-bold">Bảo mật thanh toán</h6>
-                    <small class="text-muted">Đảm bảo an toàn mọi giao dịch</small>
-                </div>
-                <div class="col-6 col-md-3 feature-box">
-                    <div class="feature-icon-circle"><i class="fas fa-headset"></i></div>
-                    <h6 class="fw-bold">Giao hàng nhanh</h6> <small class="text-muted">Hỗ trợ khách hàng 24/7</small>
-                </div>
-                <div class="col-6 col-md-3 feature-box">
-                    <div class="feature-icon-circle"><i class="fas fa-sync"></i></div>
-                    <h6 class="fw-bold">Đổi trả nhanh</h6>
-                    <small class="text-muted">Đổi trả trong ngày nếu lỗi</small>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="feedback-section">
-        <div class="container">
-            <div class="text-center mb-5">
-                <h3 class="fw-bold">Cảm nhận của khách hàng</h3>
-                <p class="text-muted">Hàng nghàn khách hàng hài lòng về chung tôi</p>
-            </div>
-
-            <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="feedback-card">
-                        <div class="star-rating">
-                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                class="fas fa-star"></i><i class="fas fa-star"></i>
-                        </div>
-                        <p class="feedback-text">"Sản phẩm rất tươi ngon, giao hàng đúng hẹn. Tết này sẽ ủng hộ tiếp!
-                            Đóng gói rất c᪭n thận."</p>
-                        <div class="user-info d-flex align-items-center">
-                            <img src="../TrangUser/messi.png" alt="User">
-                            <div>
-                                <div class="user-name">Dinha Quốc Cường</div>
-                                <div class="user-time">15 phút trước</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <div class="feedback-card">
-                        <div class="star-rating">
-                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                class="fas fa-star"></i><i class="fas fa-star"></i>
-                        </div>
-                        <p class="feedback-text">"Giá cả cạnh tranh, nhân viên tư vấn nhiệt tình. Sẽ giới thiệu cho bạn
-                            bè mua sắm tại đây."</p>
-                        <div class="user-info d-flex align-items-center">
-                            <img src="../TrangUser/kiet.png" alt="User">
-                            <div>
-                                <div class="user-name">Nguyễn Thanh Kiệt</div>
-                                <div class="user-time">1 giờ trước</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <div class="feedback-card">
-                        <div class="star-rating">
-                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i
-                                class="fas fa-star"></i><i class="fas fa-star-half-alt"></i>
-                        </div>
-                        <p class="feedback-text">"Dịch vụ tuyệt vời. Mua hàng online mà được freeship lại còn được quà
-                            tặng kèm."</p>
-                        <div class="user-info d-flex align-items-center">
-                            <img src="../TrangUser/anlecho.png" alt="User">
-                            <div>
-                                <div class="user-name">Lê Quốc An</div>
-                                <div class="user-time">2 giờ trước</div>
-                            </div>
-                        </div>
+                <div class="col-lg-5">
+                    <div class="d-grid gap-2 d-sm-flex justify-content-lg-end">
+                        <a href="../Login/Dangnhap.php" class="btn btn-light px-4">Đăng nhập</a>
+                        <a href="../Login/register.php" class="btn btn-outline-light px-4">Tạo tài khoản</a>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <section class="newsletter-section text-center">
-        <div class="container">
-            <i class="far fa-envelope fa-3x mb-3"></i>
-            <h3 class="fw-bold">Đăng kí nhận khuyến mãi</h3>
-            <p class="mb-4">Nhận thông tin về các sản phẩm mới và ưu đãi đặc biệt</p>
-            <form class="d-flex justify-content-center w-md-50 mx-auto">
-                <input type="email" class="form-control newsletter-input w-50" placeholder="Nhập email của bạn...">
-                <button type="submit" class="newsletter-btn">Đăng ký</button>
-            </form>
         </div>
     </section>
 
     <footer>
         <div class="container">
-            <div class="row">
-                <div class="col-md-4 mb-4">
-                    <div class="d-flex align-items-center mb-3">
-                        <img src="../TrangUser/ack.png" alt="ACK Logo"
-                            style="height: 40px; filter: brightness(0) invert(1);"> <span
-                            class="ms-2 fw-bold fs-4 text-white">ACK Mart</span>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <img src="../TrangUser/ack.png" alt="ACK logo"
+                            style="height: 38px; filter: brightness(0) invert(1);">
+                        <span class="ms-2 fw-bold fs-5 text-white">ACK Mart</span>
                     </div>
-                    <p class="text-muted">Nơi mua sắm tin cậy cho mọi nhà. Cam kết chất lượng, giá cả bình ổn và dịch vụ
-                        tận tâm.</p>
+                    <p class="mb-2">Nơi mua sắm đáng tin cậy cho gia đình Việt: giá hợp lý, thông tin rõ ràng và hỗ trợ
+                        nhanh chóng.</p>
                     <div class="social-icons mt-3">
-                        <a href="#"><i class="fab fa-facebook-f"></i></a>
-                        <a href="#"><i class="fab fa-instagram"></i></a>
-                        <a href="#"><i class="fab fa-youtube"></i></a>
-                        <a href="#"><i class="fab fa-tiktok"></i></a>
+                        <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                        <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                        <a href="#" aria-label="Youtube"><i class="fab fa-youtube"></i></a>
                     </div>
                 </div>
 
-                <div class="col-6 col-md-2 mb-4">
-                    <h5>Về ACK</h5>
-                    <a href="#">Giới thiệu</a>
-                    <a href="#">Tuyển dụng</a>
-                    <a href="#">Tin tức & Sự kiện</a>
-                    <a href="#">Hệ thống cửa hàng</a>
+                <div class="col-6 col-md-2">
+                    <h5>Khám phá</h5>
+                    <a href="#danhmuc">Danh mục</a><br>
+                    <a href="#sanpham">Sản phẩm nổi bật</a><br>
+                    <a href="tin-tuc.php">Tin tức</a>
                 </div>
 
-                <div class="col-6 col-md-3 mb-4">
-                    <h5>Hỗ trợ khách hàng</h5>
-                    <a href="#">Chính sách đổi trả</a>
-                    <a href="#">Chính sách giao hàng</a>
-                    <a href="#">Phương thức thanh toán</a>
-                    <a href="#">Câu hỏi thường gặp (FAQ)</a>
+                <div class="col-6 col-md-3">
+                    <h5>Hỗ trợ</h5>
+                    <a href="privacy-policy.php">Chính sách bảo mật</a><br>
+                    <a href="tuyen-dung.php">Tuyển dụng</a><br>
+                    <a href="locations.php">Hệ thống cửa hàng</a>
                 </div>
 
-                <div class="col-md-3 mb-4">
+                <div class="col-md-3">
                     <h5>Liên hệ</h5>
-                    <div class="d-flex mb-2 text-muted">
-                        <i class="fas fa-map-marker-alt mt-1 me-2"></i>
-                        <span>Phường 1, TP. Cao Lãnh, Đồng Tháp</span>
-                    </div>
-                    <div class="d-flex mb-2 text-muted">
-                        <i class="fas fa-envelope mt-1 me-2"></i>
-                        <span>hotro@ackmart.vn</span>
-                    </div>
-                    <div class="d-flex mb-2 text-muted">
-                        <i class="fas fa-phone-alt mt-1 me-2"></i>
-                        <span class="text-white fw-bold">1900 6789</span>
-                    </div>
+                    <div class="mb-2"><i class="fas fa-location-dot me-2"></i>TP. Cao Lãnh, Đồng Tháp</div>
+                    <div class="mb-2"><i class="fas fa-envelope me-2"></i>hotro@ackmart.vn</div>
+                    <div><i class="fas fa-phone me-2"></i><strong>1900 6789</strong></div>
                 </div>
             </div>
 
             <div class="copyright-border d-flex flex-column flex-md-row justify-content-between align-items-center">
-                <p class="m-0">© 2025 ACK Mart. Tất cả các quyền được bảo lưu.</p>
-                <div class="mt-2 mt-md-0">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/Visa.svg" height="20"
-                        class="me-2 bg-white rounded p-1" alt="Visa">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" height="20"
-                        class="me-2 bg-white rounded p-1" alt="Mastercard">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" height="20"
-                        class="bg-white rounded p-1" alt="Paypal">
+                <p class="m-0">© 2026 ACK Mart. Tất cả quyền được bảo lưu.</p>
+                <div class="mt-2 mt-md-0 d-flex align-items-center gap-2">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/Visa.svg" height="22"
+                        class="bg-white rounded p-1" alt="Visa">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" height="22"
+                        class="bg-white rounded p-1" alt="Mastercard">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" height="22"
+                        class="bg-white rounded p-1" alt="PayPal">
                 </div>
             </div>
         </div>

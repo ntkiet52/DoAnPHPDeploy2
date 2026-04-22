@@ -130,14 +130,110 @@ function togglePass(inputId, icon) {
 
 // 3. XỬ LÝ ĐĂNG KÝ
 const signUpForm = document.getElementById("form-register");
+const registerEmailInput = signUpForm.querySelector(
+  'input[placeholder="Email"]',
+);
+const registerOtpInput = document.getElementById("reg-otp");
+const sendOtpButton = document.getElementById("btn-send-otp");
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function setSendOtpButtonCooldown(seconds) {
+  if (!sendOtpButton) return;
+
+  const total = Number.parseInt(String(seconds || 0), 10);
+  if (!Number.isFinite(total) || total <= 0) {
+    sendOtpButton.disabled = false;
+    sendOtpButton.textContent = "Gửi mã";
+    return;
+  }
+
+  let remain = total;
+  sendOtpButton.disabled = true;
+  sendOtpButton.textContent = `Gửi lại (${remain}s)`;
+
+  const timer = window.setInterval(() => {
+    remain -= 1;
+    if (remain <= 0) {
+      window.clearInterval(timer);
+      sendOtpButton.disabled = false;
+      sendOtpButton.textContent = "Gửi mã";
+      return;
+    }
+
+    sendOtpButton.textContent = `Gửi lại (${remain}s)`;
+  }, 1000);
+}
+
+if (sendOtpButton) {
+  sendOtpButton.addEventListener("click", function () {
+    const email = String(registerEmailInput?.value || "").trim();
+
+    if (!isValidEmail(email)) {
+      alert("Vui lòng nhập email hợp lệ trước khi nhận mã xác thực.");
+      registerEmailInput?.focus();
+      return;
+    }
+
+    sendOtpButton.disabled = true;
+    sendOtpButton.textContent = "Đang gửi...";
+
+    fetch("register.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `action=send_otp&email=${encodeURIComponent(email)}`,
+    })
+      .then((res) => res.text())
+      .then((data) => {
+        if (data === "otp_sent") {
+          alert("Mã xác thực đã được gửi về email của bạn.");
+          setSendOtpButtonCooldown(60);
+        } else if (data === "otp_cooldown") {
+          alert("Bạn vừa gửi mã. Vui lòng chờ khoảng 60 giây rồi thử lại.");
+          setSendOtpButtonCooldown(45);
+        } else if (data === "exists") {
+          alert("Email đã tồn tại!");
+          setSendOtpButtonCooldown(0);
+        } else if (data === "invalid_email") {
+          alert("Email không hợp lệ!");
+          setSendOtpButtonCooldown(0);
+        } else if (data === "otp_send_failed") {
+          alert("Không gửi được mã xác thực. Vui lòng thử lại sau.");
+          setSendOtpButtonCooldown(0);
+        } else {
+          alert("Không thể gửi mã xác thực.");
+          setSendOtpButtonCooldown(0);
+        }
+      })
+      .catch(() => {
+        alert("Không thể kết nối máy chủ khi gửi mã xác thực.");
+        setSendOtpButtonCooldown(0);
+      });
+  });
+}
+
 signUpForm.addEventListener("submit", function (e) {
   e.preventDefault();
   const name = signUpForm.querySelector(
     'input[placeholder="Tên của bạn"]',
   ).value;
-  const email = signUpForm.querySelector('input[placeholder="Email"]').value;
+  const email = registerEmailInput.value;
+  const otpCode = String(registerOtpInput?.value || "").trim();
   const password = document.getElementById("reg-pass").value;
   const rePassword = document.getElementById("reg-repass").value;
+
+  if (!isValidEmail(email)) {
+    alert("Email không hợp lệ!");
+    return;
+  }
+
+  if (!/^\d{6}$/.test(otpCode)) {
+    alert("Vui lòng nhập mã xác thực gồm 6 số.");
+    registerOtpInput?.focus();
+    return;
+  }
 
   if (password.length < 6) {
     alert("Mật khẩu phải có ít nhất 6 ký tự!");
@@ -151,7 +247,7 @@ signUpForm.addEventListener("submit", function (e) {
   fetch("register.php", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+    body: `action=register&name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}&otp=${encodeURIComponent(otpCode)}`,
   })
     .then((res) => res.text())
     .then((data) => {
@@ -159,10 +255,19 @@ signUpForm.addEventListener("submit", function (e) {
         alert("Đăng ký thành công! Vui lòng đăng nhập.");
         container.classList.remove("active");
         signUpForm.reset();
+        setSendOtpButtonCooldown(0);
       } else if (data === "exists") {
         alert("Email đã tồn tại!");
       } else if (data === "invalid_email") {
         alert("Email không hợp lệ!");
+      } else if (data === "otp_missing") {
+        alert("Vui lòng nhập mã xác thực email.");
+      } else if (data === "otp_not_requested") {
+        alert("Bạn chưa gửi mã xác thực cho email này.");
+      } else if (data === "otp_expired") {
+        alert("Mã xác thực đã hết hạn. Vui lòng gửi mã mới.");
+      } else if (data === "otp_invalid") {
+        alert("Mã xác thực không đúng.");
       } else if (data === "weak_password") {
         alert("Mật khẩu phải có ít nhất 6 ký tự!");
       } else if (data === "missing") {

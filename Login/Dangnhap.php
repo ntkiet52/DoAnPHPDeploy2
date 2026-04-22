@@ -40,21 +40,52 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
         rel="stylesheet">
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=20260419-2">
+    <style>
+        .ack-notice-wrap {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: min(380px, calc(100vw - 24px));
+            pointer-events: none;
+        }
+
+        .ack-notice-item {
+            pointer-events: auto;
+            border-radius: 10px;
+            border: 1px solid;
+            padding: 10px 14px;
+            font-size: 14px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        }
+
+        .ack-notice-item.success {
+            background: #e8f7ee;
+            color: #1a7f37;
+            border-color: #b7ebc6;
+        }
+
+        .ack-notice-item.error {
+            background: #fdecec;
+            color: #842029;
+            border-color: #f2b6bc;
+        }
+    </style>
 </head>
 
 <body>
 
-    <?php if ($resetSuccess): ?>
-    <div
-        style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; background: #e8f7ee; color: #1a7f37; border: 1px solid #b7ebc6; padding: 10px 16px; border-radius: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08);">
-        Đổi mật khẩu thành công! Bạn hãy đăng nhập lại nhé.
-    </div>
-    <?php endif; ?>
-
-    <?php if ($socialError !== ''): ?>
-    <div
-        style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; background: #fdecec; color: #842029; border: 1px solid #f2b6bc; padding: 10px 16px; border-radius: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08);">
-        <?php echo htmlspecialchars($socialError); ?>
+    <?php if ($resetSuccess || $socialError !== ''): ?>
+    <div class="ack-notice-wrap">
+        <?php if ($resetSuccess): ?>
+        <div class="ack-notice-item success">Đổi mật khẩu thành công! Bạn hãy đăng nhập lại nhé.</div>
+        <?php endif; ?>
+        <?php if ($socialError !== ''): ?>
+        <div class="ack-notice-item error"><?php echo htmlspecialchars($socialError); ?></div>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 
@@ -68,6 +99,11 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
 
                 <input type="text" placeholder="Tên của bạn" required>
                 <input type="email" placeholder="Email" required>
+
+                <div class="otp-row">
+                    <input type="text" id="reg-otp" placeholder="Mã xác thực Email" maxlength="6" required>
+                    <button type="button" id="btn-send-otp" class="btn-send-otp">Gửi mã</button>
+                </div>
 
                 <div class="input-group">
                     <input type="password" id="reg-pass" placeholder="Mật khẩu" required>
@@ -131,7 +167,16 @@ $socialError = trim((string) ($_GET['social_error'] ?? ''));
         </div>
     </div>
 
-    <script src="xuli.js?v=20260421-3"></script>
+    <script>
+        document.querySelectorAll('.ack-notice-item').forEach((node) => {
+            window.setTimeout(() => {
+                node.style.transition = 'opacity 0.2s ease';
+                node.style.opacity = '0';
+                window.setTimeout(() => node.remove(), 220);
+            }, 3500);
+        });
+    </script>
+    <script src="xuli.js?v=20260421-4"></script>
 </body>
 
 </html>

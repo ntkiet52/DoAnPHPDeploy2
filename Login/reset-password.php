@@ -200,17 +200,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         text-decoration: none;
         font-size: 13px;
     }
+
+    .ack-notice-wrap {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: min(360px, calc(100vw - 24px));
+        pointer-events: none;
+    }
+
+    .ack-notice-item {
+        pointer-events: auto;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border: 1px solid #ffd4d4;
+        background: #fff1f1;
+        color: #b42318;
+    }
     </style>
 </head>
 
 <body>
+    <?php if ($error !== ''): ?>
+    <div class="ack-notice-wrap">
+        <div class="ack-notice-item"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
+    </div>
+    <?php endif; ?>
+
     <div class="card">
         <h1>Đặt lại mật khẩu</h1>
         <p>Nhập mật khẩu mới cho tài khoản của bạn.</p>
-
-        <?php if ($error !== ''): ?>
-        <div class="alert error"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
-        <?php endif; ?>
 
         <?php if ($error === ''): ?>
         <form action="reset-password.php" method="post">
@@ -232,6 +257,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="Dangnhap.php">Quay lại đăng nhập</a>
         </div>
     </div>
+
+    <script>
+    document.querySelectorAll('.ack-notice-item').forEach((node) => {
+        window.setTimeout(() => {
+            node.style.transition = 'opacity 0.2s ease';
+            node.style.opacity = '0';
+            window.setTimeout(() => node.remove(), 220);
+        }, 3500);
+    });
+    </script>
 </body>
 
 </html>

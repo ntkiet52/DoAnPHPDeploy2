@@ -129,21 +129,58 @@ unset($_SESSION['reset_link_preview']);
     .preview a {
         color: #0056b3;
     }
+
+    .ack-notice-wrap {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: min(360px, calc(100vw - 24px));
+        pointer-events: none;
+    }
+
+    .ack-notice-item {
+        pointer-events: auto;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border: 1px solid;
+    }
+
+    .ack-notice-item.success {
+        background: #e8f7ee;
+        color: #1a7f37;
+        border-color: #b7ebc6;
+    }
+
+    .ack-notice-item.error {
+        background: #fff1f1;
+        color: #b42318;
+        border-color: #ffd4d4;
+    }
     </style>
 </head>
 
 <body>
-    <div class="card">
-        <h1>Quên mật khẩu</h1>
-        <p>Nhập email đã đăng ký. Hệ thống sẽ tạo liên kết đặt lại mật khẩu.</p>
-
+    <?php if ($status === 'sent' || $status === 'invalid_email'): ?>
+    <div class="ack-notice-wrap">
         <?php if ($status === 'sent'): ?>
-        <div class="alert success">Nếu email tồn tại, liên kết đặt lại mật khẩu đã được tạo.</div>
+        <div class="ack-notice-item success">Nếu email tồn tại, liên kết đặt lại mật khẩu đã được tạo.</div>
         <?php endif; ?>
 
         <?php if ($status === 'invalid_email'): ?>
-        <div class="alert error">Email không hợp lệ. Vui lòng kiểm tra lại.</div>
+        <div class="ack-notice-item error">Email không hợp lệ. Vui lòng kiểm tra lại.</div>
         <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <div class="card">
+        <h1>Quên mật khẩu</h1>
+        <p>Nhập email đã đăng ký. Hệ thống sẽ tạo liên kết đặt lại mật khẩu.</p>
 
         <form action="request_reset.php" method="post">
             <label for="email">Email</label>
@@ -162,6 +199,16 @@ unset($_SESSION['reset_link_preview']);
 
         <a class="back-link" href="Dangnhap.php">← Quay lại đăng nhập</a>
     </div>
+
+    <script>
+    document.querySelectorAll('.ack-notice-item').forEach((node) => {
+        window.setTimeout(() => {
+            node.style.transition = 'opacity 0.2s ease';
+            node.style.opacity = '0';
+            window.setTimeout(() => node.remove(), 220);
+        }, 3500);
+    });
+    </script>
 </body>
 
 </html>
