@@ -521,10 +521,113 @@ $categories = $__catalogData['categories'];
         padding: 20px 0;
         color: #98a2b3;
     }
+
+    .ack-notice-wrap {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: min(420px, calc(100vw - 24px));
+        pointer-events: none;
+    }
+
+    .ack-notice-item {
+        pointer-events: auto;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border: 1px solid;
+        text-align: center;
+    }
+
+    .ack-notice-item.success {
+        background: #dff7e6;
+        color: #1a7f37;
+        border-color: #b7ebc6;
+    }
+
+    .ack-notice-item.error {
+        background: #fff1f1;
+        color: #b42318;
+        border-color: #ffd4d4;
+    }
+
+    .ack-loader-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+
+    .ack-loader-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .ack-loader-box {
+        background: #ffffff;
+        padding: 18px 22px;
+        border-radius: 16px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .ack-loader-spinner {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 4px solid #e5e7eb;
+        border-top-color: #4f46e5;
+        animation: ack-spin 0.8s linear infinite;
+    }
+
+    .ack-loader-text {
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    @keyframes ack-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
     </style>
 </head>
 
 <body>
+    <?php $newsletterStatus = trim((string) ($_GET['newsletter'] ?? '')); ?>
+    <?php if ($newsletterStatus !== ''): ?>
+    <div class="ack-notice-wrap">
+        <?php if ($newsletterStatus === 'sent'): ?>
+        <div class="ack-notice-item success">Đã gửi thông tin về email của bạn. Cảm ơn bạn!</div>
+        <?php elseif ($newsletterStatus === 'invalid'): ?>
+        <div class="ack-notice-item error">Email không hợp lệ. Vui lòng kiểm tra lại.</div>
+        <?php else: ?>
+        <div class="ack-notice-item error">Không gửi được. Vui lòng thử lại sau.</div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <div class="ack-loader-overlay" id="ack-loader">
+        <div class="ack-loader-box">
+            <div class="ack-loader-spinner"></div>
+            <div class="ack-loader-text">Đang gửi...</div>
+        </div>
+    </div>
 
     <header class="sticky-top bg-white">
         <div class="top-bar">
@@ -814,11 +917,12 @@ $categories = $__catalogData['categories'];
                         <i class="far fa-envelope newsletter-icon"></i>
                         <h3 class="fw-bold">Đăng kí nhận khuyến mãi</h3>
                         <p class="mb-4 text-white-50">Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt</p>
-                        <div class="d-flex justify-content-center">
-                            <input type="email" class="form-control newsletter-input w-50"
-                                placeholder="Email của bạn...">
-                            <button class="newsletter-btn">Đăng ký</button>
-                        </div>
+                        <form class="d-flex justify-content-center" id="newsletter-form" method="post"
+                            action="newsletter-submit.php">
+                            <input type="email" name="email" class="form-control newsletter-input w-50"
+                                placeholder="Email của bạn..." required>
+                            <button type="submit" class="newsletter-btn">Đăng ký</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -922,6 +1026,94 @@ $categories = $__catalogData['categories'];
             const walk = (x - startX) * 2; // Nhân 2 để kéo nhanh hơn một chút
             slider.scrollLeft = scrollLeft - walk;
         });
+        </script>
+
+        <script>
+        document.querySelectorAll('.ack-notice-item').forEach((node) => {
+            window.setTimeout(() => {
+                node.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                node.style.opacity = '0';
+                node.style.transform = 'translateY(-6px)';
+                window.setTimeout(() => node.remove(), 220);
+            }, 3200);
+        });
+
+        const createNoticeWrap = () => {
+            const wrap = document.createElement('div');
+            wrap.className = 'ack-notice-wrap';
+            document.body.appendChild(wrap);
+            return wrap;
+        };
+
+        const showToast = (message, isError = false) => {
+            const wrap = document.querySelector('.ack-notice-wrap') || createNoticeWrap();
+            const item = document.createElement('div');
+            item.className = `ack-notice-item ${isError ? 'error' : 'success'}`;
+            item.textContent = message;
+            wrap.appendChild(item);
+
+            window.setTimeout(() => {
+                item.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                item.style.opacity = '0';
+                item.style.transform = 'translateY(-6px)';
+                window.setTimeout(() => item.remove(), 220);
+            }, 3200);
+        };
+
+        const newsletterForm = document.getElementById('newsletter-form');
+        if (newsletterForm) {
+            newsletterForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const emailInput = newsletterForm.querySelector('input[name="email"]');
+                const submitBtn = newsletterForm.querySelector('button[type="submit"]');
+                if (!emailInput || !submitBtn) return;
+
+                const email = emailInput.value.trim();
+                if (!email) {
+                    showToast('Vui lòng nhập email.', true);
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                const originalText = submitBtn.textContent;
+                submitBtn.textContent = 'Đang gửi...';
+                const loader = document.getElementById('ack-loader');
+                if (loader) {
+                    loader.classList.add('active');
+                }
+
+                try {
+                    const response = await fetch(newsletterForm.action, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: new URLSearchParams({
+                            email
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast(data.message || 'Đã gửi thông tin về email của bạn. Cảm ơn bạn!');
+                        emailInput.value = '';
+                    } else {
+                        showToast(data.message || 'Không gửi được. Vui lòng thử lại sau.', true);
+                    }
+                } catch (error) {
+                    showToast('Không gửi được. Vui lòng thử lại sau.', true);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                    if (loader) {
+                        loader.classList.remove('active');
+                    }
+                }
+            });
+        }
         </script>
 </body>
 

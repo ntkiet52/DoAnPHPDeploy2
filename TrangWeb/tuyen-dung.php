@@ -254,7 +254,7 @@ if (session_status() === PHP_SESSION_NONE) {
     }
 
     .opportunity-card p {
-        margin: 0;
+        margin: 0 0 10px;
         line-height: 1.5;
         flex: 1;
     }
@@ -264,9 +264,9 @@ if (session_status() === PHP_SESSION_NONE) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 34px;
+        min-height: 44px;
         border-radius: 999px;
-        padding: 0 16px;
+        padding: 10px 16px;
         border: none;
         color: #2f66cc;
         font-weight: 700;
@@ -318,7 +318,7 @@ if (session_status() === PHP_SESSION_NONE) {
         top: 8px;
         left: 10px;
         color: #fff;
-        font-size: 1.8rem;
+        font-size: 1.3rem;
         font-weight: 800;
         text-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
     }
@@ -784,10 +784,136 @@ if (session_status() === PHP_SESSION_NONE) {
         align-items: center;
         justify-content: center;
     }
+
+    .ack-notice-wrap {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: min(420px, calc(100vw - 24px));
+        pointer-events: none;
+    }
+
+    .ack-notice-item {
+        pointer-events: auto;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border: 1px solid;
+        text-align: center;
+    }
+
+    .ack-notice-item.success {
+        background: #dff7e6;
+        color: #1a7f37;
+        border-color: #b7ebc6;
+    }
+
+    .ack-notice-item.error {
+        background: #fff1f1;
+        color: #b42318;
+        border-color: #ffd4d4;
+    }
+
+    .newsletter-notice {
+        margin-top: 12px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        text-align: center;
+        max-width: 760px;
+        width: 100%;
+    }
+
+    .newsletter-notice.success {
+        background: rgba(16, 185, 129, 0.18);
+        color: #ecfdf3;
+        border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .newsletter-notice.error {
+        background: rgba(239, 68, 68, 0.18);
+        color: #fff1f2;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
+    .ack-loader-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+
+    .ack-loader-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .ack-loader-box {
+        background: #ffffff;
+        padding: 18px 22px;
+        border-radius: 16px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .ack-loader-spinner {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 4px solid #e5e7eb;
+        border-top-color: #4f46e5;
+        animation: ack-spin 0.8s linear infinite;
+    }
+
+    .ack-loader-text {
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    @keyframes ack-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
     </style>
 </head>
 
 <body>
+    <?php $newsletterStatus = trim((string) ($_GET['newsletter'] ?? '')); ?>
+    <?php if ($newsletterStatus !== ''): ?>
+    <div class="ack-notice-wrap">
+        <?php if ($newsletterStatus === 'sent'): ?>
+        <div class="ack-notice-item success">Đã gửi thông tin về email của bạn. Cảm ơn bạn!</div>
+        <?php elseif ($newsletterStatus === 'invalid'): ?>
+        <div class="ack-notice-item error">Email không hợp lệ. Vui lòng kiểm tra lại.</div>
+        <?php else: ?>
+        <div class="ack-notice-item error">Không gửi được. Vui lòng thử lại sau.</div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <div class="ack-loader-overlay" id="ack-loader">
+        <div class="ack-loader-box">
+            <div class="ack-loader-spinner"></div>
+            <div class="ack-loader-text">Đang gửi...</div>
+        </div>
+    </div>
     <header class="sticky-top bg-white">
         <div class="top-bar">
             <div class="container d-flex align-items-center justify-content-between">
@@ -879,9 +1005,9 @@ if (session_status() === PHP_SESSION_NONE) {
                 <div class="col-md-6">
                     <article class="opportunity-card store">
                         <h4>Khối cửa hàng</h4>
-                        <p>Với hệ thống hơn 300 cửa hàng, ACK Việt Nam đã phủ rộng khắp các tỉnh thành phía Nam: TP. Hồ
-                            Chí Minh, Đồng Nai, Bình Dương, Bà Rịa - Vũng Tàu, Tiền Giang, Cần Thơ. ACK hứa hẹn là điểm
-                            đến cơ hội nghề nghiệp hấp dẫn cho các bạn trẻ.</p>
+                        <p>“ACK Việt Nam với hơn 100 cửa hàng đã phủ rộng khắp miền Tây: Cần Thơ, An Giang, Kiên Giang,
+                            Đồng Tháp, Vĩnh Long.
+                            Là điểm đến nghề nghiệp hấp dẫn cho giới trẻ.”.</p>
                         <button type="button" class="apply-small-btn">Ứng tuyển ngay</button>
                     </article>
                 </div>
@@ -898,27 +1024,27 @@ if (session_status() === PHP_SESSION_NONE) {
         </section>
 
         <section class="career-section-card">
-            <h3 class="section-title">Life at ACK</h3>
+            <h3 class="section-title">Đại diện thương hiệu của ACK</h3>
             <div class="life-grid">
                 <div class="life-item">
-                    <img src="../TrangUser/messi.png" alt="Friendly">
-                    <span class="life-tag">Friendly</span>
+                    <img src="../AnhTrangTD/MVN.jpg " alt="Friendly">
+                    <span class="life-tag">Messi</span>
                 </div>
                 <div class="life-item">
-                    <img src="../TrangUser/kiet.png" alt="Fresh">
-                    <span class="life-tag">Fresh</span>
+                    <img src="../AnhTrangTD/SonTung.png" alt="Fresh">
+                    <span class="life-tag">Sơn Tùng MTP</span>
                 </div>
                 <div class="life-item">
-                    <img src="../TrangUser/anlecho.png" alt="Fair">
-                    <span class="life-tag">Fair</span>
+                    <img src="../AnhTrangTD/jack.png    " alt="Fair">
+                    <span class="life-tag">J97-Jack</span>
                 </div>
                 <div class="life-item">
-                    <img src="../TrangUser/chtl.png" alt="Fun">
+                    <img src="../AnhTrangTD/cuahangdongkhach.png" alt="Fun">
                     <span class="life-tag">Fun</span>
                 </div>
                 <div class="life-item">
-                    <img src="../AnhTrangChu/muctet.png" alt="Fair store">
-                    <span class="life-tag">Fair</span>
+                    <img src="../AnhTrangTD/BanhTD.png" alt="Fair store">
+                    <span class="life-tag"></span>
                 </div>
             </div>
         </section>
@@ -1007,10 +1133,10 @@ if (session_status() === PHP_SESSION_NONE) {
             <i class="far fa-envelope newsletter-icon" aria-hidden="true"></i>
             <h3 class="newsletter-title">Đăng kí nhận khuyến mãi</h3>
             <p class="newsletter-subtitle">Nhận thông tin về các sản phẩm mới và các ưu đãi đặc biệt</p>
-            <div class="newsletter-form">
-                <input type="email" class="newsletter-input" placeholder="Email của bạn...">
-                <button type="button" class="newsletter-btn">Đăng ký</button>
-            </div>
+            <form class="newsletter-form" id="newsletter-form" method="post" action="newsletter-submit.php">
+                <input type="email" name="email" class="newsletter-input" placeholder="Email của bạn..." required>
+                <button type="submit" class="newsletter-btn">Đăng ký</button>
+            </form>
         </div>
     </section>
 
@@ -1139,6 +1265,92 @@ if (session_status() === PHP_SESSION_NONE) {
 
         counters.forEach((counter) => observer.observe(counter));
     })();
+
+    document.querySelectorAll('.ack-notice-item').forEach((node) => {
+        window.setTimeout(() => {
+            node.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+            node.style.opacity = '0';
+            node.style.transform = 'translateY(-6px)';
+            window.setTimeout(() => node.remove(), 220);
+        }, 3200);
+    });
+
+    const createNoticeWrap = () => {
+        const wrap = document.createElement('div');
+        wrap.className = 'ack-notice-wrap';
+        document.body.appendChild(wrap);
+        return wrap;
+    };
+
+    const showToast = (message, isError = false) => {
+        const wrap = document.querySelector('.ack-notice-wrap') || createNoticeWrap();
+        const item = document.createElement('div');
+        item.className = `ack-notice-item ${isError ? 'error' : 'success'}`;
+        item.textContent = message;
+        wrap.appendChild(item);
+
+        window.setTimeout(() => {
+            item.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+            item.style.opacity = '0';
+            item.style.transform = 'translateY(-6px)';
+            window.setTimeout(() => item.remove(), 220);
+        }, 3200);
+    };
+
+    const newsletterForm = document.getElementById('newsletter-form');
+    if (newsletterForm) {
+        newsletterForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const emailInput = newsletterForm.querySelector('input[name="email"]');
+            const submitBtn = newsletterForm.querySelector('button[type="submit"]');
+            if (!emailInput || !submitBtn) return;
+
+            const email = emailInput.value.trim();
+            if (!email) {
+                showToast('Vui lòng nhập email.', true);
+                return;
+            }
+
+            submitBtn.disabled = true;
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = 'Đang gửi...';
+            const loader = document.getElementById('ack-loader');
+            if (loader) {
+                loader.classList.add('active');
+            }
+
+            try {
+                const response = await fetch(newsletterForm.action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        email
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message || 'Đã gửi thông tin về email của bạn. Cảm ơn bạn!');
+                    emailInput.value = '';
+                } else {
+                    showToast(data.message || 'Không gửi được. Vui lòng thử lại sau.', true);
+                }
+            } catch (error) {
+                showToast('Không gửi được. Vui lòng thử lại sau.', true);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+                if (loader) {
+                    loader.classList.remove('active');
+                }
+            }
+        });
+    }
     </script>
 </body>
 

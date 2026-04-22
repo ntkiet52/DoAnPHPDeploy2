@@ -1442,7 +1442,7 @@
     if (!card.querySelector(".ack-stock-badge")) {
       const badge = document.createElement("div");
       badge.className = "ack-stock-badge";
-      badge.textContent = "Hết hàng - vui lòng chờ admin nhập thêm";
+      badge.textContent = "Hết hàng";
       const host = card.querySelector(".card-body") || card;
       host.appendChild(badge);
     }

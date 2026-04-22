@@ -1173,6 +1173,91 @@ $categories = $__catalogData['categories'];
         justify-content: center;
     }
 
+    .ack-notice-wrap {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: min(420px, calc(100vw - 24px));
+        pointer-events: none;
+    }
+
+    .ack-notice-item {
+        pointer-events: auto;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border: 1px solid;
+        text-align: center;
+    }
+
+    .ack-notice-item.success {
+        background: #dff7e6;
+        color: #1a7f37;
+        border-color: #b7ebc6;
+    }
+
+    .ack-notice-item.error {
+        background: #fff1f1;
+        color: #b42318;
+        border-color: #ffd4d4;
+    }
+
+    .ack-loader-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+
+    .ack-loader-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .ack-loader-box {
+        background: #ffffff;
+        padding: 18px 22px;
+        border-radius: 16px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .ack-loader-spinner {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 4px solid #e5e7eb;
+        border-top-color: #4f46e5;
+        animation: ack-spin 0.8s linear infinite;
+    }
+
+    .ack-loader-text {
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    @keyframes ack-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
     /* AI Chatbot Widget */
     #chatbot-button {
         position: fixed;
@@ -1384,6 +1469,24 @@ $categories = $__catalogData['categories'];
 </head>
 
 <body>
+    <?php $newsletterStatus = trim((string) ($_GET['newsletter'] ?? '')); ?>
+    <?php if ($newsletterStatus !== ''): ?>
+    <div class="ack-notice-wrap">
+        <?php if ($newsletterStatus === 'sent'): ?>
+        <div class="ack-notice-item success">Đã gửi thông tin về email của bạn. Cảm ơn bạn!</div>
+        <?php elseif ($newsletterStatus === 'invalid'): ?>
+        <div class="ack-notice-item error">Email không hợp lệ. Vui lòng kiểm tra lại.</div>
+        <?php else: ?>
+        <div class="ack-notice-item error">Không gửi được. Vui lòng thử lại sau.</div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <div class="ack-loader-overlay" id="ack-loader">
+        <div class="ack-loader-box">
+            <div class="ack-loader-spinner"></div>
+            <div class="ack-loader-text">Đang gửi...</div>
+        </div>
+    </div>
 
     <header class="sticky-top bg-white">
         <div class="top-bar">
@@ -2527,5 +2630,4 @@ $categories = $__catalogData['categories'];
     })();
     </script>
 </body>
-
 </html>

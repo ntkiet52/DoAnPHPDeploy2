@@ -221,10 +221,13 @@ $feedbacks = [
     .hero-card {
         background: #fff;
         border-radius: 20px;
-        padding: 14px;
+        padding: 10px;
+        width: 700px;
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.16);
-        max-width: 520px;
+        max-width: 1000px;
         margin-inline: auto;
+        position: relative;
+        z-index: 1;
     }
 
     .hero-card img {
@@ -520,7 +523,7 @@ $feedbacks = [
                 <div class="col-lg-6">
                     <span class="badge rounded-pill bg-light text-primary mb-3 px-3 py-2">ACK Mart • Mua sắm tiện
                         lợi</span>
-                    <h1>Trang mua sắm đầu tiên bạn thấy trước khi đăng nhập</h1>
+                    <h1>Trang mua sắm online số 1 Việt Nam</h1>
                     <p class="mb-4">Khám phá danh mục đa dạng, xem sản phẩm nổi bật và ưu đãi mới. Khi sẵn sàng, đăng
                         nhập để đặt hàng chỉ trong vài bước.</p>
                     <div class="d-flex flex-wrap gap-2">
@@ -547,7 +550,7 @@ $feedbacks = [
 
                 <div class="col-lg-6">
                     <div class="hero-card">
-                        <img src="../TrangUser/chtl.png" class="img-fluid" alt="Không gian mua sắm ACK Mart">
+                        <img src="../AnhTrangTD/Ro.png" class="img-fluid" alt="Không gian mua sắm ACK Mart">
                     </div>
                 </div>
             </div>
