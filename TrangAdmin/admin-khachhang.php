@@ -81,7 +81,7 @@ function resolveCustomerAccountEmail(PDO $pdo, string $customerId): ?string {
 
     $email = trim((string) pickCustomerValue(
         $row,
-        ['masothue', 'ma_so_thue', 'tax_code', 'email', 'mail'],
+        ['email', 'mail', 'masothue', 'ma_so_thue', 'tax_code'],
         ''
     ));
 
@@ -370,57 +370,74 @@ try {
                     if ($khIdCol === null) {
                         $crudError = 'Không tìm thấy cột mã khách hàng để xóa.';
                     } else {
-                        $accountEmail = resolveCustomerAccountEmail($pdo, $id);
-                        $usersColumns = tableExists($pdo, 'users') ? getExistingColumns($pdo, 'users') : [];
-                        $userEmailCol = !empty($usersColumns)
-                            ? pickExistingColumn($usersColumns, ['email', 'mail', 'username', 'user_name'])
-                            : null;
-                        $userIdCol = !empty($usersColumns)
-                            ? pickExistingColumn($usersColumns, ['id', 'user_id', 'userid'])
-                            : null;
+                        // Check if customer has any orders
+                        $pxColumns = getExistingColumns($pdo, 'phieuxuat');
+                        $pxCustomerCol = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh']);
+                        
+                        if ($pxCustomerCol !== null) {
+                            $checkOrderStmt = $pdo->prepare("SELECT COUNT(*) as order_count FROM phieuxuat WHERE `{$pxCustomerCol}` = :id");
+                            $checkOrderStmt->execute([':id' => $id]);
+                            $orderResult = $checkOrderStmt->fetch();
+                            $orderCount = (int) ($orderResult['order_count'] ?? 0);
+                            
+                            if ($orderCount > 0) {
+                                $crudError = "Không thể xóa khách hàng này vì còn có $orderCount đơn hàng liên kết. Vui lòng xóa tất cả đơn hàng trước hoặc liên hệ quản trị viên.";
+                            }
+                        }
 
-                        $pdo->beginTransaction();
+                        if ($crudError === '') {
+                            $accountEmail = resolveCustomerAccountEmail($pdo, $id);
+                            $usersColumns = tableExists($pdo, 'users') ? getExistingColumns($pdo, 'users') : [];
+                            $userEmailCol = !empty($usersColumns)
+                                ? pickExistingColumn($usersColumns, ['email', 'mail', 'username', 'user_name'])
+                                : null;
+                            $userIdCol = !empty($usersColumns)
+                                ? pickExistingColumn($usersColumns, ['id', 'user_id', 'userid'])
+                                : null;
 
-                        try {
-                            if ($accountEmail !== null && $userEmailCol !== null) {
-                                $resolvedUserId = null;
+                            $pdo->beginTransaction();
 
-                                if ($userIdCol !== null) {
-                                    $findUserStmt = $pdo->prepare(
-                                        "SELECT `{$userIdCol}` FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email) LIMIT 1"
-                                    );
-                                    $findUserStmt->execute([':email' => $accountEmail]);
-                                    $resolvedUserId = $findUserStmt->fetchColumn();
-                                }
+                            try {
+                                if ($accountEmail !== null && $userEmailCol !== null) {
+                                    $resolvedUserId = null;
 
-                                if ($resolvedUserId !== false && $resolvedUserId !== null && tableExists($pdo, 'login_history')) {
-                                    $loginHistoryColumns = getExistingColumns($pdo, 'login_history');
-                                    $historyUserIdCol = pickExistingColumn($loginHistoryColumns, ['user_id', 'userid', 'id_user']);
-                                    if ($historyUserIdCol !== null) {
-                                        $historyDeleteStmt = $pdo->prepare("DELETE FROM login_history WHERE `{$historyUserIdCol}` = :user_id");
-                                        $historyDeleteStmt->execute([':user_id' => $resolvedUserId]);
+                                    if ($userIdCol !== null) {
+                                        $findUserStmt = $pdo->prepare(
+                                            "SELECT `{$userIdCol}` FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email) LIMIT 1"
+                                        );
+                                        $findUserStmt->execute([':email' => $accountEmail]);
+                                        $resolvedUserId = $findUserStmt->fetchColumn();
                                     }
+
+                                    if ($resolvedUserId !== false && $resolvedUserId !== null && tableExists($pdo, 'login_history')) {
+                                        $loginHistoryColumns = getExistingColumns($pdo, 'login_history');
+                                        $historyUserIdCol = pickExistingColumn($loginHistoryColumns, ['user_id', 'userid', 'id_user']);
+                                        if ($historyUserIdCol !== null) {
+                                            $historyDeleteStmt = $pdo->prepare("DELETE FROM login_history WHERE `{$historyUserIdCol}` = :user_id");
+                                            $historyDeleteStmt->execute([':user_id' => $resolvedUserId]);
+                                        }
+                                    }
+
+                                    $deleteUserStmt = $pdo->prepare("DELETE FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email)");
+                                    $deleteUserStmt->execute([':email' => $accountEmail]);
                                 }
 
-                                $deleteUserStmt = $pdo->prepare("DELETE FROM users WHERE LOWER(`{$userEmailCol}`) = LOWER(:email)");
-                                $deleteUserStmt->execute([':email' => $accountEmail]);
-                            }
+                                $deleteCustomerStmt = $pdo->prepare("DELETE FROM khachhang WHERE `{$khIdCol}` = :id");
+                                $deleteCustomerStmt->execute([':id' => $id]);
 
-                            $deleteCustomerStmt = $pdo->prepare("DELETE FROM khachhang WHERE `{$khIdCol}` = :id");
-                            $deleteCustomerStmt->execute([':id' => $id]);
+                                $pdo->commit();
 
-                            $pdo->commit();
-
-                            if ($accountEmail !== null) {
-                                $crudMessage = 'Đã xóa vĩnh viễn khách hàng và tài khoản đăng nhập liên kết.';
-                            } else {
-                                $crudMessage = 'Đã xóa vĩnh viễn khách hàng. Không tìm thấy email tài khoản đăng nhập liên kết.';
+                                if ($accountEmail !== null) {
+                                    $crudMessage = 'Đã xóa vĩnh viễn khách hàng và tài khoản đăng nhập liên kết.';
+                                } else {
+                                    $crudMessage = 'Đã xóa vĩnh viễn khách hàng. Không tìm thấy email tài khoản đăng nhập liên kết.';
+                                }
+                            } catch (Throwable $deleteError) {
+                                if ($pdo->inTransaction()) {
+                                    $pdo->rollBack();
+                                }
+                                throw $deleteError;
                             }
-                        } catch (Throwable $deleteError) {
-                            if ($pdo->inTransaction()) {
-                                $pdo->rollBack();
-                            }
-                            throw $deleteError;
                         }
                     }
                 }
@@ -628,10 +645,13 @@ try {
     foreach ($rows as $row) {
         $maKh = (string) pickCustomerValue($row, ['makhachhang', 'ma_khach_hang', 'makh', 'id'], '');
         $name = (string) pickCustomerValue($row, ['tenkhachhang', 'ten_khach_hang', 'hoten', 'ten', 'name'], '');
-        $taxCode = (string) pickCustomerValue($row, ['masothue', 'ma_so_thue', 'tax_code', 'email', 'mail'], '');
+        $taxCode = (string) pickCustomerValue($row, ['masothue', 'ma_so_thue', 'tax_code'], '');
+        $email = (string) pickCustomerValue($row, ['email', 'mail'], '');
         $phone = (string) pickCustomerValue($row, ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone'], '');
         $total = isset($totalByCustomer[$maKh]) ? (float) $totalByCustomer[$maKh] : 0;
-        $normalizedEmail = strtolower(trim($taxCode));
+        
+        // Use Email column if available, fallback to MaSoThue
+        $normalizedEmail = strtolower(trim($email !== '' ? $email : $taxCode));
         $hasLoginAccount = $normalizedEmail !== ''
             && filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) !== false
             && isset($userAccountStatusByEmail[$normalizedEmail]);
@@ -653,7 +673,7 @@ try {
             'id' => $maKh,
             'name' => $name,
             'gender' => (string) pickCustomerValue($row, ['gioitinh', 'gioi_tinh', 'gender'], ''),
-            'email' => $taxCode,
+            'email' => $email !== '' ? $email : $taxCode,
             'phone' => $phone,
             'birthday' => (string) pickCustomerValue($row, ['sotaikhoankh', 'so_tai_khoan_kh', 'ngaysinh', 'ngay_sinh', 'birthday', 'dob'], ''),
             'address' => (string) pickCustomerValue($row, ['diachi', 'dia_chi', 'address'], ''),
@@ -1367,7 +1387,7 @@ try {
                             <th>Mã KH</th>
                             <th>Tên khách hàng</th>
                             <th>Giới tính</th>
-                            <th>Mã số thuế</th>
+                            <th>Email</th>
                             <th>SĐT</th>
                             <th>Số tài khoản</th>
                             <th class="text-end">Số đơn</th>

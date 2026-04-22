@@ -38,7 +38,7 @@ $newsItems = [
     <style>
     :root {
         --primary-blue: #007bff;
-        --bg-gray: #ececec;
+        --bg-gray: #F5F7F8;
         --line-orange: #f2a24b;
         --accent-purple: #5b63f5;
     }
@@ -128,7 +128,7 @@ $newsItems = [
     }
 
     .news-inner {
-        background: #ececec;
+        background: #F5F7F8;
         padding: 12px 0 0;
     }
 

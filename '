@@ -1,0 +1,1 @@
+\$row['id'] . ': ' . \$row['name'] . ' (' . \$row['provider'] . ') = . \$row['email'] . ' [' . \$row['status'] . \"]\n\";
