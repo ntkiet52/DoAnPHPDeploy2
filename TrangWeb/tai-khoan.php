@@ -89,7 +89,8 @@ function loadOrCreateAccountCustomer(mysqli $conn, string $userName, string $use
     $columns = getExistingColumnsMysqli($conn, 'khachhang');
     $idCol = pickExistingColumn($columns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
     $nameCol = pickExistingColumn($columns, ['tenkhachhang', 'ten_khach_hang', 'tenkh', 'hoten', 'name']);
-    $taxCol = pickExistingColumn($columns, ['masothue', 'ma_so_thue', 'email']);
+    $emailCol = pickExistingColumn($columns, ['email', 'mail']);
+    $taxCol = pickExistingColumn($columns, ['masothue', 'ma_so_thue', 'tax_code']);
     $genderCol = pickExistingColumn($columns, ['gioitinh', 'gioi_tinh', 'gender']);
     $addressCol = pickExistingColumn($columns, ['diachi', 'dia_chi', 'address']);
     $phoneCol = pickExistingColumn($columns, ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone']);
@@ -129,9 +130,9 @@ function loadOrCreateAccountCustomer(mysqli $conn, string $userName, string $use
         }
     }
 
-    if ($taxCol !== null && $safeEmail !== '') {
+    if ($emailCol !== null && $safeEmail !== '') {
         $result = $conn->query(
-            "SELECT * FROM khachhang WHERE LOWER(`{$taxCol}`) = LOWER('{$safeEmail}') LIMIT 1"
+            "SELECT * FROM khachhang WHERE LOWER(`{$emailCol}`) = LOWER('{$safeEmail}') LIMIT 1"
         );
         if ($result) {
             $customerRow = $result->fetch_assoc() ?: null;
@@ -159,9 +160,9 @@ function loadOrCreateAccountCustomer(mysqli $conn, string $userName, string $use
             "'" . $conn->real_escape_string($safeInsertName) . "'",
         ];
 
-        if ($taxCol !== null && $userEmail !== '') {
-            $insertColumns[] = $taxCol;
-            $insertValues[] = "'" . $conn->real_escape_string(mb_substr(strtolower($userEmail), 0, 30)) . "'";
+        if ($emailCol !== null && $userEmail !== '') {
+            $insertColumns[] = $emailCol;
+            $insertValues[] = "'" . $conn->real_escape_string(strtolower($userEmail)) . "'";
         }
 
         $conn->query(

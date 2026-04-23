@@ -632,6 +632,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['comment_action'] ?
                 ':vaitro' => $currentUserRole,
             ]);
 
+            // Trigger notification if this is a reply
+            if ($parentCommentId > 0 && $isLoggedInUser) {
+                try {
+                    // Notify parent comment author
+                    $parentStmt = $pdo->prepare(
+                        'SELECT TenNguoiDung, NguoiDungId FROM hanghoa_binhluan WHERE Id = :id LIMIT 1'
+                    );
+                    $parentStmt->execute([':id' => $parentCommentId]);
+                    $parentRow = $parentStmt->fetch();
+                    
+                    if ($parentRow) {
+                        // Parent comment exists - notification will be picked up by notification-handler.php
+                        // No need to manually trigger anything, just let the bell icon query fetch it
+                    }
+                } catch (Throwable $e) {
+                    // Ignore notification errors
+                }
+            }
+            
             header('Location: drink-detail.php?id=' . urlencode($commentProductId) . '&comment_saved=1#reviews');
             exit;
             } catch (Throwable $e) {
@@ -650,7 +669,7 @@ try {
     detailEnsureCommentSchema($pdo);
 
     $commentStmt = $pdo->prepare(
-        'SELECT Id, ParentId, TenNguoiDung, NoiDung, HinhAnh, SoSao, NgayTao
+        'SELECT Id, ParentId, TenNguoiDung, NoiDung, HinhAnh, SoSao, NgayTao, NguoiDungId, VaiTroNguoiDung
          FROM hanghoa_binhluan
          WHERE MaHang = :mahang
          ORDER BY NgayTao DESC, Id DESC'
@@ -668,6 +687,8 @@ try {
             'rating' => max(0, min(5, (int)($row['SoSao'] ?? 0))),
             'content' => (string)($row['NoiDung'] ?? ''),
             'image' => trim((string)($row['HinhAnh'] ?? '')),
+            'user_id' => (int)($row['NguoiDungId'] ?? 0),
+            'user_role' => (string)($row['VaiTroNguoiDung'] ?? ''),
             'created_at' => (string)($row['NgayTao'] ?? ''),
         ];
     }

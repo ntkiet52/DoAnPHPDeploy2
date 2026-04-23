@@ -153,6 +153,88 @@ try {
         ];
     }
 
+    // 1.5) Bình luận gốc của tôi (chưa có reply) - để biết ai đã phản hồi chưa
+    $userCommentsSql = '';
+    $userCommentsParams = [];
+    
+    if ($currentUserId > 0) {
+        // User đã login, lấy comments theo NguoiDungId
+        $userCommentsSql = 'SELECT bl.Id,
+                bl.MaHang,
+                bl.TenNguoiDung,
+                bl.NoiDung,
+                bl.VaiTroNguoiDung,
+                bl.NgayTao,
+                COUNT(reply.Id) AS ReplyCount,
+                hh.TenHang
+         FROM hanghoa_binhluan bl
+         LEFT JOIN hanghoa_binhluan reply ON reply.ParentId = bl.Id
+         LEFT JOIN hanghoa hh ON hh.MaHang = bl.MaHang
+         WHERE bl.NguoiDungId = :uid
+           AND bl.ParentId IS NULL
+         GROUP BY bl.Id
+         ORDER BY bl.NgayTao DESC
+         LIMIT 40';
+        $userCommentsParams = [':uid' => $currentUserId];
+    } else if ($currentUserName !== '') {
+        // User chưa login, lấy comments theo TenNguoiDung
+        $userCommentsSql = 'SELECT bl.Id,
+                bl.MaHang,
+                bl.TenNguoiDung,
+                bl.NoiDung,
+                bl.VaiTroNguoiDung,
+                bl.NgayTao,
+                COUNT(reply.Id) AS ReplyCount,
+                hh.TenHang
+         FROM hanghoa_binhluan bl
+         LEFT JOIN hanghoa_binhluan reply ON reply.ParentId = bl.Id
+         LEFT JOIN hanghoa hh ON hh.MaHang = bl.MaHang
+         WHERE bl.NguoiDungId IS NULL 
+           AND LOWER(bl.TenNguoiDung) = LOWER(:uname)
+           AND bl.ParentId IS NULL
+         GROUP BY bl.Id
+         ORDER BY bl.NgayTao DESC
+         LIMIT 40';
+        $userCommentsParams = [':uname' => $currentUserName];
+    }
+
+    if ($userCommentsSql !== '') {
+        $userCommentsStmt = $pdo->prepare($userCommentsSql);
+    if ($userCommentsSql !== '') {
+        $userCommentsStmt = $pdo->prepare($userCommentsSql);
+        $userCommentsStmt->execute($userCommentsParams);
+
+        foreach ($userCommentsStmt->fetchAll() as $row) {
+            $commentId = (int) ($row['Id'] ?? 0);
+            $replyCount = (int) ($row['ReplyCount'] ?? 0);
+            
+            // Chỉ hiển thị comment gốc nếu chưa được add ở trên (từ replies)
+            $existsInItems = false;
+            foreach ($items as $item) {
+                if (isset($item['id']) && strpos($item['id'], 'user_comment_' . $commentId) === 0) {
+                    $existsInItems = true;
+                    break;
+                }
+            }
+            
+            if (!$existsInItems) {
+                $items[] = [
+                    'id' => 'user_comment_' . $commentId,
+                    'type' => 'my_comment',
+                    'title' => 'Bình luận của bạn',
+                    'content' => trim((string) ($row['NoiDung'] ?? '')),
+                    'sender_name' => (string) ($row['TenNguoiDung'] ?? 'Bạn'),
+                    'sender_role' => strtolower(trim((string) ($row['VaiTroNguoiDung'] ?? 'user'))),
+                    'product_id' => (string) ($row['MaHang'] ?? ''),
+                    'product_name' => (string) ($row['TenHang'] ?? ''),
+                    'url' => 'drink-detail.php?id=' . rawurlencode((string) ($row['MaHang'] ?? '')) . '#reviews',
+                    'created_at' => (string) ($row['NgayTao'] ?? ''),
+                    'reply_count' => $replyCount,
+                ];
+            }
+        }
+    }
+
     // 2) Riêng admin: nhận thông báo khi khách hàng gửi phản hồi mới
     if ($currentRole === 'admin') {
         $adminStmt = $pdo->query(

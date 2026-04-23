@@ -221,13 +221,66 @@ try {
         ]
     );
 
+    // Ensure email column exists in khachhang table
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM khachhang");
+        $colRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $existingCols = array_map(static function ($col) {
+            return strtolower((string) ($col['Field'] ?? ''));
+        }, $colRows);
+        
+        $hasEmailCol = in_array('email', $existingCols, true) || in_array('mail', $existingCols, true);
+        
+        if (!$hasEmailCol) {
+            // Add email column if it doesn't exist
+            $pdo->exec("ALTER TABLE khachhang ADD COLUMN email VARCHAR(255) NULL DEFAULT NULL");
+        }
+
+        // Migrate email data from tax code (MaSoThue) to email column if email is empty
+        // This preserves email addresses that were mistakenly stored in tax code column
+        try {
+            // Find tax code column name
+            $taxCodeCol = null;
+            foreach (['masothue', 'ma_so_thue', 'tax_code'] as $candidate) {
+                if (in_array(strtolower($candidate), $existingCols, true)) {
+                    $taxCodeCol = $candidate;
+                    break;
+                }
+            }
+
+            // Find email column name
+            $emailCol = null;
+            foreach (['email', 'mail'] as $candidate) {
+                if (in_array(strtolower($candidate), $existingCols, true)) {
+                    $emailCol = $candidate;
+                    break;
+                }
+            }
+
+            // If both columns exist, migrate valid emails from tax code to email column
+            if ($taxCodeCol !== null && $emailCol !== null) {
+                // Update email column from tax code where email is empty and tax code contains @
+                $pdo->exec("UPDATE khachhang 
+                    SET `{$emailCol}` = `{$taxCodeCol}` 
+                    WHERE (`{$emailCol}` IS NULL OR `{$emailCol}` = '') 
+                    AND `{$taxCodeCol}` IS NOT NULL 
+                    AND `{$taxCodeCol}` LIKE '%@%'");
+            }
+        } catch (Throwable $ignored) {
+            // Ignore errors during migration
+        }
+    } catch (Throwable $ignored) {
+        // Ignore errors during column check/creation
+    }
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $action = isset($_POST['crud_action']) ? trim((string) $_POST['crud_action']) : '';
 
             if ($action === 'add_customer') {
                 $name = trim((string) ($_POST['name'] ?? ''));
-                $taxCode = trim((string) ($_POST['email'] ?? ''));
+                $email = trim((string) ($_POST['customer_email'] ?? ''));
+                $taxCode = trim((string) ($_POST['tax_code'] ?? ''));
                 $phone = trim((string) ($_POST['phone'] ?? ''));
                 $bankAccount = trim((string) ($_POST['birthday'] ?? ''));
                 $address = trim((string) ($_POST['address'] ?? ''));
@@ -240,6 +293,7 @@ try {
 
                     $idCol = pickExistingColumn($columns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
                     $nameCol = pickExistingColumn($columns, ['tenkhachhang', 'ten_khach_hang', 'hoten', 'ten', 'name']);
+                    $emailCol = pickExistingColumn($columns, ['email', 'mail']);
                     $genderCol = pickExistingColumn($columns, ['gioitinh', 'gioi_tinh', 'gender']);
                     $addressCol = pickExistingColumn($columns, ['diachi', 'dia_chi', 'address']);
                     $phoneCol = pickExistingColumn($columns, ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone']);
@@ -256,6 +310,13 @@ try {
                             ':id' => $newId,
                             ':name' => $name,
                         ];
+
+                        // Luôn cố gắng lưu email nếu email được nhập
+                        if ($emailCol !== null && $email !== '') {
+                            $insertColumns[] = $emailCol;
+                            $insertPlaceholders[] = ':email';
+                            $params[':email'] = $email;
+                        }
 
                         if ($genderCol !== null) {
                             $insertColumns[] = $genderCol;
@@ -298,7 +359,8 @@ try {
             if ($action === 'update_customer') {
                 $id = trim((string) ($_POST['customer_id'] ?? ''));
                 $name = trim((string) ($_POST['name'] ?? ''));
-                $taxCode = trim((string) ($_POST['email'] ?? ''));
+                $email = trim((string) ($_POST['customer_email'] ?? ''));
+                $taxCode = trim((string) ($_POST['tax_code'] ?? ''));
                 $phone = trim((string) ($_POST['phone'] ?? ''));
                 $bankAccount = trim((string) ($_POST['birthday'] ?? ''));
                 $address = trim((string) ($_POST['address'] ?? ''));
@@ -311,6 +373,7 @@ try {
 
                     $idCol = pickExistingColumn($columns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
                     $nameCol = pickExistingColumn($columns, ['tenkhachhang', 'ten_khach_hang', 'hoten', 'ten', 'name']);
+                    $emailCol = pickExistingColumn($columns, ['email', 'mail']);
                     $genderCol = pickExistingColumn($columns, ['gioitinh', 'gioi_tinh', 'gender']);
                     $addressCol = pickExistingColumn($columns, ['diachi', 'dia_chi', 'address']);
                     $phoneCol = pickExistingColumn($columns, ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone']);
@@ -325,6 +388,15 @@ try {
                             ':id' => $id,
                             ':name' => $name,
                         ];
+
+                        if ($emailCol !== null) {
+                            // Nếu người dùng nhập email mới, lưu email mới
+                            // Nếu không, giữ nguyên email cũ (không update)
+                            if ($email !== '') {
+                                $setParts[] = "{$emailCol} = :email";
+                                $params[':email'] = $email;
+                            }
+                        }
 
                         if ($genderCol !== null) {
                             $setParts[] = "{$genderCol} = :gender";
@@ -673,7 +745,8 @@ try {
             'id' => $maKh,
             'name' => $name,
             'gender' => (string) pickCustomerValue($row, ['gioitinh', 'gioi_tinh', 'gender'], ''),
-            'email' => $email !== '' ? $email : $taxCode,
+            'email' => $email,
+            'tax_code' => $taxCode,
             'phone' => $phone,
             'birthday' => (string) pickCustomerValue($row, ['sotaikhoankh', 'so_tai_khoan_kh', 'ngaysinh', 'ngay_sinh', 'birthday', 'dob'], ''),
             'address' => (string) pickCustomerValue($row, ['diachi', 'dia_chi', 'address'], ''),
@@ -1111,9 +1184,14 @@ try {
                                         name="name" required>
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="customerEmail" class="form-label">Mã số thuế</label>
-                                    <input type="text" class="form-control" id="customerEmail" placeholder="VD: MST01"
-                                        name="email">
+                                    <label for="customerEmail" class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="customerEmail"
+                                        placeholder="example@gmail.com" name="customer_email">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="customerTaxCode" class="form-label">Mã số thuế</label>
+                                    <input type="text" class="form-control" id="customerTaxCode" placeholder="VD: MST01"
+                                        name="tax_code">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="customerGender" class="form-label">Giới tính</label>
@@ -1179,8 +1257,14 @@ try {
                             </div>
                             <div class="col-md-6">
                                 <div class="detail-item">
-                                    <span class="detail-label">Mã số thuế</span>
+                                    <span class="detail-label">Email</span>
                                     <span class="detail-value" id="detailCustomerEmail">--</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="detail-item">
+                                    <span class="detail-label">Mã số thuế</span>
+                                    <span class="detail-value" id="detailCustomerTaxCode">--</span>
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -1247,8 +1331,13 @@ try {
                                     </select>
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="editCustomerEmail" class="form-label">Mã số thuế</label>
-                                    <input type="text" class="form-control" id="editCustomerEmail" name="email">
+                                    <label for="editCustomerEmail" class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="editCustomerEmail"
+                                        name="customer_email">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="editCustomerTaxCode" class="form-label">Mã số thuế</label>
+                                    <input type="text" class="form-control" id="editCustomerTaxCode" name="tax_code">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="editCustomerPhone" class="form-label">Số điện thoại</label>
@@ -1406,6 +1495,7 @@ try {
                             data-customer-name="<?php echo htmlspecialchars($c['name'] ?? '', ENT_QUOTES); ?>"
                             data-customer-gender="<?php echo htmlspecialchars($c['gender'] ?? '', ENT_QUOTES); ?>"
                             data-customer-email="<?php echo htmlspecialchars($c['email'] ?? '', ENT_QUOTES); ?>"
+                            data-customer-taxcode="<?php echo htmlspecialchars($c['tax_code'] ?? '', ENT_QUOTES); ?>"
                             data-customer-phone="<?php echo htmlspecialchars($c['phone'] ?? '', ENT_QUOTES); ?>"
                             data-customer-birthday="<?php echo htmlspecialchars($c['birthday'] ?? '', ENT_QUOTES); ?>"
                             data-customer-address="<?php echo htmlspecialchars($c['address'] ?? '', ENT_QUOTES); ?>"
@@ -1416,7 +1506,8 @@ try {
                             <td class="fw-bold"><?php echo htmlspecialchars((string) ($c['id'] ?? '')); ?></td>
                             <td><?php echo htmlspecialchars((string) ($c['name'] ?? '')); ?></td>
                             <td><?php echo htmlspecialchars((string) ($c['gender'] ?? '')); ?></td>
-                            <td><?php echo htmlspecialchars((string) ($c['email'] ?? '')); ?></td>
+                            <td><?php $displayEmail = (string) ($c['email'] ?? ''); if ($displayEmail === '' && !empty($c['tax_code'])) { $displayEmail = (string) ($c['tax_code'] ?? ''); } echo htmlspecialchars($displayEmail); ?>
+                            </td>
                             <td><?php echo htmlspecialchars((string) ($c['phone'] ?? '')); ?></td>
                             <td><?php echo htmlspecialchars((string) ($c['birthday'] ?? '')); ?></td>
                             <td class="text-end"><?php echo (int) ($c['orders'] ?? 0); ?></td>
@@ -1549,6 +1640,8 @@ try {
                 'data-customer-gender') || '';
             document.getElementById('editCustomerEmail').value = selectedCustomerRow.getAttribute(
                 'data-customer-email') || '';
+            document.getElementById('editCustomerTaxCode').value = selectedCustomerRow.getAttribute(
+                'data-customer-taxcode') || '';
             document.getElementById('editCustomerPhone').value = selectedCustomerRow.getAttribute(
                 'data-customer-phone') || '';
             document.getElementById('editCustomerBirthday').value = selectedCustomerRow.getAttribute(
@@ -1575,8 +1668,16 @@ try {
             'data-customer-name') || '--';
         document.getElementById('detailCustomerGender').textContent = selectedCustomerRow.getAttribute(
             'data-customer-gender') || '--';
-        document.getElementById('detailCustomerEmail').textContent = selectedCustomerRow.getAttribute(
-            'data-customer-email') || '--';
+
+        // Show email: if email is empty, show tax code if it looks like an email
+        var emailValue = selectedCustomerRow.getAttribute('data-customer-email') || '';
+        var taxCodeValue = selectedCustomerRow.getAttribute('data-customer-taxcode') || '';
+        if (!emailValue && taxCodeValue) {
+            emailValue = taxCodeValue;
+        }
+        document.getElementById('detailCustomerEmail').textContent = emailValue || '--';
+        document.getElementById('detailCustomerTaxCode').textContent = taxCodeValue || '--';
+
         document.getElementById('detailCustomerPhone').textContent = selectedCustomerRow.getAttribute(
             'data-customer-phone') || '--';
         document.getElementById('detailCustomerBirthday').textContent = selectedCustomerRow.getAttribute(
