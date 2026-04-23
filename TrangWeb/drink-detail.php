@@ -591,6 +591,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['comment_action'] ?
     $postedGuestName = trim((string)($_POST['guest_name'] ?? ''));
     $commentUserName = $currentUserName !== '' ? $currentUserName : ($postedGuestName !== '' ? $postedGuestName : 'Khách hàng');
 
+    // Lưu tên khách vãng lai vào session để nhận thông báo sau
+    if (!$isLoggedInUser && $postedGuestName !== '' && ($currentUserName === '' || $currentUserName === 'Khách hàng')) {
+        $_SESSION['user_name'] = $postedGuestName;
+    }
+
     $isReply = $parentCommentId !== null;
     if ($isReply) {
         $commentRating = 0;
@@ -632,9 +637,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['comment_action'] ?
                 ':vaitro' => $currentUserRole,
             ]);
 
-            // Trigger notification if this is a reply
-            if ($parentCommentId > 0 && $isLoggedInUser) {
+            // Notify admin and others of new comment/reply
+            if ($parentCommentId === null || $parentCommentId <= 0) {
+                // This is a new main comment - notify admin
                 try {
+                    $adminIds = $pdo->query("SELECT Id FROM users WHERE LOWER(role) = 'admin'")->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    $productNameStmt = $pdo->prepare('SELECT TenHang FROM hanghoa WHERE MaHang = :id LIMIT 1');
+                    $productNameStmt->execute([':id' => $commentProductId]);
+                    $productNameRow = $productNameStmt->fetch();
+                    $productName = (string)($productNameRow['TenHang'] ?? $commentProductId);
+                    
+                    foreach ($adminIds as $adminId) {
+                        $adminNotifyStmt = $pdo->prepare(
+                            'INSERT INTO thongbao (NguoiDungId, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, URL)
+                             VALUES (:adminid, :loai, :tieude, :noidung, :mahang, :tenhang, :url)'
+                        );
+                        
+                        $adminNotifyStmt->execute([
+                            ':adminid' => $adminId,
+                            ':loai' => 'customer_comment',
+                            ':tieude' => 'Khách hàng vừa bình luận về sản phẩm',
+                            ':noidung' => mb_substr($commentContent, 0, 500, 'UTF-8'),
+                            ':mahang' => $commentProductId,
+                            ':tenhang' => $productName,
+                            ':url' => 'drink-detail.php?id=' . urlencode($commentProductId) . '#reviews',
+                        ]);
+                    }
+                } catch (Throwable $e) {
+                    // Admin notification not critical
+                }
+            }
+
+            // Trigger notification if this is a reply
+            if ($parentCommentId > 0) {
+                try {
+                    // Ensure notifications table exists
+                    $pdo->exec(
+                        "CREATE TABLE IF NOT EXISTS thongbao (
+                            Id INT NOT NULL AUTO_INCREMENT,
+                            NguoiDungId INT,
+                            TenNguoiDung VARCHAR(120),
+                            LoaiThongBao VARCHAR(30) NOT NULL,
+                            TieuDe VARCHAR(255) NOT NULL,
+                            NoiDung TEXT,
+                            MaHang VARCHAR(10),
+                            TenHang VARCHAR(255),
+                            IdBinhLuan INT,
+                            IdPhanHoi INT,
+                            URL TEXT,
+                            DaDoc TINYINT NOT NULL DEFAULT 0,
+                            NgayTao TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            NgayDoc TIMESTAMP NULL,
+                            PRIMARY KEY (Id),
+                            KEY idx_thongbao_user (NguoiDungId),
+                            KEY idx_thongbao_tendung (TenNguoiDung),
+                            KEY idx_thongbao_loai (LoaiThongBao),
+                            KEY idx_thongbao_dadoc (DaDoc),
+                            KEY idx_thongbao_ngaytao (NgayTao)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+                    );
+                    
+                    // Get product name
+                    $productNameStmt = $pdo->prepare('SELECT TenHang FROM hanghoa WHERE MaHang = :id LIMIT 1');
+                    $productNameStmt->execute([':id' => $commentProductId]);
+                    $productNameRow = $productNameStmt->fetch();
+                    $productName = (string)($productNameRow['TenHang'] ?? $commentProductId);
+                    
                     // Notify parent comment author
                     $parentStmt = $pdo->prepare(
                         'SELECT TenNguoiDung, NguoiDungId FROM hanghoa_binhluan WHERE Id = :id LIMIT 1'
@@ -643,8 +712,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['comment_action'] ?
                     $parentRow = $parentStmt->fetch();
                     
                     if ($parentRow) {
-                        // Parent comment exists - notification will be picked up by notification-handler.php
-                        // No need to manually trigger anything, just let the bell icon query fetch it
+                        $parentUserId = (int)($parentRow['NguoiDungId'] ?? 0);
+                        $parentUserName = (string)($parentRow['TenNguoiDung'] ?? '');
+                        
+                        // Determine if this is a self-reply
+                        $isSelfReply = false;
+                        if ($parentUserId > 0 && $currentUserId > 0 && $parentUserId === $currentUserId) {
+                            $isSelfReply = true;
+                        } elseif ($parentUserId === 0 && $currentUserId === 0 && strtolower($parentUserName) === strtolower($commentUserName)) {
+                            $isSelfReply = true;
+                        }
+                        
+                        if (!$isSelfReply) {
+                            // Send notification to parent comment author
+                            if ($parentUserId > 0) {
+                                // Parent has registered account
+                                $notifyInsertStmt = $pdo->prepare(
+                                    'INSERT INTO thongbao (NguoiDungId, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, IdPhanHoi, URL)
+                                     VALUES (:uid, :loai, :tieude, :noidung, :mahang, :tenhang, :idphanhoi, :url)'
+                                );
+                                
+                                $notifyInsertStmt->execute([
+                                    ':uid' => $parentUserId,
+                                    ':loai' => 'reply',
+                                    ':tieude' => 'Có phản hồi mới trên bình luận của bạn',
+                                    ':noidung' => mb_substr($commentContent, 0, 500, 'UTF-8'),
+                                    ':mahang' => $commentProductId,
+                                    ':tenhang' => $productName,
+                                    ':idphanhoi' => $parentCommentId,
+                                    ':url' => 'drink-detail.php?id=' . urlencode($commentProductId) . '#reviews',
+                                ]);
+                            } else {
+                                // Parent is guest user, notify by name
+                                $notifyInsertStmt = $pdo->prepare(
+                                    'INSERT INTO thongbao (TenNguoiDung, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, IdPhanHoi, URL)
+                                     VALUES (:uname, :loai, :tieude, :noidung, :mahang, :tenhang, :idphanhoi, :url)'
+                                );
+                                
+                                $notifyInsertStmt->execute([
+                                    ':uname' => $parentUserName,
+                                    ':loai' => 'reply',
+                                    ':tieude' => 'Có phản hồi mới trên bình luận của bạn',
+                                    ':noidung' => mb_substr($commentContent, 0, 500, 'UTF-8'),
+                                    ':mahang' => $commentProductId,
+                                    ':tenhang' => $productName,
+                                    ':idphanhoi' => $parentCommentId,
+                                    ':url' => 'drink-detail.php?id=' . urlencode($commentProductId) . '#reviews',
+                                ]);
+                            }
+                        }
+                    }
+                    
+                    // Also notify admin of new customer reply/comment
+                    $adminNotifyStmt = $pdo->prepare(
+                        'INSERT INTO thongbao (NguoiDungId, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, IdPhanHoi, URL)
+                         VALUES (SELECT Id FROM users WHERE LOWER(role) = "admin" LIMIT 1, :loai, :tieude, :noidung, :mahang, :tenhang, :idphanhoi, :url)'
+                    );
+                    
+                    try {
+                        $adminIds = $pdo->query("SELECT Id FROM users WHERE LOWER(role) = 'admin'")->fetchAll(PDO::FETCH_COLUMN);
+                        foreach ($adminIds as $adminId) {
+                            $adminNotifyStmt = $pdo->prepare(
+                                'INSERT INTO thongbao (NguoiDungId, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, IdPhanHoi, URL)
+                                 VALUES (:adminid, :loai, :tieude, :noidung, :mahang, :tenhang, :idphanhoi, :url)'
+                            );
+                            
+                            $adminNotifyStmt->execute([
+                                ':adminid' => $adminId,
+                                ':loai' => 'customer_reply',
+                                ':tieude' => 'Khách hàng vừa có phản hồi mới',
+                                ':noidung' => mb_substr($commentContent, 0, 500, 'UTF-8'),
+                                ':mahang' => $commentProductId,
+                                ':tenhang' => $productName,
+                                ':idphanhoi' => $parentCommentId,
+                                ':url' => 'drink-detail.php?id=' . urlencode($commentProductId) . '#reviews',
+                            ]);
+                        }
+                    } catch (Throwable $e) {
+                        // Admin notification not critical
                     }
                 } catch (Throwable $e) {
                     // Ignore notification errors

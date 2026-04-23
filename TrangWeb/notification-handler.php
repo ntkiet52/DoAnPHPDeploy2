@@ -21,6 +21,9 @@ $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 $currentUserName = trim((string) ($_SESSION['user_name'] ?? ''));
 $currentRole = strtolower(trim((string) ($_SESSION['user_role'] ?? 'guest')));
 
+// DEBUG: Log user info
+error_log("DEBUG NOTIFY - UserId: {$currentUserId}, UserName: {$currentUserName}, Role: {$currentRole}, Action: {$action}");
+
 $readIdsRaw = $_SESSION['notification_read_ids'] ?? [];
 if (!is_array($readIdsRaw)) {
     $readIdsRaw = [];
@@ -32,23 +35,36 @@ $readIds = array_values(array_unique(array_filter(array_map(static function ($va
 })));
 
 if ($action === 'mark_one') {
-    $notificationId = trim((string) ($_POST['notification_id'] ?? $_GET['notification_id'] ?? ''));
-    if ($notificationId === '') {
-        respondNotify(false, 'Thiếu notification_id.', [], 400);
+    $notificationId = (int) ($_POST['notification_id'] ?? $_GET['notification_id'] ?? 0);
+    if ($notificationId <= 0) {
+        respondNotify(false, 'Thiếu notification_id hợp lệ.', [], 400);
     }
 
-    if (!in_array($notificationId, $readIds, true)) {
-        $readIds[] = $notificationId;
-        $_SESSION['notification_read_ids'] = $readIds;
-    }
+    try {
+        $pdo = new PDO(
+            'mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4',
+            'root',
+            '',
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]
+        );
 
-    respondNotify(true, 'Đã đánh dấu đã đọc thông báo.', [
-        'notification_id' => $notificationId,
-    ]);
+        $markStmt = $pdo->prepare(
+            'UPDATE thongbao SET DaDoc = 1, NgayDoc = CURRENT_TIMESTAMP WHERE Id = :id'
+        );
+        $markStmt->execute([':id' => $notificationId]);
+
+        respondNotify(true, 'Đã đánh dấu đã đọc thông báo.', [
+            'notification_id' => $notificationId,
+        ]);
+    } catch (Throwable $e) {
+        respondNotify(false, 'Không thể cập nhật thông báo: ' . $e->getMessage(), [], 500);
+    }
 }
 
 if ($action === 'mark_seen') {
-    $_SESSION['notification_seen_at'] = date('Y-m-d H:i:s');
     respondNotify(true, 'Đã đánh dấu đã xem.', [
         'unseen_count' => 0,
     ]);
@@ -104,207 +120,84 @@ try {
         // ignore for older MariaDB
     }
 
-    $items = [];
-
-    // 1) Phản hồi vào bình luận của tôi (khách/admin đều tính)
-    $replyStmt = $pdo->prepare(
-        'SELECT child.Id,
-                child.MaHang,
-                child.TenNguoiDung,
-                child.NoiDung,
-                child.VaiTroNguoiDung,
-                child.NgayTao,
-                parent.Id AS ParentCommentId,
-                parent.TenNguoiDung AS ParentAuthor,
-                hh.TenHang
-         FROM hanghoa_binhluan child
-         INNER JOIN hanghoa_binhluan parent ON parent.Id = child.ParentId
-         LEFT JOIN hanghoa hh ON hh.MaHang = child.MaHang
-         WHERE (
-                parent.NguoiDungId = :uid
-                OR (parent.NguoiDungId IS NULL AND LOWER(parent.TenNguoiDung) = LOWER(:uname))
-               )
-           AND (child.NguoiDungId IS NULL OR child.NguoiDungId <> :uid2)
-         ORDER BY child.NgayTao DESC
-         LIMIT 40'
+    // Tạo bảng thông báo để lưu trữ lâu dài
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS thongbao (
+            Id INT NOT NULL AUTO_INCREMENT,
+            NguoiDungId INT,
+            TenNguoiDung VARCHAR(120),
+            LoaiThongBao VARCHAR(30) NOT NULL,
+            TieuDe VARCHAR(255) NOT NULL,
+            NoiDung TEXT,
+            MaHang VARCHAR(10),
+            TenHang VARCHAR(255),
+            IdBinhLuan INT,
+            IdPhanHoi INT,
+            URL TEXT,
+            DaDoc TINYINT NOT NULL DEFAULT 0,
+            NgayTao TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            NgayDoc TIMESTAMP NULL,
+            PRIMARY KEY (Id),
+            KEY idx_thongbao_user (NguoiDungId),
+            KEY idx_thongbao_tendung (TenNguoiDung),
+            KEY idx_thongbao_loai (LoaiThongBao),
+            KEY idx_thongbao_dadoc (DaDoc),
+            KEY idx_thongbao_ngaytao (NgayTao)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     );
 
-    $replyStmt->execute([
-        ':uid' => $currentUserId,
-        ':uid2' => $currentUserId,
-        ':uname' => $currentUserName,
-    ]);
+    $items = [];
 
-    foreach ($replyStmt->fetchAll() as $row) {
-        $senderRole = strtolower(trim((string) ($row['VaiTroNguoiDung'] ?? 'user')));
-        $senderLabel = $senderRole === 'admin' ? 'Admin' : 'Khách hàng';
-
+    // Lấy thông báo từ database
+    if ($currentUserId > 0) {
+        // User đã login - lấy theo NguoiDungId
+        $notifySql = 'SELECT Id, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, URL, DaDoc, NgayTao
+                      FROM thongbao
+                      WHERE NguoiDungId = :uid
+                      ORDER BY DaDoc ASC, NgayTao DESC
+                      LIMIT 50';
+        
+        $notifyParams = [':uid' => $currentUserId];
+    } elseif ($currentUserName !== '') {
+        // User là guest - lấy theo TenNguoiDung
+        $notifySql = 'SELECT Id, LoaiThongBao, TieuDe, NoiDung, MaHang, TenHang, URL, DaDoc, NgayTao
+                      FROM thongbao
+                      WHERE LOWER(TenNguoiDung) = LOWER(:uname)
+                      ORDER BY DaDoc ASC, NgayTao DESC
+                      LIMIT 50';
+        
+        $notifyParams = [':uname' => $currentUserName];
+    } else {
+        // Chưa login và không có tên - không có thông báo
+        respondNotify(true, 'Lấy thông báo thành công.', [
+            'is_logged_in' => false,
+            'notifications' => [],
+            'total_count' => 0,
+            'unseen_count' => 0,
+        ]);
+    }
+    
+    $notifyStmt = $pdo->prepare($notifySql);
+    $notifyStmt->execute($notifyParams);
+    
+    foreach ($notifyStmt->fetchAll() as $row) {
         $items[] = [
-            'id' => 'reply_' . (int) ($row['Id'] ?? 0),
-            'type' => 'reply',
-            'title' => $senderLabel . ' đã phản hồi bình luận của bạn',
-            'content' => trim((string) ($row['NoiDung'] ?? '')),
-            'sender_name' => (string) ($row['TenNguoiDung'] ?? 'Người dùng'),
-            'sender_role' => $senderRole,
-            'product_id' => (string) ($row['MaHang'] ?? ''),
-            'product_name' => (string) ($row['TenHang'] ?? ''),
-            'url' => 'drink-detail.php?id=' . rawurlencode((string) ($row['MaHang'] ?? '')) . '#reviews',
-            'created_at' => (string) ($row['NgayTao'] ?? ''),
+            'id' => (int)($row['Id'] ?? 0),
+            'type' => (string)($row['LoaiThongBao'] ?? 'other'),
+            'title' => (string)($row['TieuDe'] ?? ''),
+            'content' => (string)($row['NoiDung'] ?? ''),
+            'product_id' => (string)($row['MaHang'] ?? ''),
+            'product_name' => (string)($row['TenHang'] ?? ''),
+            'url' => (string)($row['URL'] ?? ''),
+            'created_at' => (string)($row['NgayTao'] ?? ''),
+            'is_read' => (int)($row['DaDoc'] ?? 0) === 1,
         ];
     }
 
-    // 1.5) Bình luận gốc của tôi (chưa có reply) - để biết ai đã phản hồi chưa
-    $userCommentsSql = '';
-    $userCommentsParams = [];
-    
-    if ($currentUserId > 0) {
-        // User đã login, lấy comments theo NguoiDungId
-        $userCommentsSql = 'SELECT bl.Id,
-                bl.MaHang,
-                bl.TenNguoiDung,
-                bl.NoiDung,
-                bl.VaiTroNguoiDung,
-                bl.NgayTao,
-                COUNT(reply.Id) AS ReplyCount,
-                hh.TenHang
-         FROM hanghoa_binhluan bl
-         LEFT JOIN hanghoa_binhluan reply ON reply.ParentId = bl.Id
-         LEFT JOIN hanghoa hh ON hh.MaHang = bl.MaHang
-         WHERE bl.NguoiDungId = :uid
-           AND bl.ParentId IS NULL
-         GROUP BY bl.Id
-         ORDER BY bl.NgayTao DESC
-         LIMIT 40';
-        $userCommentsParams = [':uid' => $currentUserId];
-    } else if ($currentUserName !== '') {
-        // User chưa login, lấy comments theo TenNguoiDung
-        $userCommentsSql = 'SELECT bl.Id,
-                bl.MaHang,
-                bl.TenNguoiDung,
-                bl.NoiDung,
-                bl.VaiTroNguoiDung,
-                bl.NgayTao,
-                COUNT(reply.Id) AS ReplyCount,
-                hh.TenHang
-         FROM hanghoa_binhluan bl
-         LEFT JOIN hanghoa_binhluan reply ON reply.ParentId = bl.Id
-         LEFT JOIN hanghoa hh ON hh.MaHang = bl.MaHang
-         WHERE bl.NguoiDungId IS NULL 
-           AND LOWER(bl.TenNguoiDung) = LOWER(:uname)
-           AND bl.ParentId IS NULL
-         GROUP BY bl.Id
-         ORDER BY bl.NgayTao DESC
-         LIMIT 40';
-        $userCommentsParams = [':uname' => $currentUserName];
-    }
-
-    if ($userCommentsSql !== '') {
-        $userCommentsStmt = $pdo->prepare($userCommentsSql);
-    if ($userCommentsSql !== '') {
-        $userCommentsStmt = $pdo->prepare($userCommentsSql);
-        $userCommentsStmt->execute($userCommentsParams);
-
-        foreach ($userCommentsStmt->fetchAll() as $row) {
-            $commentId = (int) ($row['Id'] ?? 0);
-            $replyCount = (int) ($row['ReplyCount'] ?? 0);
-            
-            // Chỉ hiển thị comment gốc nếu chưa được add ở trên (từ replies)
-            $existsInItems = false;
-            foreach ($items as $item) {
-                if (isset($item['id']) && strpos($item['id'], 'user_comment_' . $commentId) === 0) {
-                    $existsInItems = true;
-                    break;
-                }
-            }
-            
-            if (!$existsInItems) {
-                $items[] = [
-                    'id' => 'user_comment_' . $commentId,
-                    'type' => 'my_comment',
-                    'title' => 'Bình luận của bạn',
-                    'content' => trim((string) ($row['NoiDung'] ?? '')),
-                    'sender_name' => (string) ($row['TenNguoiDung'] ?? 'Bạn'),
-                    'sender_role' => strtolower(trim((string) ($row['VaiTroNguoiDung'] ?? 'user'))),
-                    'product_id' => (string) ($row['MaHang'] ?? ''),
-                    'product_name' => (string) ($row['TenHang'] ?? ''),
-                    'url' => 'drink-detail.php?id=' . rawurlencode((string) ($row['MaHang'] ?? '')) . '#reviews',
-                    'created_at' => (string) ($row['NgayTao'] ?? ''),
-                    'reply_count' => $replyCount,
-                ];
-            }
-        }
-    }
-
-    // 2) Riêng admin: nhận thông báo khi khách hàng gửi phản hồi mới
-    if ($currentRole === 'admin') {
-        $adminStmt = $pdo->query(
-            "SELECT bl.Id,
-                    bl.MaHang,
-                    bl.TenNguoiDung,
-                    bl.NoiDung,
-                    bl.VaiTroNguoiDung,
-                    bl.ParentId,
-                    bl.NgayTao,
-                    hh.TenHang
-             FROM hanghoa_binhluan bl
-             LEFT JOIN hanghoa hh ON hh.MaHang = bl.MaHang
-             WHERE (bl.VaiTroNguoiDung IS NULL OR LOWER(bl.VaiTroNguoiDung) <> 'admin')
-             ORDER BY bl.NgayTao DESC
-             LIMIT 40"
-        );
-
-        foreach ($adminStmt->fetchAll() as $row) {
-            $isReply = (int) ($row['ParentId'] ?? 0) > 0;
-            $items[] = [
-                'id' => 'admin_feed_' . (int) ($row['Id'] ?? 0),
-                'type' => $isReply ? 'customer-reply' : 'customer-feedback',
-                'title' => $isReply
-                    ? 'Khách hàng vừa phản hồi trong luồng bình luận'
-                    : 'Khách hàng vừa gửi bình luận mới',
-                'content' => trim((string) ($row['NoiDung'] ?? '')),
-                'sender_name' => (string) ($row['TenNguoiDung'] ?? 'Khách hàng'),
-                'sender_role' => 'customer',
-                'product_id' => (string) ($row['MaHang'] ?? ''),
-                'product_name' => (string) ($row['TenHang'] ?? ''),
-                'url' => 'drink-detail.php?id=' . rawurlencode((string) ($row['MaHang'] ?? '')) . '#reviews',
-                'created_at' => (string) ($row['NgayTao'] ?? ''),
-            ];
-        }
-    }
-
-    usort($items, static function (array $a, array $b): int {
-        return strcmp((string) ($b['created_at'] ?? ''), (string) ($a['created_at'] ?? ''));
-    });
-
-    $items = array_slice($items, 0, 30);
-
-    $visibleIds = array_values(array_filter(array_map(static function (array $item): string {
-        return trim((string) ($item['id'] ?? ''));
-    }, $items), static function (string $value): bool {
-        return $value !== '';
-    }));
-
-    if (count($visibleIds) > 0) {
-        $readIds = array_values(array_filter($readIds, static function (string $id) use ($visibleIds): bool {
-            return in_array($id, $visibleIds, true);
-        }));
-        $_SESSION['notification_read_ids'] = $readIds;
-    }
-
-    $seenAt = trim((string) ($_SESSION['notification_seen_at'] ?? ''));
-    $seenTs = $seenAt !== '' ? strtotime($seenAt) : 0;
-
+    // Tính số thông báo chưa đọc
     $unseenCount = 0;
-    foreach ($items as $index => $item) {
-        $itemId = trim((string) ($item['id'] ?? ''));
-        $createdTs = strtotime((string) ($item['created_at'] ?? '')) ?: 0;
-        $isReadByTime = $seenTs > 0 && $createdTs <= $seenTs;
-        $isReadById = $itemId !== '' && in_array($itemId, $readIds, true);
-        $isRead = $isReadByTime || $isReadById;
-
-        $items[$index]['is_read'] = $isRead;
-
-        if (!$isRead) {
+    foreach ($items as $item) {
+        if (!($item['is_read'] ?? false)) {
             $unseenCount++;
         }
     }

@@ -353,11 +353,6 @@ $feedbacks = [
         font-size: 0.82rem;
     }
 
-    .btn-login-buy {
-        border-radius: 10px;
-        font-weight: 600;
-    }
-
     .btn-view-more {
         min-width: 220px;
     }
@@ -527,7 +522,7 @@ $feedbacks = [
                     <p class="mb-4">Khám phá danh mục đa dạng, xem sản phẩm nổi bật và ưu đãi mới. Khi sẵn sàng, đăng
                         nhập để đặt hàng chỉ trong vài bước.</p>
                     <div class="d-flex flex-wrap gap-2">
-                        <a href="../Login/Dangnhap.php" class="btn btn-light btn-pill">Đăng nhập để mua ngay <i
+                        <a href="#sanpham" class="btn btn-light btn-pill">Khám phá sản phẩm <i
                                 class="fas fa-arrow-right ms-1"></i></a>
                         <a href="#sanpham" class="btn btn-outline-light btn-pill">Xem sản phẩm nổi bật</a>
                     </div>
@@ -627,8 +622,8 @@ $feedbacks = [
                             <span class="price-old"><?php echo e($prodOldPrice); ?></span>
                         </div>
 
-                        <a href="../Login/Dangnhap.php" class="btn btn-outline-primary btn-login-buy w-100">
-                            <i class="fas fa-right-to-bracket me-1"></i> Đăng nhập để mua
+                        <a href="<?php echo e($prodLink); ?>" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-eye me-1"></i> Xem chi tiết
                         </a>
                     </div>
                 </article>
@@ -637,10 +632,7 @@ $feedbacks = [
             <?php else: ?>
             <div class="col-12">
                 <div class="alert alert-light border text-center py-4">
-                    Chưa có dữ liệu sản phẩm nổi bật. Bạn có thể đăng nhập để xem danh sách đầy đủ.
-                    <div class="mt-3">
-                        <a href="../Login/Dangnhap.php" class="btn btn-primary btn-pill">Đăng nhập ngay</a>
-                    </div>
+                    Chưa có dữ liệu sản phẩm nổi bật. Vui lòng xem danh mục khác.
                 </div>
             </div>
             <?php endif; ?>
