@@ -1,5 +1,9 @@
 <?php
-$pdo = new PDO('mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4', 'root', '');
+$pdo = new PDO(
+    'mysql:host=webbanhang-mysql.mysql.database.azure.com;dbname=qlhethongbanhangmini;charset=utf8mb4',
+    'webbanhang123',
+    'thanhkiet1234ACK@'
+);
 
 echo "=== Cột trong bảng khachhang ===\n";
 $columns = $pdo->query('SHOW COLUMNS FROM khachhang')->fetchAll(PDO::FETCH_ASSOC);

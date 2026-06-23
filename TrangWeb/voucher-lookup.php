@@ -18,10 +18,10 @@ function formatVoucherDiscount(string $type, float $value): string {
     return number_format((int) round($value), 0, ',', '.') . 'đ';
 }
 
-$dbHost = '127.0.0.1';
+$dbHost = 'webbanhang-mysql.mysql.database.azure.com';
 $dbName = 'qlhethongbanhangmini';
-$dbUser = 'root';
-$dbPass = '';
+$dbUser = 'webbanhang123';
+$dbPass = 'MẬT_KHẨU_AZURE_CỦA_BẠN';
 
 try {
     $pdo = new PDO(
@@ -33,6 +33,9 @@ try {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]
     );
+} catch (PDOException $e) {
+    die("Lỗi kết nối DB: " . $e->getMessage());
+}
 
     $code = strtoupper(trim((string) ($_GET['code'] ?? '')));
 

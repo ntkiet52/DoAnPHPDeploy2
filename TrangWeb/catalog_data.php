@@ -255,10 +255,10 @@ function catalogFetchProducts(): array
 
     $cache = [];
 
-    $dbHost = '127.0.0.1';
-    $dbName = 'qlhethongbanhangmini';
-    $dbUser = 'root';
-    $dbPass = '';
+   $dbHost = 'webbanhang-mysql.mysql.database.azure.com';
+$dbName = 'qlhethongbanhangmini';
+$dbUser = 'webbanhang123';
+$dbPass = 'thanhkiet1234ACK@';
 
     try {
         $pdo = new PDO(

@@ -1,5 +1,9 @@
 <?php
-$pdo = new PDO('mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4', 'root', '');
+$pdo = new PDO(
+    'mysql:host=webbanhang-mysql.mysql.database.azure.com;dbname=qlhethongbanhangmini;charset=utf8mb4',
+    'webbanhang123',
+    'thanhkiet1234ACK@'
+);
 
 echo "=== Khách hàng và Email ===\n";
 $stmt = $pdo->query('SELECT MaKhachHang, TenKhachHang, Email FROM khachhang');

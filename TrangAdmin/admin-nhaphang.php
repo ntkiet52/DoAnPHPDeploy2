@@ -125,10 +125,10 @@ $nhomHangMap = [];
 
 $selectedMaPhieu = isset($_GET['maPhieu']) ? trim((string) $_GET['maPhieu']) : '';
 
-$dbHost = '127.0.0.1';
+$dbHost = 'webbanhang-mysql.mysql.database.azure.com';
 $dbName = 'qlhethongbanhangmini';
-$dbUser = 'root';
-$dbPass = '';
+$dbUser = 'webbanhang123';
+$dbPass = 'thanhkiet1234ACK@';
 
 try {
     $pdo = new PDO(
@@ -138,6 +138,7 @@ try {
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
         ]
     );
 
