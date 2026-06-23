@@ -45,12 +45,13 @@ $homeTextConfig = $homeTextDefaults;
 
 try {
     $homeConfigPdo = new PDO(
-        'mysql:host=127.0.0.1;dbname=qlhethongbanhangmini;charset=utf8mb4',
-        'root',
-        '',
+        'mysql:host=webbanhang-mysql.mysql.database.azure.com;dbname=qlhethongbanhangmini;charset=utf8mb4',
+        'webbanhang123',
+        'thanhkiet1234ACK@',
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
         ]
     );
 
