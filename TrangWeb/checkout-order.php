@@ -718,6 +718,11 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
         FILE_APPEND
         );
         $productId = resolveProductId($pdo, (string) ($item['id'] ?? ''), (string) ($item['name'] ?? ''));
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." AFTER_RESOLVE=".$resolvedProductId."\n",
+            FILE_APPEND
+        );
         if ($productId === null || $productId === '') {
             $invalidItems[] = (string) (($item['id'] ?? '') !== '' ? $item['id'] : ($item['name'] ?? 'Sản phẩm'));
             continue;
@@ -756,15 +761,29 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
     }
 
     $insufficientItems = [];
-    foreach ($resolvedItems as $resolvedItem) {
-        $availableStock = fetchAvailableStockForProduct(
-            $pdo,
-            (string) ($resolvedItem['product_id'] ?? ''),
-            $importProductCol,
-            $importQtyCol,
-            $detailProductCol,
-            $detailQtyCol
-        );
+
+foreach ($resolvedItems as $resolvedItem) {
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." CHECK_STOCK_START ".$resolvedItem['product_id']."\n",
+        FILE_APPEND
+    );
+
+    $availableStock = fetchAvailableStockForProduct(
+        $pdo,
+        $resolvedItem['product_id'],
+        $importProductCol,
+        $importQtyCol,
+        $detailProductCol,
+        $detailQtyCol
+    );
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." STOCK=".$availableStock."\n",
+        FILE_APPEND
+    );
 
         if ((int) ($resolvedItem['qty'] ?? 0) > $availableStock) {
             $insufficientItems[] = [
