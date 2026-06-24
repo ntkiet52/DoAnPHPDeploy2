@@ -1,18 +1,18 @@
-(function () {
-  if (window.__ackCartEventsInitialized) {
-    return;
-  }
-  window.__ackCartEventsInitialized = true;
+(function() {
+        if (window.__ackCartEventsInitialized) {
+            return;
+        }
+        window.__ackCartEventsInitialized = true;
 
-  const CART_ENDPOINT = "cart-handler.php";
-  let appliedVoucher = null;
-  let isCheckoutSubmitting = false;
+        const CART_ENDPOINT = "/TrangWeb/cart-handler.php";
+        let appliedVoucher = null;
+        let isCheckoutSubmitting = false;
 
-  function ensureDialogStyle() {
-    if (document.getElementById("ack-cart-dialog-style")) return;
-    const style = document.createElement("style");
-    style.id = "ack-cart-dialog-style";
-    style.textContent = `
+        function ensureDialogStyle() {
+            if (document.getElementById("ack-cart-dialog-style")) return;
+            const style = document.createElement("style");
+            style.id = "ack-cart-dialog-style";
+            style.textContent = `
       .ack-dialog-backdrop {
         position: fixed;
         inset: 0;
@@ -75,30 +75,30 @@
       }
 
     `;
-    document.head.appendChild(style);
-  }
+            document.head.appendChild(style);
+        }
 
-  function showDialog(options = {}) {
-    ensureDialogStyle();
+        function showDialog(options = {}) {
+            ensureDialogStyle();
 
-    const {
-      title = "Thông báo",
-      message = "",
-      confirmText = "OK",
-      cancelText = "Hủy",
-      showCancel = false,
-      confirmClass = "btn btn-primary",
-      cancelClass = "btn btn-outline-secondary",
-      confirmLoadingMs = 0,
-      confirmLoadingText = "Đang xử lý...",
-    } = options;
+            const {
+                title = "Thông báo",
+                    message = "",
+                    confirmText = "OK",
+                    cancelText = "Hủy",
+                    showCancel = false,
+                    confirmClass = "btn btn-primary",
+                    cancelClass = "btn btn-outline-secondary",
+                    confirmLoadingMs = 0,
+                    confirmLoadingText = "Đang xử lý...",
+            } = options;
 
-    return new Promise((resolve) => {
-      let isResolving = false;
+            return new Promise((resolve) => {
+                        let isResolving = false;
 
-      const backdrop = document.createElement("div");
-      backdrop.className = "ack-dialog-backdrop";
-      backdrop.innerHTML = `
+                        const backdrop = document.createElement("div");
+                        backdrop.className = "ack-dialog-backdrop";
+                        backdrop.innerHTML = `
         <div class="ack-dialog-card" role="dialog" aria-modal="true">
           <div class="ack-dialog-title"></div>
           <div class="ack-dialog-message"></div>
@@ -1034,43 +1034,27 @@
         );
         const voucherMeta = getVoucherDiscount(subtotal);
 
-        const checkoutOrderUrls = [
-          new URL("checkout-order.php", window.location.href).href,
-          "/TrangWeb/checkout-order.php",
-        ];
-
-        let response = null;
-        for (const checkoutOrderUrl of checkoutOrderUrls) {
-          response = await fetch(checkoutOrderUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            body: JSON.stringify({
-              items: selectedItems,
-              payment_method: paymentMethod,
-              qr_paid_confirmed: qrConfirmed,
-              voucher: appliedVoucher
-                ? {
-                    code: appliedVoucher.code,
-                    name: appliedVoucher.name || "",
-                    discount_amount: voucherMeta.amount,
-                    discount_type: appliedVoucher.discount_type,
-                    discount_value: appliedVoucher.discount_value,
-                  }
-                : null,
-            }),
-          });
-
-          if (response && response.status !== 404) {
-            break;
-          }
-        }
-
-        if (!response) {
-          throw new Error("Không thể kết nối tới trang xử lý đơn hàng.");
-        }
+        const response = await fetch("/TrangWeb/checkout-order.php", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({
+            items: selectedItems,
+            payment_method: paymentMethod,
+            qr_paid_confirmed: qrConfirmed,
+            voucher: appliedVoucher
+              ? {
+                  code: appliedVoucher.code,
+                  name: appliedVoucher.name || "",
+                  discount_amount: voucherMeta.amount,
+                  discount_type: appliedVoucher.discount_type,
+                  discount_value: appliedVoucher.discount_value,
+                }
+              : null,
+          }),
+        });
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data?.ok !== true) {
