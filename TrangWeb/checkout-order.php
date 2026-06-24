@@ -719,10 +719,10 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
         );
         $productId = resolveProductId($pdo, (string) ($item['id'] ?? ''), (string) ($item['name'] ?? ''));
         file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." AFTER_RESOLVE=".$resolvedProductId."\n",
-            FILE_APPEND
-        );
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." AFTER_RESOLVE=".$productId."\n",
+    FILE_APPEND
+);
         if ($productId === null || $productId === '') {
             $invalidItems[] = (string) (($item['id'] ?? '') !== '' ? $item['id'] : ($item['name'] ?? 'Sản phẩm'));
             continue;
@@ -1045,17 +1045,23 @@ file_put_contents(
     FILE_APPEND
 );
 
-$insertOrderStmt->execute($insertParams);
-
 file_put_contents(
     __DIR__.'/checkout-debug.txt',
     date('Y-m-d H:i:s')." EXECUTE_PX_OK\n",
     FILE_APPEND
 );
-        $insertOrderStmt->execute($insertParams);
+        try {
+    $insertOrderStmt->execute($insertParams);
+} catch (PDOException $e) {
+    file_put_contents(__DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." PX_ERROR=".$e->getMessage()."\n",
+        FILE_APPEND
+    );
+    throw $e;
+}
         file_put_contents(
     __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_DETAIL_LOOP\n",
+    date('Y-m-d H:i:s')." PX_INSERT_DONE\n",
     FILE_APPEND
 );
         foreach ($resolvedItems as $resolvedItem) {
