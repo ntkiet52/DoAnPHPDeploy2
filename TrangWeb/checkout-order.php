@@ -555,16 +555,24 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
 
     $customerId = null;
     if ($orderCustomerCol !== null) {
-        $customerId = resolveCustomerId(
-            file_put_contents(__DIR__.'/checkout-debug.txt',
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." BEFORE CUSTOMER\n",
+        FILE_APPEND
+    );
+
+    $customerId = resolveCustomerId(
+        $pdo,
+        $userName,
+        $userEmail,
+        (string) ($_SESSION['ma_khach_hang'] ?? '')
+    );
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
         date('Y-m-d H:i:s')." CUSTOMER=".$customerId."\n",
         FILE_APPEND
-        );
-            $pdo,
-            $userName,
-            $userEmail,
-            (string) ($_SESSION['ma_khach_hang'] ?? '')
-        );
+    );
         if ($customerId === null || $customerId === '') {
             respondCheckout(false, 'Không thể xác định khách hàng cho đơn hàng này.');
         }
