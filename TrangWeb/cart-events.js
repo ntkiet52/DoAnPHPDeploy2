@@ -1,18 +1,18 @@
-(function () {
-  if (window.__ackCartEventsInitialized) {
-    return;
-  }
-  window.__ackCartEventsInitialized = true;
+(function() {
+        if (window.__ackCartEventsInitialized) {
+            return;
+        }
+        window.__ackCartEventsInitialized = true;
 
-  const CART_ENDPOINT = "cart-handler.php";
-  let appliedVoucher = null;
-  let isCheckoutSubmitting = false;
+        const CART_ENDPOINT = "/TrangWeb/cart-handler.php";
+        let appliedVoucher = null;
+        let isCheckoutSubmitting = false;
 
-  function ensureDialogStyle() {
-    if (document.getElementById("ack-cart-dialog-style")) return;
-    const style = document.createElement("style");
-    style.id = "ack-cart-dialog-style";
-    style.textContent = `
+        function ensureDialogStyle() {
+            if (document.getElementById("ack-cart-dialog-style")) return;
+            const style = document.createElement("style");
+            style.id = "ack-cart-dialog-style";
+            style.textContent = `
       .ack-dialog-backdrop {
         position: fixed;
         inset: 0;
@@ -75,30 +75,30 @@
       }
 
     `;
-    document.head.appendChild(style);
-  }
+            document.head.appendChild(style);
+        }
 
-  function showDialog(options = {}) {
-    ensureDialogStyle();
+        function showDialog(options = {}) {
+            ensureDialogStyle();
 
-    const {
-      title = "Thông báo",
-      message = "",
-      confirmText = "OK",
-      cancelText = "Hủy",
-      showCancel = false,
-      confirmClass = "btn btn-primary",
-      cancelClass = "btn btn-outline-secondary",
-      confirmLoadingMs = 0,
-      confirmLoadingText = "Đang xử lý...",
-    } = options;
+            const {
+                title = "Thông báo",
+                    message = "",
+                    confirmText = "OK",
+                    cancelText = "Hủy",
+                    showCancel = false,
+                    confirmClass = "btn btn-primary",
+                    cancelClass = "btn btn-outline-secondary",
+                    confirmLoadingMs = 0,
+                    confirmLoadingText = "Đang xử lý...",
+            } = options;
 
-    return new Promise((resolve) => {
-      let isResolving = false;
+            return new Promise((resolve) => {
+                        let isResolving = false;
 
-      const backdrop = document.createElement("div");
-      backdrop.className = "ack-dialog-backdrop";
-      backdrop.innerHTML = `
+                        const backdrop = document.createElement("div");
+                        backdrop.className = "ack-dialog-backdrop";
+                        backdrop.innerHTML = `
         <div class="ack-dialog-card" role="dialog" aria-modal="true">
           <div class="ack-dialog-title"></div>
           <div class="ack-dialog-message"></div>
@@ -1034,7 +1034,7 @@
         );
         const voucherMeta = getVoucherDiscount(subtotal);
 
-        const response = await fetch("/TrangWeb/checkout-order.php", {
+        const response = await fetch("/TrangWeb/cart-handler.php?action=checkout_order", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
