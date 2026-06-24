@@ -1,4 +1,10 @@
 <?php
+file_put_contents(
+    __DIR__ . '/checkout-debug.txt',
+    date('Y-m-d H:i:s') . " START\n",
+    FILE_APPEND
+);
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -399,6 +405,13 @@ if (!isset($_SESSION['user_id']) || (int) $_SESSION['user_id'] <= 0) {
 }
 
 $payload = null;
+
+file_put_contents(
+    __DIR__ . '/checkout-debug.txt',
+    date('Y-m-d H:i:s') . " AFTER PAYLOAD\n",
+    FILE_APPEND
+);
+
 $rawBody = file_get_contents('php://input');
 if (is_string($rawBody) && trim($rawBody) !== '') {
     $payload = json_decode($rawBody, true);
