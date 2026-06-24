@@ -1053,7 +1053,11 @@ file_put_contents(
     FILE_APPEND
 );
         $insertOrderStmt->execute($insertParams);
-
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_DETAIL_LOOP\n",
+    FILE_APPEND
+);
         foreach ($resolvedItems as $resolvedItem) {
             $detailColumns = [$detailOrderIdCol, $detailProductCol];
             $detailPlaceholders = [':order_id', ':product_id'];
@@ -1079,11 +1083,27 @@ file_put_contents(
                 $detailPlaceholders[] = ':line_total';
                 $detailParams[':line_total'] = $resolvedItem['line_total'];
             }
-
+            file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_DETAIL_PREPARE\n",
+    FILE_APPEND
+);
             $insertDetailStmt = $pdo->prepare(
                 'INSERT INTO chitietphieuxuat (' . implode(', ', array_map(static fn($c) => "`{$c}`", $detailColumns)) . ') VALUES (' . implode(', ', $detailPlaceholders) . ')'
             );
-            $insertDetailStmt->execute($detailParams);
+            file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." DETAIL_EXECUTE_START\n",
+    FILE_APPEND
+);
+
+$insertDetailStmt->execute($detailParams);
+
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." DETAIL_EXECUTE_OK\n",
+    FILE_APPEND
+);
         }
 
         if (is_array($voucherUsed)) {
