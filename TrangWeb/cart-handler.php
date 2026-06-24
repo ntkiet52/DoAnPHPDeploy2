@@ -374,17 +374,7 @@ function ensureVoucherClaimTable(mysqli $conn): void
     $conn->query($sql);
 }
 
-$requestUri = trim((string) ($_SERVER['REQUEST_URI'] ?? ''));
-$queryAction = trim((string) ($_GET['action'] ?? ''));
-$normalizedQueryAction = strtolower(str_replace(['-', ' '], '_', $queryAction));
-
-if ($normalizedQueryAction === 'checkout_order' || stripos($requestUri, 'checkout-order.php') !== false) {
-    require __DIR__ . '/checkout-order.php';
-    exit;
-}
-
-$action = trim((string) ($_POST['action'] ?? $queryAction ?? ''));
-$action = strtolower(str_replace(['-', ' '], '_', $action));
+$action = trim((string) ($_POST['action'] ?? $_GET['action'] ?? ''));
 $maKhachHang = currentCustomerCode();
 $voucherUserKey = currentVoucherUserKey();
 
