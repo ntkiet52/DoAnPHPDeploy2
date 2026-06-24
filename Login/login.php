@@ -208,6 +208,19 @@ if ($row = $result->fetch_assoc()) {
         $_SESSION['is_admin'] = $resolvedRole === 'admin' && $isAdminCreatedAccount;
         $_SESSION['admin_created_account'] = $isAdminCreatedAccount;
 
+        // Lấy MaKhachHang từ bảng khachhang theo email
+        $userEmail = (string) ($row['email'] ?? '');
+        $khStmt = $conn->prepare("SELECT MaKhachHang FROM khachhang WHERE Email = ? LIMIT 1");
+        if ($khStmt) {
+            $khStmt->bind_param("s", $userEmail);
+            $khStmt->execute();
+            $khResult = $khStmt->get_result();
+            if ($khRow = $khResult->fetch_assoc()) {
+                $_SESSION['ma_khach_hang'] = $khRow['MaKhachHang'];
+            }
+            $khStmt->close();
+        }
+
         $userId = (int) ($row['id'] ?? 0);
         $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
         $historyStmt = $conn->prepare("INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)");
