@@ -512,8 +512,7 @@ try {
 
     file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT HH\n", FILE_APPEND);
 
-    $hhColumns = getExistingColumns($pdo, 'hanghoa');
-    
+$hhColumns = getExistingColumns($pdo, 'hanghoa');
     $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']);
     $orderCustomerCol = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'idkhachhang']);
     $orderDateCol = pickExistingColumn($pxColumns, ['ngayxuat', 'ngay_xuat', 'ngaydat', 'ngay_dat', 'ngaylap']);
