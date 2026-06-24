@@ -1225,5 +1225,21 @@ file_put_contents(
         throw $txError;
     }
 } catch (Throwable $e) {
-    respondCheckout(false, 'Không thể tạo đơn hàng: ' . $e->getMessage(), [], 500);
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')
+        ." ERROR=".$e->getMessage()
+        ." FILE=".$e->getFile()
+        ." LINE=".$e->getLine()
+        ."\n",
+        FILE_APPEND
+    );
+
+    respondCheckout(
+        false,
+        'Không thể tạo đơn hàng: '.$e->getMessage(),
+        [],
+        500
+    );
 }
