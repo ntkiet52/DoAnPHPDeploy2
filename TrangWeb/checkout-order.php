@@ -1018,9 +1018,40 @@ FILE_APPEND
             $insertParams[':payment_status'] = $paymentStatusLabel;
         }
 
-        $insertOrderStmt = $pdo->prepare(
-            'INSERT INTO phieuxuat (' . implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) . ') VALUES (' . implode(', ', $insertPlaceholders) . ')'
-        );
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_INSERT_PX\n",
+    FILE_APPEND
+);
+
+$sqlInsertPx =
+    'INSERT INTO phieuxuat (' .
+    implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) .
+    ') VALUES (' .
+    implode(', ', $insertPlaceholders) .
+    ')';
+
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." SQL=".$sqlInsertPx."\n",
+    FILE_APPEND
+);
+
+$insertOrderStmt = $pdo->prepare($sqlInsertPx);
+
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." PREPARE_PX_OK\n",
+    FILE_APPEND
+);
+
+$insertOrderStmt->execute($insertParams);
+
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." EXECUTE_PX_OK\n",
+    FILE_APPEND
+);
         $insertOrderStmt->execute($insertParams);
 
         foreach ($resolvedItems as $resolvedItem) {
