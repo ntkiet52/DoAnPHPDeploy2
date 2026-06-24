@@ -498,11 +498,22 @@ try {
         FILE_APPEND
     );
 
-    $pxColumns = getExistingColumns($pdo, 'phieuxuat');
-    $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
-    $ctnhColumns = getExistingColumns($pdo, 'chitietnhaphang');
-    $hhColumns = getExistingColumns($pdo, 'hanghoa');
+    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT PX\n", FILE_APPEND);
 
+    $pxColumns = getExistingColumns($pdo, 'phieuxuat');
+
+    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT CTPX\n", FILE_APPEND);
+
+    $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
+
+    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT CTNH\n", FILE_APPEND);
+
+    $ctnhColumns = getExistingColumns($pdo, 'chitietnhaphang');
+
+    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT HH\n", FILE_APPEND);
+
+    $hhColumns = getExistingColumns($pdo, 'hanghoa');
+    
     $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']);
     $orderCustomerCol = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'idkhachhang']);
     $orderDateCol = pickExistingColumn($pxColumns, ['ngayxuat', 'ngay_xuat', 'ngaydat', 'ngay_dat', 'ngaylap']);
