@@ -1134,12 +1134,23 @@ file_put_contents(
                 phuong_thuc_thanh_toan = VALUES(phuong_thuc_thanh_toan),
                 trang_thai_thanh_toan = VALUES(trang_thai_thanh_toan)"
         );
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_PAYMENT_MAP\n",
+    FILE_APPEND
+);
         $upsertPaymentMetaStmt->execute([
             ':ma_don_hang' => $newOrderId,
             ':phuong_thuc_thanh_toan' => $paymentMethodLabel,
             ':trang_thai_thanh_toan' => $paymentStatusLabel,
         ]);
+        
         $upsertPaymentMetaStmt->execute([...]);
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." AFTER_PAYMENT_MAP\n",
+    FILE_APPEND
+);
 
 file_put_contents(
     __DIR__.'/checkout-debug.txt',
