@@ -1122,7 +1122,11 @@ file_put_contents(
                 ':id_voucher' => (int) $voucherUsed['id_voucher'],
             ]);
         }
-
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_PAYMENT_MAP\n",
+    FILE_APPEND
+);
         $upsertPaymentMetaStmt = $pdo->prepare(
             "INSERT INTO phieuxuat_thanhtoan_map (ma_don_hang, phuong_thuc_thanh_toan, trang_thai_thanh_toan)
              VALUES (:ma_don_hang, :phuong_thuc_thanh_toan, :trang_thai_thanh_toan)
@@ -1135,7 +1139,18 @@ file_put_contents(
             ':phuong_thuc_thanh_toan' => $paymentMethodLabel,
             ':trang_thai_thanh_toan' => $paymentStatusLabel,
         ]);
+        $upsertPaymentMetaStmt->execute([...]);
 
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." PAYMENT_MAP_OK\n",
+    FILE_APPEND
+);
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_VOUCHER_MAP\n",
+    FILE_APPEND
+);
         $voucherCodeForMap = is_array($voucherUsed)
             ? trim((string) ($voucherUsed['ma_voucher'] ?? ''))
             : '';
@@ -1160,7 +1175,23 @@ file_put_contents(
             ':tong_thanh_toan' => $finalOrderTotal,
         ]);
 
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." VOUCHER_MAP_OK\n",
+    FILE_APPEND
+);
+        file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE_COMMIT\n",
+    FILE_APPEND
+);
         $pdo->commit();
+
+file_put_contents(
+    __DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." COMMIT_OK\n",
+    FILE_APPEND
+);
 
         // Xóa toàn bộ giỏ hàng active sau khi đặt đơn thành công
         $sessionCartCustomer = trim((string) ($_SESSION['ma_khach_hang'] ?? ''));
