@@ -1034,7 +1034,7 @@
         );
         const voucherMeta = getVoucherDiscount(subtotal);
 
-        const response = await fetch("/TrangWeb/checkout-order.php", {
+        const response = await fetch("cart-handler.php?action=checkout_order", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
