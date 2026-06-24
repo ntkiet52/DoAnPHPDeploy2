@@ -378,7 +378,9 @@ $requestUri = trim((string) ($_SERVER['REQUEST_URI'] ?? ''));
 $queryAction = trim((string) ($_GET['action'] ?? ''));
 $normalizedQueryAction = strtolower(str_replace(['-', ' '], '_', $queryAction));
 
+// ✅ Thêm $conn->close() trước khi require để tránh finally đóng lần 2
 if ($normalizedQueryAction === 'checkout_order' || stripos($requestUri, 'checkout-order.php') !== false) {
+    $conn->close();
     require __DIR__ . '/checkout-order.php';
     exit;
 }

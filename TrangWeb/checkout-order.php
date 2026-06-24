@@ -80,7 +80,8 @@ function resolveCustomerId(PDO $pdo, string $userName, string $userEmail, string
     $khColumns = getExistingColumns($pdo, 'khachhang');
     $idCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
     $nameCol = pickExistingColumn($khColumns, ['tenkhachhang', 'ten_khach_hang', 'tenkh', 'hoten', 'name']);
-    $taxCol = pickExistingColumn($khColumns, ['masothue', 'ma_so_thue', 'email']);
+    // ✅ Đổi thứ tự — ưu tiên email trước
+    $taxCol = pickExistingColumn($khColumns, ['email', 'masothue', 'ma_so_thue']);
 
     if ($idCol === null || $nameCol === null) {
         return null;
@@ -137,7 +138,8 @@ function resolveCustomerId(PDO $pdo, string $userName, string $userEmail, string
 
     if ($taxCol !== null && $userEmail !== '') {
         $insertColumns[] = $taxCol;
-        $insertParams[':tax'] = mb_substr(strtolower($userEmail), 0, 30);
+        $insertParams[':tax'] = strtolower($userEmail);
+        //$insertParams[':tax'] = mb_substr(strtolower($userEmail), 0, 30);
     }
 
     $placeholders = [];
