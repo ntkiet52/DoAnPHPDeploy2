@@ -202,21 +202,32 @@ function fetchCustomerProfileById(PDO $pdo, string $customerId): array
 
 function resolveProductId(PDO $pdo, string $rawId, string $rawName): ?string
 {
-    
     file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." RESOLVE_PRODUCT id=".$rawId." name=".$rawName."\n",
-    FILE_APPEND
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." RESOLVE_PRODUCT id=".$rawId." name=".$rawName."\n",
+        FILE_APPEND
     );
 
     $hangColumns = getExistingColumns($pdo, 'hanghoa');
-    $idCol = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
-    $nameCol = pickExistingColumn($hangColumns, ['tenhang', 'ten_hang', 'tensp', 'tensanpham', 'name']);
 
-    $hangColumns = getExistingColumns($pdo, 'hanghoa');
     file_put_contents(
         __DIR__.'/checkout-debug.txt',
         date('Y-m-d H:i:s')." GOT_HANG_COLUMNS\n",
+        FILE_APPEND
+    );
+
+    $idCol = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $nameCol = pickExistingColumn($hangColumns, ['tenhang', 'ten_hang', 'tensp', 'tensanpham', 'name']);
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." IDCOL=".$idCol."\n",
+        FILE_APPEND
+    );
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." NAMECOL=".$nameCol."\n",
         FILE_APPEND
     );
     if ($idCol === null) {
@@ -225,6 +236,11 @@ function resolveProductId(PDO $pdo, string $rawId, string $rawName): ?string
 
     $rawId = trim($rawId);
     if ($rawId !== '') {
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." BEFORE_FIND_BY_ID\n",
+            FILE_APPEND
+        );
         $findByIdStmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE `{$idCol}` = :id LIMIT 1");
         $findByIdStmt->execute([':id' => $rawId]);
         $found = $findByIdStmt->fetchColumn();
