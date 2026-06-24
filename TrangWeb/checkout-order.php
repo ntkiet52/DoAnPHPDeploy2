@@ -241,9 +241,52 @@ function resolveProductId(PDO $pdo, string $rawId, string $rawName): ?string
             date('Y-m-d H:i:s')." BEFORE_FIND_BY_ID\n",
             FILE_APPEND
         );
-        $findByIdStmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE `{$idCol}` = :id LIMIT 1");
-        $findByIdStmt->execute([':id' => $rawId]);
+try {
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." PREPARE_OK\n",
+        FILE_APPEND
+    );
+
+        $findByIdStmt = $pdo->prepare(
+            "SELECT `{$idCol}` FROM hanghoa WHERE `{$idCol}` = :id LIMIT 1"
+        );
+
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." EXECUTE_START\n",
+            FILE_APPEND
+        );
+
+        $findByIdStmt->execute([
+            ':id' => $rawId
+        ]);
+
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." EXECUTE_OK\n",
+            FILE_APPEND
+        );
+
         $found = $findByIdStmt->fetchColumn();
+
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." FOUND=".$found."\n",
+            FILE_APPEND
+        );
+
+    } catch (Throwable $e) {
+
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." ERROR=".$e->getMessage()."\n",
+            FILE_APPEND
+        );
+
+        throw $e;
+    }
         if ($found !== false) {
             return (string) $found;
         }
