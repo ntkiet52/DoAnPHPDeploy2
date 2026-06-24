@@ -810,9 +810,20 @@ foreach ($resolvedItems as $resolvedItem) {
     foreach ($resolvedItems as $resolvedItem) {
         $orderTotal += (float) $resolvedItem['line_total'];
     }
-
+    file_put_contents(__DIR__.'/checkout-debug.txt',
+date('Y-m-d H:i:s')." BEFORE_VOUCHER\n",
+FILE_APPEND
+);
     ensureVoucherUsageTablePdo($pdo);
+    file_put_contents(__DIR__.'/checkout-debug.txt',
+date('Y-m-d H:i:s')." AFTER_VOUCHER_TABLES\n",
+FILE_APPEND
+);
     ensureVoucherClaimTablePdo($pdo);
+    file_put_contents(__DIR__.'/checkout-debug.txt',
+date('Y-m-d H:i:s')." AFTER_VOUCHER_PROCESS\n",
+FILE_APPEND
+);
     ensureOrderPaymentMetaTablePdo($pdo);
     ensureOrderVoucherMetaTablePdo($pdo);
     $voucherUserKey = currentVoucherUserKeyCheckout();
@@ -896,7 +907,10 @@ foreach ($resolvedItems as $resolvedItem) {
     }
 
     $finalOrderTotal = max(0, $orderTotal - $discountAmount);
-
+    file_put_contents(__DIR__.'/checkout-debug.txt',
+date('Y-m-d H:i:s')." AFTER_VOUCHER_PROCESS\n",
+FILE_APPEND
+);
     file_put_contents(
         __DIR__.'/checkout-debug.txt',
         date('Y-m-d H:i:s')." BEGIN_TRANSACTION\n",
@@ -937,7 +951,11 @@ foreach ($resolvedItems as $resolvedItem) {
             FILE_APPEND
         );
         $newOrderId = generateNextCode($pdo, 'phieuxuat', $orderIdCol, 'PX', 2);
-
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." BEFORE_BUILD_ORDER\n",
+            FILE_APPEND
+        );
         file_put_contents(
             __DIR__.'/checkout-debug.txt',
             date('Y-m-d H:i:s')." ORDER_ID=".$newOrderId."\n",
