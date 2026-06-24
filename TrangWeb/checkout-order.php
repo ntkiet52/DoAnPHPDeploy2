@@ -475,6 +475,12 @@ $dbUser = 'webbanhang123';
 $dbPass = 'thanhkiet1234ACK@';
 
 try {
+        file_put_contents(
+        __DIR__ . '/checkout-debug.txt',
+        date('Y-m-d H:i:s') . " BEFORE PDO\n",
+        FILE_APPEND
+    );
+
     $pdo = new PDO(
         "mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4",
         $dbUser,
@@ -484,6 +490,12 @@ try {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
         ]
+    );
+
+    file_put_contents(
+        __DIR__ . '/checkout-debug.txt',
+        date('Y-m-d H:i:s') . " AFTER PDO\n",
+        FILE_APPEND
     );
 
     $pxColumns = getExistingColumns($pdo, 'phieuxuat');
