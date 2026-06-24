@@ -1034,27 +1034,43 @@
         );
         const voucherMeta = getVoucherDiscount(subtotal);
 
-        const response = await fetch("/TrangWeb/checkout-order.php", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: JSON.stringify({
-            items: selectedItems,
-            payment_method: paymentMethod,
-            qr_paid_confirmed: qrConfirmed,
-            voucher: appliedVoucher
-              ? {
-                  code: appliedVoucher.code,
-                  name: appliedVoucher.name || "",
-                  discount_amount: voucherMeta.amount,
-                  discount_type: appliedVoucher.discount_type,
-                  discount_value: appliedVoucher.discount_value,
-                }
-              : null,
-          }),
-        });
+        const checkoutOrderUrls = [
+          new URL("checkout-order.php", window.location.href).href,
+          "/TrangWeb/checkout-order.php",
+        ];
+
+        let response = null;
+        for (const checkoutOrderUrl of checkoutOrderUrls) {
+          response = await fetch(checkoutOrderUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body: JSON.stringify({
+              items: selectedItems,
+              payment_method: paymentMethod,
+              qr_paid_confirmed: qrConfirmed,
+              voucher: appliedVoucher
+                ? {
+                    code: appliedVoucher.code,
+                    name: appliedVoucher.name || "",
+                    discount_amount: voucherMeta.amount,
+                    discount_type: appliedVoucher.discount_type,
+                    discount_value: appliedVoucher.discount_value,
+                  }
+                : null,
+            }),
+          });
+
+          if (response && response.status !== 404) {
+            break;
+          }
+        }
+
+        if (!response) {
+          throw new Error("Không thể kết nối tới trang xử lý đơn hàng.");
+        }
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data?.ok !== true) {
