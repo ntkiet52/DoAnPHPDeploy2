@@ -795,6 +795,11 @@ foreach ($resolvedItems as $resolvedItem) {
     }
 
     if (count($insufficientItems) > 0) {
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." BEFORE_TRANSACTION\n",
+            FILE_APPEND
+        );
         $first = $insufficientItems[0];
         respondCheckout(false, 'Một số sản phẩm đã hết hoặc không đủ tồn kho. Sản phẩm ' . ($first['product_id'] ?? '') . ' chỉ còn ' . ($first['available_stock'] ?? 0) . '.', [
             'insufficient_items' => $insufficientItems,
@@ -892,7 +897,19 @@ foreach ($resolvedItems as $resolvedItem) {
 
     $finalOrderTotal = max(0, $orderTotal - $discountAmount);
 
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." BEGIN_TRANSACTION\n",
+        FILE_APPEND
+    );
+
     $pdo->beginTransaction();
+
+    file_put_contents(
+        __DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." TRANSACTION_OK\n",
+        FILE_APPEND
+    );
 
     try {
         if ($hangIdCol !== null && $hangStockCol !== null && count($requestedQtyByProduct) > 0) {
@@ -914,8 +931,19 @@ foreach ($resolvedItems as $resolvedItem) {
                 }
             }
         }
-
+         file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." BEFORE_GENERATE_ORDER\n",
+            FILE_APPEND
+        );
         $newOrderId = generateNextCode($pdo, 'phieuxuat', $orderIdCol, 'PX', 2);
+
+        file_put_contents(
+            __DIR__.'/checkout-debug.txt',
+            date('Y-m-d H:i:s')." ORDER_ID=".$newOrderId."\n",
+            FILE_APPEND
+        );
+
         $orderDateTime = date('Y-m-d H:i:s');
 
         $insertColumns = [$orderIdCol];
