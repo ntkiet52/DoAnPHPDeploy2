@@ -548,9 +548,18 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
     $userName = trim((string) ($_SESSION['user_name'] ?? 'Khách hàng'));
     $userEmail = trim((string) ($_SESSION['user_email'] ?? ''));
 
+    file_put_contents(__DIR__.'/checkout-debug.txt',
+    date('Y-m-d H:i:s')." BEFORE CUSTOMER\n",
+    FILE_APPEND
+    );
+
     $customerId = null;
     if ($orderCustomerCol !== null) {
         $customerId = resolveCustomerId(
+            file_put_contents(__DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." CUSTOMER=".$customerId."\n",
+        FILE_APPEND
+        );
             $pdo,
             $userName,
             $userEmail,
@@ -561,6 +570,10 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
         }
 
         $customerProfile = fetchCustomerProfileById($pdo, $customerId);
+        file_put_contents(__DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." PROFILE_OK\n",
+        FILE_APPEND
+        );
         $phoneValue = '';
         $addressValue = '';
 
@@ -620,6 +633,10 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
     $invalidItems = [];
 
     foreach ($items as $item) {
+        file_put_contents(__DIR__.'/checkout-debug.txt',
+        date('Y-m-d H:i:s')." BEFORE PRODUCTS\n",
+        FILE_APPEND
+        );
         $productId = resolveProductId($pdo, (string) ($item['id'] ?? ''), (string) ($item['name'] ?? ''));
         if ($productId === null || $productId === '') {
             $invalidItems[] = (string) (($item['id'] ?? '') !== '' ? $item['id'] : ($item['name'] ?? 'Sản phẩm'));
