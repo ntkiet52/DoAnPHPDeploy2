@@ -1,9 +1,17 @@
 <?php
-file_put_contents(
-    __DIR__ . '/checkout-debug.txt',
-    date('Y-m-d H:i:s') . " START\n",
-    FILE_APPEND
-);
+// ============================================================
+// HELPER DEBUG — ghi 1 dòng vào checkout-debug.txt
+// ============================================================
+function dbg(string $label, string $extra = ''): void
+{
+    $line = date('Y-m-d H:i:s') . "\t" . $label;
+    if ($extra !== '') {
+        $line .= "\t" . $extra;
+    }
+    file_put_contents(__DIR__ . '/checkout-debug.txt', $line . "\n", FILE_APPEND);
+}
+
+dbg('START');
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -15,7 +23,7 @@ function respondCheckout(bool $ok, string $message, array $extra = [], int $stat
 {
     http_response_code($statusCode);
     echo json_encode(array_merge([
-        'ok' => $ok,
+        'ok'      => $ok,
         'message' => $message,
     ], $extra), JSON_UNESCAPED_UNICODE);
     exit;
@@ -24,17 +32,12 @@ function respondCheckout(bool $ok, string $message, array $extra = [], int $stat
 function getExistingColumns(PDO $pdo, string $table): array
 {
     static $cache = [];
-
     if (isset($cache[$table])) {
         return $cache[$table];
     }
-
     $stmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $cache[$table] = array_map(static function ($col) {
-        return strtolower((string) ($col['Field'] ?? ''));
-    }, $rows);
-
+    $cache[$table] = array_map(static fn($col) => strtolower((string) ($col['Field'] ?? '')), $rows);
     return $cache[$table];
 }
 
@@ -45,7 +48,6 @@ function pickExistingColumn(array $existingColumns, array $candidates): ?string
             return $candidate;
         }
     }
-
     return null;
 }
 
@@ -53,13 +55,11 @@ function generateNextCode(PDO $pdo, string $table, string $idColumn, string $pre
 {
     $rows = $pdo->query("SELECT `{$idColumn}` AS code FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
     $usedNumbers = [];
-
     foreach ($rows as $rowCode) {
         $code = trim((string) $rowCode);
         if ($code === '') {
             continue;
         }
-
         if (strncasecmp($code, $prefix, strlen($prefix)) === 0) {
             $numericPart = substr($code, strlen($prefix));
             if ($numericPart !== '' && ctype_digit($numericPart)) {
@@ -67,115 +67,101 @@ function generateNextCode(PDO $pdo, string $table, string $idColumn, string $pre
                 continue;
             }
         }
-
         if (preg_match('/(\d+)$/', $code, $matches) === 1) {
             $usedNumbers[(int) $matches[1]] = true;
         }
     }
-
     $next = 1;
     while (isset($usedNumbers[$next])) {
         $next++;
     }
-
     return $prefix . str_pad((string) $next, $padLength, '0', STR_PAD_LEFT);
 }
 
 function resolveCustomerId(PDO $pdo, string $userName, string $userEmail, string $sessionCustomerId = ''): ?string
 {
     $khColumns = getExistingColumns($pdo, 'khachhang');
-    $idCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
+    $idCol   = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
     $nameCol = pickExistingColumn($khColumns, ['tenkhachhang', 'ten_khach_hang', 'tenkh', 'hoten', 'name']);
-    // ✅ Đổi thứ tự — ưu tiên email trước
-    $taxCol = pickExistingColumn($khColumns, ['email', 'masothue', 'ma_so_thue']);
+    $taxCol  = pickExistingColumn($khColumns, ['email', 'masothue', 'ma_so_thue']);
+
+    dbg('CUSTOMER_COLS', "id={$idCol} name={$nameCol} tax={$taxCol}");
 
     if ($idCol === null || $nameCol === null) {
+        dbg('CUSTOMER_COLS_MISSING');
         return null;
     }
 
     $sessionCustomerId = trim($sessionCustomerId);
     if ($sessionCustomerId !== '') {
-        $findBySessionStmt = $pdo->prepare(
-            "SELECT `{$idCol}`
-             FROM khachhang
-             WHERE `{$idCol}` = :session_customer_id
-             LIMIT 1"
-        );
-        $findBySessionStmt->execute([':session_customer_id' => $sessionCustomerId]);
-        $foundSessionId = $findBySessionStmt->fetchColumn();
-        if ($foundSessionId !== false && trim((string) $foundSessionId) !== '') {
-            return trim((string) $foundSessionId);
+        $stmt = $pdo->prepare("SELECT `{$idCol}` FROM khachhang WHERE `{$idCol}` = :id LIMIT 1");
+        $stmt->execute([':id' => $sessionCustomerId]);
+        $found = $stmt->fetchColumn();
+        if ($found !== false && trim((string) $found) !== '') {
+            dbg('CUSTOMER_FOUND_BY_SESSION', $found);
+            return trim((string) $found);
         }
     }
 
     if ($taxCol !== null && $userEmail !== '') {
-        $findByEmailStmt = $pdo->prepare(
-            "SELECT `{$idCol}`
-             FROM khachhang
-             WHERE LOWER(`{$taxCol}`) = LOWER(:email)
-             LIMIT 1"
-        );
-        $findByEmailStmt->execute([':email' => $userEmail]);
-        $foundId = $findByEmailStmt->fetchColumn();
-        if ($foundId !== false && trim((string) $foundId) !== '') {
-            return trim((string) $foundId);
+        $stmt = $pdo->prepare("SELECT `{$idCol}` FROM khachhang WHERE LOWER(`{$taxCol}`) = LOWER(:email) LIMIT 1");
+        $stmt->execute([':email' => $userEmail]);
+        $found = $stmt->fetchColumn();
+        if ($found !== false && trim((string) $found) !== '') {
+            dbg('CUSTOMER_FOUND_BY_EMAIL', $found);
+            return trim((string) $found);
         }
     }
 
     if ($userName !== '') {
-        $findByNameStmt = $pdo->prepare(
-            "SELECT `{$idCol}`
-             FROM khachhang
-             WHERE LOWER(`{$nameCol}`) = LOWER(:name)
-             LIMIT 1"
-        );
-        $findByNameStmt->execute([':name' => $userName]);
-        $foundId = $findByNameStmt->fetchColumn();
-        if ($foundId !== false && trim((string) $foundId) !== '') {
-            return trim((string) $foundId);
+        $stmt = $pdo->prepare("SELECT `{$idCol}` FROM khachhang WHERE LOWER(`{$nameCol}`) = LOWER(:name) LIMIT 1");
+        $stmt->execute([':name' => $userName]);
+        $found = $stmt->fetchColumn();
+        if ($found !== false && trim((string) $found) !== '') {
+            dbg('CUSTOMER_FOUND_BY_NAME', $found);
+            return trim((string) $found);
         }
     }
 
-    $newId = generateNextCode($pdo, 'khachhang', $idCol, 'KH', 2);
+    $newId    = generateNextCode($pdo, 'khachhang', $idCol, 'KH', 2);
     $safeName = mb_substr($userName !== '' ? $userName : 'Khách lẻ', 0, 50);
 
+    dbg('CUSTOMER_CREATE', "newId={$newId} name={$safeName} email={$userEmail}");
+
     $insertColumns = [$idCol, $nameCol];
-    $insertParams = [':id' => $newId, ':name' => $safeName];
+    $insertParams  = [':id' => $newId, ':name' => $safeName];
 
     if ($taxCol !== null && $userEmail !== '') {
-        $insertColumns[] = $taxCol;
+        $insertColumns[]    = $taxCol;
         $insertParams[':tax'] = strtolower($userEmail);
-        //$insertParams[':tax'] = mb_substr(strtolower($userEmail), 0, 30);
     }
 
     $placeholders = [];
     foreach ($insertColumns as $column) {
-        if ($column === $idCol) {
-            $placeholders[] = ':id';
-        } elseif ($column === $nameCol) {
-            $placeholders[] = ':name';
-        } else {
-            $placeholders[] = ':tax';
-        }
+        if ($column === $idCol)   { $placeholders[] = ':id'; }
+        elseif ($column === $nameCol) { $placeholders[] = ':name'; }
+        else                          { $placeholders[] = ':tax'; }
     }
 
     try {
-        $insertStmt = $pdo->prepare(
-            'INSERT INTO khachhang (' . implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) . ') VALUES (' . implode(', ', $placeholders) . ')'
+        $stmt = $pdo->prepare(
+            'INSERT INTO khachhang (' .
+            implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) .
+            ') VALUES (' . implode(', ', $placeholders) . ')'
         );
-        $insertStmt->execute($insertParams);
-    } catch (Throwable $createCustomerError) {
+        $stmt->execute($insertParams);
+        dbg('CUSTOMER_CREATED', $newId);
+    } catch (Throwable $e) {
+        dbg('CUSTOMER_CREATE_ERROR', $e->getMessage());
         if ($taxCol !== null) {
-            $retryStmt = $pdo->prepare("INSERT INTO khachhang (`{$idCol}`, `{$nameCol}`) VALUES (:id, :name)");
-            $retryStmt->execute([
-                ':id' => $newId,
-                ':name' => $safeName,
-            ]);
+            dbg('CUSTOMER_CREATE_RETRY_WITHOUT_TAX');
+            $retry = $pdo->prepare("INSERT INTO khachhang (`{$idCol}`, `{$nameCol}`) VALUES (:id, :name)");
+            $retry->execute([':id' => $newId, ':name' => $safeName]);
+            dbg('CUSTOMER_CREATE_RETRY_OK', $newId);
         } else {
-            throw $createCustomerError;
+            throw $e;
         }
     }
-
     return $newId;
 }
 
@@ -185,130 +171,68 @@ function fetchCustomerProfileById(PDO $pdo, string $customerId): array
     if ($customerId === '') {
         return [];
     }
-
     $khColumns = getExistingColumns($pdo, 'khachhang');
     $idCol = pickExistingColumn($khColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'id']);
-
     if ($idCol === null) {
         return [];
     }
-
     $stmt = $pdo->prepare("SELECT * FROM khachhang WHERE `{$idCol}` = :id LIMIT 1");
     $stmt->execute([':id' => $customerId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
     return is_array($row) ? $row : [];
 }
 
 function resolveProductId(PDO $pdo, string $rawId, string $rawName): ?string
 {
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." RESOLVE_PRODUCT id=".$rawId." name=".$rawName."\n",
-        FILE_APPEND
-    );
+    dbg('RESOLVE_PRODUCT', "id={$rawId} name={$rawName}");
 
     $hangColumns = getExistingColumns($pdo, 'hanghoa');
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." GOT_HANG_COLUMNS\n",
-        FILE_APPEND
-    );
-
-    $idCol = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $idCol   = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
     $nameCol = pickExistingColumn($hangColumns, ['tenhang', 'ten_hang', 'tensp', 'tensanpham', 'name']);
 
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." IDCOL=".$idCol."\n",
-        FILE_APPEND
-    );
+    dbg('PRODUCT_COLS', "idCol={$idCol} nameCol={$nameCol}");
 
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." NAMECOL=".$nameCol."\n",
-        FILE_APPEND
-    );
     if ($idCol === null) {
+        dbg('PRODUCT_IDCOL_MISSING');
         return null;
     }
 
     $rawId = trim($rawId);
     if ($rawId !== '') {
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." BEFORE_FIND_BY_ID\n",
-            FILE_APPEND
-        );
-try {
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." PREPARE_OK\n",
-        FILE_APPEND
-    );
-
-        $findByIdStmt = $pdo->prepare(
-            "SELECT `{$idCol}` FROM hanghoa WHERE `{$idCol}` = :id LIMIT 1"
-        );
-
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." EXECUTE_START\n",
-            FILE_APPEND
-        );
-
-        $findByIdStmt->execute([
-            ':id' => $rawId
-        ]);
-
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." EXECUTE_OK\n",
-            FILE_APPEND
-        );
-
-        $found = $findByIdStmt->fetchColumn();
-
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." FOUND=".$found."\n",
-            FILE_APPEND
-        );
-
-    } catch (Throwable $e) {
-
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." ERROR=".$e->getMessage()."\n",
-            FILE_APPEND
-        );
-
-        throw $e;
-    }
-        if ($found !== false) {
-            return (string) $found;
+        try {
+            $stmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE `{$idCol}` = :id LIMIT 1");
+            $stmt->execute([':id' => $rawId]);
+            $found = $stmt->fetchColumn();
+            dbg('PRODUCT_FIND_BY_ID', "found=" . ($found === false ? 'false' : $found));
+            if ($found !== false) {
+                return (string) $found;
+            }
+        } catch (Throwable $e) {
+            dbg('PRODUCT_FIND_BY_ID_ERROR', $e->getMessage());
+            throw $e;
         }
     }
 
     $rawName = trim($rawName);
     if ($rawName !== '' && $nameCol !== null) {
-        $findByNameStmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE LOWER(`{$nameCol}`) = LOWER(:name) LIMIT 1");
-        $findByNameStmt->execute([':name' => $rawName]);
-        $found = $findByNameStmt->fetchColumn();
+        $stmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE LOWER(`{$nameCol}`) = LOWER(:name) LIMIT 1");
+        $stmt->execute([':name' => $rawName]);
+        $found = $stmt->fetchColumn();
+        dbg('PRODUCT_FIND_BY_NAME_EXACT', "found=" . ($found === false ? 'false' : $found));
         if ($found !== false) {
             return (string) $found;
         }
 
-        $findByLikeStmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE LOWER(`{$nameCol}`) LIKE LOWER(:name) LIMIT 1");
-        $findByLikeStmt->execute([':name' => '%' . $rawName . '%']);
-        $found = $findByLikeStmt->fetchColumn();
+        $stmt = $pdo->prepare("SELECT `{$idCol}` FROM hanghoa WHERE LOWER(`{$nameCol}`) LIKE LOWER(:name) LIMIT 1");
+        $stmt->execute([':name' => '%' . $rawName . '%']);
+        $found = $stmt->fetchColumn();
+        dbg('PRODUCT_FIND_BY_NAME_LIKE', "found=" . ($found === false ? 'false' : $found));
         if ($found !== false) {
             return (string) $found;
         }
     }
 
+    dbg('PRODUCT_NOT_FOUND', "id={$rawId} name={$rawName}");
     return null;
 }
 
@@ -318,12 +242,10 @@ function currentVoucherUserKeyCheckout(): string
     if ($userId > 0) {
         return 'UID_' . $userId;
     }
-
     $customerCode = trim((string) ($_SESSION['ma_khach_hang'] ?? ''));
     if ($customerCode === '') {
         $customerCode = 'UNKNOWN';
     }
-
     return 'CUST_' . $customerCode;
 }
 
@@ -385,22 +307,28 @@ function ensureOrderVoucherMetaTablePdo(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $importProductCol, string $importQtyCol, string $exportProductCol, string $exportQtyCol): int
-{
+function fetchAvailableStockForProduct(
+    PDO $pdo,
+    string $productId,
+    string $importProductCol,
+    string $importQtyCol,
+    string $exportProductCol,
+    string $exportQtyCol
+): int {
     $productId = trim($productId);
     if ($productId === '') {
         return 0;
     }
 
-    $hangColumns = getExistingColumns($pdo, 'hanghoa');
-    $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
-    $pxColumns = getExistingColumns($pdo, 'phieuxuat');
+    $hangColumns  = getExistingColumns($pdo, 'hanghoa');
+    $ctpxColumns  = getExistingColumns($pdo, 'chitietphieuxuat');
+    $pxColumns    = getExistingColumns($pdo, 'phieuxuat');
 
-    $hangIdCol = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
-    $hangStockCol = pickExistingColumn($hangColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho']);
+    $hangIdCol        = pickExistingColumn($hangColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $hangStockCol     = pickExistingColumn($hangColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho']);
     $detailOrderIdCol = pickExistingColumn($ctpxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon']) ?? 'IdPhieuXuat';
-    $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']) ?? $detailOrderIdCol;
-    $orderStatusCol = pickExistingColumn($pxColumns, ['kyhieupx', 'ky_hieu_px', 'trangthai', 'trang_thai', 'status']) ?? 'KyHieuPX';
+    $orderIdCol       = pickExistingColumn($pxColumns,   ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']) ?? $detailOrderIdCol;
+    $orderStatusCol   = pickExistingColumn($pxColumns,   ['kyhieupx', 'ky_hieu_px', 'trangthai', 'trang_thai', 'status']) ?? 'KyHieuPX';
 
     if ($hangIdCol !== null) {
         $selectStockSql = $hangStockCol !== null ? "hh.`{$hangStockCol}` AS so_luong_ton," : '';
@@ -449,24 +377,29 @@ function fetchAvailableStockForProduct(PDO $pdo, string $productId, string $impo
     $stockStmt->execute([':product_id' => $productId]);
     $stockRow = $stockStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-    $lowerStockRow = array_change_key_case($stockRow, CASE_LOWER);
+    $lowerStockRow  = array_change_key_case($stockRow, CASE_LOWER);
     $stockCandidates = ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho'];
     foreach ($stockCandidates as $candidate) {
         if (array_key_exists($candidate, $lowerStockRow)) {
             $stockFromTable = max(0, (int) $lowerStockRow[$candidate]);
-            $tongNhap = (int) ($stockRow['tong_nhap'] ?? 0);
-            $tongXuat = (int) ($stockRow['tong_xuat'] ?? 0);
-            $stockFromFlow = max(0, $tongNhap - $tongXuat);
-
+            $tongNhap       = (int) ($stockRow['tong_nhap'] ?? 0);
+            $tongXuat       = (int) ($stockRow['tong_xuat'] ?? 0);
+            $stockFromFlow  = max(0, $tongNhap - $tongXuat);
+            dbg('STOCK_CALC', "product={$productId} table={$stockFromTable} nhap={$tongNhap} xuat={$tongXuat} flow={$stockFromFlow}");
             return $stockFromFlow > 0 ? $stockFromFlow : $stockFromTable;
         }
     }
 
     $tongNhap = (int) ($stockRow['tong_nhap'] ?? 0);
     $tongXuat = (int) ($stockRow['tong_xuat'] ?? 0);
-
-    return max(0, $tongNhap - $tongXuat);
+    $result   = max(0, $tongNhap - $tongXuat);
+    dbg('STOCK_CALC_FLOW_ONLY', "product={$productId} nhap={$tongNhap} xuat={$tongXuat} result={$result}");
+    return $result;
 }
+
+// ============================================================
+// MAIN FLOW
+// ============================================================
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respondCheckout(false, 'Phương thức không hợp lệ.', [], 405);
@@ -476,124 +409,106 @@ if (!isset($_SESSION['user_id']) || (int) $_SESSION['user_id'] <= 0) {
     respondCheckout(false, 'Vui lòng đăng nhập để đặt hàng.', [], 401);
 }
 
-$payload = null;
+dbg('SESSION_OK', 'user_id=' . ($_SESSION['user_id'] ?? 'null'));
 
-file_put_contents(
-    __DIR__ . '/checkout-debug.txt',
-    date('Y-m-d H:i:s') . " AFTER PAYLOAD\n",
-    FILE_APPEND
-);
-
+// ── Parse payload ──────────────────────────────────────────
 $rawBody = file_get_contents('php://input');
+$payload = null;
 if (is_string($rawBody) && trim($rawBody) !== '') {
     $payload = json_decode($rawBody, true);
+    dbg('PAYLOAD_FROM_BODY', 'json_last_error=' . json_last_error());
 }
-
 if (!is_array($payload)) {
     $itemsJson = (string) ($_POST['items_json'] ?? '');
-    $payload = $itemsJson !== '' ? json_decode($itemsJson, true) : [];
+    $payload   = $itemsJson !== '' ? json_decode($itemsJson, true) : [];
+    dbg('PAYLOAD_FROM_POST', 'items_json=' . ($itemsJson !== '' ? 'yes' : 'empty'));
+}
+if (!is_array($payload)) {
+    $payload = [];
 }
 
 $voucherPayload = is_array($payload['voucher'] ?? null) ? $payload['voucher'] : null;
 
-$paymentMethodRaw = strtolower(trim((string) ($payload['payment_method'] ?? $_POST['payment_method'] ?? 'cod')));
-$paymentMethod = $paymentMethodRaw === 'qr' ? 'qr' : 'cod';
+$paymentMethodRaw   = strtolower(trim((string) ($payload['payment_method'] ?? $_POST['payment_method'] ?? 'cod')));
+$paymentMethod      = $paymentMethodRaw === 'qr' ? 'qr' : 'cod';
 $paymentMethodLabel = $paymentMethod === 'qr' ? 'QR chuyển khoản' : 'Thanh toán khi nhận hàng';
 $paymentStatusLabel = $paymentMethod === 'qr' ? 'Chờ khách chuyển khoản' : 'Thanh toán khi nhận hàng';
-$orderStatusLabel = $paymentMethod === 'qr' ? 'Chờ thanh toán QR' : 'Chờ duyệt';
+$orderStatusLabel   = $paymentMethod === 'qr' ? 'Chờ thanh toán QR' : 'Chờ duyệt';
+
 $qrPaidConfirmedRaw = $payload['qr_paid_confirmed'] ?? $_POST['qr_paid_confirmed'] ?? false;
-$qrPaidConfirmed = filter_var($qrPaidConfirmedRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-$qrPaidConfirmed = $qrPaidConfirmed === null ? false : $qrPaidConfirmed;
+$qrPaidConfirmed    = filter_var($qrPaidConfirmedRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+
+dbg('PAYMENT', "method={$paymentMethod} qr_confirmed=" . ($qrPaidConfirmed ? 'true' : 'false'));
 
 if ($paymentMethod === 'qr' && $qrPaidConfirmed !== true) {
     respondCheckout(false, 'Bạn cần xác nhận đã chuyển khoản QR trước khi đặt hàng.', [], 400);
 }
 
-$rawItems = $payload['items'] ?? [];
-if (!is_array($rawItems)) {
-    $rawItems = [];
-}
-
+// ── Parse items ────────────────────────────────────────────
+$rawItems = is_array($payload['items'] ?? null) ? $payload['items'] : [];
 $items = [];
 foreach ($rawItems as $rawItem) {
     if (!is_array($rawItem)) {
         continue;
     }
-
-    $id = trim((string) ($rawItem['id'] ?? ''));
-    $name = trim((string) ($rawItem['name'] ?? ''));
-    $qty = (int) ($rawItem['qty'] ?? 0);
+    $id    = trim((string) ($rawItem['id'] ?? ''));
+    $name  = trim((string) ($rawItem['name'] ?? ''));
+    $qty   = (int) ($rawItem['qty'] ?? 0);
     $price = (float) ($rawItem['price'] ?? 0);
-
     if ($qty <= 0) {
         continue;
     }
-
-    $items[] = [
-        'id' => $id,
-        'name' => $name,
-        'qty' => $qty,
-        'price' => max(0, $price),
-    ];
+    $items[] = ['id' => $id, 'name' => $name, 'qty' => $qty, 'price' => max(0, $price)];
 }
+dbg('ITEMS_PARSED', 'count=' . count($items));
 
 if (count($items) === 0) {
     respondCheckout(false, 'Không có sản phẩm hợp lệ để đặt hàng.');
 }
 
+// ── DB connect ─────────────────────────────────────────────
 $dbHost = 'webbanhang-mysql.mysql.database.azure.com';
 $dbName = 'qlhethongbanhangmini';
 $dbUser = 'webbanhang123';
 $dbPass = 'thanhkiet1234ACK@';
 
 try {
-        file_put_contents(
-        __DIR__ . '/checkout-debug.txt',
-        date('Y-m-d H:i:s') . " BEFORE PDO\n",
-        FILE_APPEND
-    );
-
+    dbg('PDO_CONNECT_START', "host={$dbHost} db={$dbName}");
     $pdo = new PDO(
         "mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4",
         $dbUser,
         $dbPass,
         [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
         ]
     );
+    dbg('PDO_CONNECT_OK');
 
-    file_put_contents(
-        __DIR__ . '/checkout-debug.txt',
-        date('Y-m-d H:i:s') . " AFTER PDO\n",
-        FILE_APPEND
-    );
-
-    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT PX\n", FILE_APPEND);
-
-    $pxColumns = getExistingColumns($pdo, 'phieuxuat');
-
-    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT CTPX\n", FILE_APPEND);
-
+    // ── Detect columns ──────────────────────────────────────
+    dbg('COLUMNS_DETECT_START');
+    $pxColumns   = getExistingColumns($pdo, 'phieuxuat');
     $ctpxColumns = getExistingColumns($pdo, 'chitietphieuxuat');
-
-    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT CTNH\n", FILE_APPEND);
-
     $ctnhColumns = getExistingColumns($pdo, 'chitietnhaphang');
+    $hhColumns   = getExistingColumns($pdo, 'hanghoa');
+    dbg('COLUMNS_DETECT_OK');
 
-    file_put_contents(__DIR__.'/checkout-debug.txt', date('Y-m-d H:i:s')." GOT HH\n", FILE_APPEND);
-
-$hhColumns = getExistingColumns($pdo, 'hanghoa');
-    $orderIdCol = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']);
-    $orderCustomerCol = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'idkhachhang']);
-    $orderDateCol = pickExistingColumn($pxColumns, ['ngayxuat', 'ngay_xuat', 'ngaydat', 'ngay_dat', 'ngaylap']);
-    $orderStaffCol = pickExistingColumn($pxColumns, ['manv', 'ma_nv', 'idnhanvien']);
-    $orderSignCol = pickExistingColumn($pxColumns, ['kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']);
-    $orderStatusCol = pickExistingColumn($pxColumns, ['trangthai', 'trang_thai', 'status']);
-    $orderTotalCol = pickExistingColumn($pxColumns, ['tongtien', 'tong_tien', 'thanhtien', 'thanh_tien', 'total']);
+    $orderIdCol            = pickExistingColumn($pxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon', 'id']);
+    $orderCustomerCol      = pickExistingColumn($pxColumns, ['makhachhang', 'ma_khach_hang', 'makh', 'idkhachhang']);
+    $orderDateCol          = pickExistingColumn($pxColumns, ['ngayxuat', 'ngay_xuat', 'ngaydat', 'ngay_dat', 'ngaylap']);
+    $orderStaffCol         = pickExistingColumn($pxColumns, ['manv', 'ma_nv', 'idnhanvien']);
+    $orderSignCol          = pickExistingColumn($pxColumns, ['kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu']);
+    $orderStatusCol        = pickExistingColumn($pxColumns, ['trangthai', 'trang_thai', 'status']);
+    $orderTotalCol         = pickExistingColumn($pxColumns, ['tongtien', 'tong_tien', 'thanhtien', 'thanh_tien', 'total']);
     $orderPaymentMethodCol = pickExistingColumn($pxColumns, ['hinhthucthanhtoan', 'hinh_thuc_thanh_toan', 'phuongthucthanhtoan', 'phuong_thuc_thanh_toan', 'ptthanhtoan', 'payment_method', 'thanhtoan']);
     $orderPaymentStatusCol = pickExistingColumn($pxColumns, ['trangthaithanhtoan', 'trang_thai_thanh_toan', 'ttthanhtoan', 'payment_status']);
+
+    dbg('PX_COLS',
+        "id={$orderIdCol} customer={$orderCustomerCol} date={$orderDateCol} " .
+        "staff={$orderStaffCol} sign={$orderSignCol} status={$orderStatusCol} " .
+        "total={$orderTotalCol} payMethod={$orderPaymentMethodCol} payStatus={$orderPaymentStatusCol}"
+    );
 
     if ($orderIdCol === null) {
         respondCheckout(false, 'Không tìm thấy cột mã đơn trong bảng phiếu xuất.');
@@ -601,237 +516,186 @@ $hhColumns = getExistingColumns($pdo, 'hanghoa');
 
     $detailOrderIdCol = pickExistingColumn($ctpxColumns, ['idphieuxuat', 'id_phieu_xuat', 'maphieuxuat', 'ma_phieu_xuat', 'maphieu', 'ma_phieu', 'madon']);
     $detailProductCol = pickExistingColumn($ctpxColumns, ['mahang', 'ma_hang', 'idhanghoa']);
-    $detailPriceCol = pickExistingColumn($ctpxColumns, ['giaban', 'gia_ban', 'giaxuat', 'gia_xuat', 'dongia', 'don_gia', 'gia']);
-    $detailQtyCol = pickExistingColumn($ctpxColumns, ['soluongpx', 'so_luong_px', 'soluong', 'so_luong']);
-    $detailTotalCol = pickExistingColumn($ctpxColumns, ['thanhtienpx', 'thanh_tien_px', 'thanhtien', 'thanh_tien', 'tongtien', 'tong_tien']);
+    $detailPriceCol   = pickExistingColumn($ctpxColumns, ['giaban', 'gia_ban', 'giaxuat', 'gia_xuat', 'dongia', 'don_gia', 'gia']);
+    $detailQtyCol     = pickExistingColumn($ctpxColumns, ['soluongpx', 'so_luong_px', 'soluong', 'so_luong']);
+    $detailTotalCol   = pickExistingColumn($ctpxColumns, ['thanhtienpx', 'thanh_tien_px', 'thanhtien', 'thanh_tien', 'tongtien', 'tong_tien']);
     $importProductCol = pickExistingColumn($ctnhColumns, ['mahang', 'ma_hang', 'idhanghoa']);
-    $importQtyCol = pickExistingColumn($ctnhColumns, ['soluongnhap', 'so_luong_nhap', 'soluong', 'so_luong']);
-    $hangIdCol = pickExistingColumn($hhColumns, ['mahang', 'ma_hang', 'idhanghoa', 'id']);
-    $hangStockCol = pickExistingColumn($hhColumns, ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho', 'soluong', 'so_luong']);
+    $importQtyCol     = pickExistingColumn($ctnhColumns, ['soluongnhap', 'so_luong_nhap', 'soluong', 'so_luong']);
+    $hangIdCol        = pickExistingColumn($hhColumns,   ['mahang', 'ma_hang', 'idhanghoa', 'id']);
+    $hangStockCol     = pickExistingColumn($hhColumns,   ['soluongton', 'so_luong_ton', 'tonkho', 'ton_kho', 'soluong', 'so_luong']);
+
+    dbg('CTPX_COLS',
+        "orderId={$detailOrderIdCol} product={$detailProductCol} price={$detailPriceCol} " .
+        "qty={$detailQtyCol} total={$detailTotalCol}"
+    );
+    dbg('CTNH_COLS', "product={$importProductCol} qty={$importQtyCol}");
+    dbg('HH_COLS',   "id={$hangIdCol} stock={$hangStockCol}");
 
     if ($detailOrderIdCol === null || $detailProductCol === null) {
         respondCheckout(false, 'Không tìm thấy cột bắt buộc để lưu chi tiết đơn hàng.');
     }
-
     if ($detailQtyCol === null || $importProductCol === null || $importQtyCol === null) {
         respondCheckout(false, 'Không đủ cấu hình cột kho để kiểm tra tồn hàng trước khi đặt đơn.');
     }
 
-    $userName = trim((string) ($_SESSION['user_name'] ?? 'Khách hàng'));
+    // ── Resolve customer ────────────────────────────────────
+    $userName  = trim((string) ($_SESSION['user_name']  ?? 'Khách hàng'));
     $userEmail = trim((string) ($_SESSION['user_email'] ?? ''));
-
-    file_put_contents(__DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE CUSTOMER\n",
-    FILE_APPEND
-    );
+    dbg('SESSION_USER', "name={$userName} email={$userEmail}");
 
     $customerId = null;
     if ($orderCustomerCol !== null) {
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." BEFORE CUSTOMER\n",
-        FILE_APPEND
-    );
+        dbg('CUSTOMER_RESOLVE_START');
+        $customerId = resolveCustomerId(
+            $pdo,
+            $userName,
+            $userEmail,
+            (string) ($_SESSION['ma_khach_hang'] ?? '')
+        );
+        dbg('CUSTOMER_RESOLVE_DONE', "customerId={$customerId}");
 
-    $customerId = resolveCustomerId(
-        $pdo,
-        $userName,
-        $userEmail,
-        (string) ($_SESSION['ma_khach_hang'] ?? '')
-    );
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." CUSTOMER=".$customerId."\n",
-        FILE_APPEND
-    );
         if ($customerId === null || $customerId === '') {
             respondCheckout(false, 'Không thể xác định khách hàng cho đơn hàng này.');
         }
 
+        dbg('CUSTOMER_PROFILE_FETCH_START', $customerId);
         $customerProfile = fetchCustomerProfileById($pdo, $customerId);
-        file_put_contents(__DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." PROFILE_OK\n",
-        FILE_APPEND
-        );
-        $phoneValue = '';
-        $addressValue = '';
+        dbg('CUSTOMER_PROFILE_FETCH_DONE', 'keys=' . implode(',', array_keys($customerProfile)));
 
+        $phoneValue   = '';
+        $addressValue = '';
         if (is_array($customerProfile) && count($customerProfile) > 0) {
-            $lowerCustomerProfile = array_change_key_case($customerProfile, CASE_LOWER);
-            $phoneCandidates = ['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone'];
-            foreach ($phoneCandidates as $candidate) {
-                if (array_key_exists($candidate, $lowerCustomerProfile)) {
-                    $phoneValue = trim((string) $lowerCustomerProfile[$candidate]);
+            $lowerProfile = array_change_key_case($customerProfile, CASE_LOWER);
+            foreach (['sdtkh', 'sdt', 'sodienthoai', 'so_dien_thoai', 'phone'] as $c) {
+                if (array_key_exists($c, $lowerProfile)) {
+                    $phoneValue = trim((string) $lowerProfile[$c]);
                     break;
                 }
             }
-
-            $addressCandidates = ['diachi', 'dia_chi', 'address'];
-            foreach ($addressCandidates as $candidate) {
-                if (array_key_exists($candidate, $lowerCustomerProfile)) {
-                    $addressValue = trim((string) $lowerCustomerProfile[$candidate]);
+            foreach (['diachi', 'dia_chi', 'address'] as $c) {
+                if (array_key_exists($c, $lowerProfile)) {
+                    $addressValue = trim((string) $lowerProfile[$c]);
                     break;
                 }
             }
         }
+        dbg('CUSTOMER_PROFILE_FIELDS', "phone=" . ($phoneValue !== '' ? 'ok' : 'MISSING') . " address=" . ($addressValue !== '' ? 'ok' : 'MISSING'));
 
         $missingFields = [];
-        if ($phoneValue === '') {
-            $missingFields[] = 'Số điện thoại';
-        }
-        if ($addressValue === '') {
-            $missingFields[] = 'Địa chỉ';
-        }
+        if ($phoneValue   === '') { $missingFields[] = 'Số điện thoại'; }
+        if ($addressValue === '') { $missingFields[] = 'Địa chỉ'; }
 
         if (count($missingFields) > 0) {
-            respondCheckout(false, 'Vui lòng cập nhật hồ sơ trước khi đặt hàng: thiếu ' . implode(', ', $missingFields) . '.', [
-                'needs_profile_completion' => true,
-                'missing_fields' => $missingFields,
-                'profile_url' => 'tai-khoan.php?tab=settings',
-            ], 400);
+            respondCheckout(false,
+                'Vui lòng cập nhật hồ sơ trước khi đặt hàng: thiếu ' . implode(', ', $missingFields) . '.',
+                ['needs_profile_completion' => true, 'missing_fields' => $missingFields, 'profile_url' => 'tai-khoan.php?tab=settings'],
+                400
+            );
         }
     }
 
+    // ── Staff ───────────────────────────────────────────────
     $staffId = null;
     if ($orderStaffCol !== null) {
         try {
             $nvColumns = getExistingColumns($pdo, 'nhanvien');
-            $nvIdCol = pickExistingColumn($nvColumns, ['manv', 'ma_nv', 'id']);
+            $nvIdCol   = pickExistingColumn($nvColumns, ['manv', 'ma_nv', 'id']);
             if ($nvIdCol !== null) {
-                $staffStmt = $pdo->query("SELECT `{$nvIdCol}` FROM nhanvien ORDER BY `{$nvIdCol}` ASC LIMIT 1");
-                $staffValue = $staffStmt->fetchColumn();
+                $staffValue = $pdo->query("SELECT `{$nvIdCol}` FROM nhanvien ORDER BY `{$nvIdCol}` ASC LIMIT 1")->fetchColumn();
                 if ($staffValue !== false) {
                     $staffId = trim((string) $staffValue);
                 }
             }
+            dbg('STAFF', "staffId={$staffId}");
         } catch (Throwable $ignored) {
+            dbg('STAFF_ERROR', $ignored->getMessage());
         }
     }
 
+    // ── Resolve products ────────────────────────────────────
+    dbg('PRODUCTS_RESOLVE_START', 'count=' . count($items));
     $resolvedItems = [];
-    $invalidItems = [];
-
+    $invalidItems  = [];
     foreach ($items as $item) {
-        file_put_contents(__DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." BEFORE PRODUCTS\n",
-        FILE_APPEND
-        );
         $productId = resolveProductId($pdo, (string) ($item['id'] ?? ''), (string) ($item['name'] ?? ''));
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." AFTER_RESOLVE=".$productId."\n",
-    FILE_APPEND
-);
         if ($productId === null || $productId === '') {
-            $invalidItems[] = (string) (($item['id'] ?? '') !== '' ? $item['id'] : ($item['name'] ?? 'Sản phẩm'));
+            $label = (string) (($item['id'] ?? '') !== '' ? $item['id'] : ($item['name'] ?? 'Sản phẩm'));
+            dbg('PRODUCT_INVALID', $label);
+            $invalidItems[] = $label;
             continue;
         }
-
-        $qty = max(1, (int) ($item['qty'] ?? 1));
-        $price = max(0, (float) ($item['price'] ?? 0));
+        $qty       = max(1, (int) ($item['qty'] ?? 1));
+        $price     = max(0, (float) ($item['price'] ?? 0));
         $lineTotal = $price * $qty;
-
-        $resolvedItems[] = [
-            'product_id' => $productId,
-            'qty' => $qty,
-            'price' => $price,
-            'line_total' => $lineTotal,
-        ];
+        $resolvedItems[] = ['product_id' => $productId, 'qty' => $qty, 'price' => $price, 'line_total' => $lineTotal];
+        dbg('PRODUCT_RESOLVED', "id={$productId} qty={$qty} price={$price}");
     }
+    dbg('PRODUCTS_RESOLVE_DONE', 'resolved=' . count($resolvedItems) . ' invalid=' . count($invalidItems));
 
     if (count($resolvedItems) === 0) {
-        respondCheckout(false, 'Không có sản phẩm hợp lệ để tạo đơn hàng.', [
-            'invalid_items' => $invalidItems,
-        ]);
+        respondCheckout(false, 'Không có sản phẩm hợp lệ để tạo đơn hàng.', ['invalid_items' => $invalidItems]);
     }
 
+    // ── Aggregate qty per product ───────────────────────────
     $requestedQtyByProduct = [];
-    foreach ($resolvedItems as $resolvedItem) {
-        $productKey = (string) ($resolvedItem['product_id'] ?? '');
-        $qtyValue = (int) ($resolvedItem['qty'] ?? 0);
-        if ($productKey === '' || $qtyValue <= 0) {
-            continue;
-        }
-
-        if (!isset($requestedQtyByProduct[$productKey])) {
-            $requestedQtyByProduct[$productKey] = 0;
-        }
-        $requestedQtyByProduct[$productKey] += $qtyValue;
+    foreach ($resolvedItems as $ri) {
+        $key = (string) ($ri['product_id'] ?? '');
+        if ($key === '' || (int) ($ri['qty'] ?? 0) <= 0) { continue; }
+        $requestedQtyByProduct[$key] = ($requestedQtyByProduct[$key] ?? 0) + (int) $ri['qty'];
     }
 
+    // ── Check stock ─────────────────────────────────────────
+    dbg('STOCK_CHECK_START', 'products=' . count($requestedQtyByProduct));
     $insufficientItems = [];
-
-foreach ($resolvedItems as $resolvedItem) {
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." CHECK_STOCK_START ".$resolvedItem['product_id']."\n",
-        FILE_APPEND
-    );
-
-    $availableStock = fetchAvailableStockForProduct(
-        $pdo,
-        $resolvedItem['product_id'],
-        $importProductCol,
-        $importQtyCol,
-        $detailProductCol,
-        $detailQtyCol
-    );
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." STOCK=".$availableStock."\n",
-        FILE_APPEND
-    );
-
-        if ((int) ($resolvedItem['qty'] ?? 0) > $availableStock) {
-            $insufficientItems[] = [
-                'product_id' => (string) ($resolvedItem['product_id'] ?? ''),
-                'requested_qty' => (int) ($resolvedItem['qty'] ?? 0),
-                'available_stock' => $availableStock,
-            ];
+    foreach ($resolvedItems as $ri) {
+        $stock = fetchAvailableStockForProduct(
+            $pdo,
+            $ri['product_id'],
+            $importProductCol,
+            $importQtyCol,
+            $detailProductCol,
+            $detailQtyCol
+        );
+        dbg('STOCK_RESULT', "product={$ri['product_id']} stock={$stock} requested={$ri['qty']}");
+        if ((int) ($ri['qty'] ?? 0) > $stock) {
+            $insufficientItems[] = ['product_id' => $ri['product_id'], 'requested_qty' => $ri['qty'], 'available_stock' => $stock];
         }
     }
-
     if (count($insufficientItems) > 0) {
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." BEFORE_TRANSACTION\n",
-            FILE_APPEND
-        );
         $first = $insufficientItems[0];
-        respondCheckout(false, 'Một số sản phẩm đã hết hoặc không đủ tồn kho. Sản phẩm ' . ($first['product_id'] ?? '') . ' chỉ còn ' . ($first['available_stock'] ?? 0) . '.', [
-            'insufficient_items' => $insufficientItems,
-        ], 400);
+        dbg('STOCK_INSUFFICIENT', "product={$first['product_id']} stock={$first['available_stock']}");
+        respondCheckout(false,
+            'Một số sản phẩm đã hết hoặc không đủ tồn kho. Sản phẩm ' . $first['product_id'] . ' chỉ còn ' . $first['available_stock'] . '.',
+            ['insufficient_items' => $insufficientItems],
+            400
+        );
     }
+    dbg('STOCK_CHECK_OK');
 
+    // ── Subtotal ────────────────────────────────────────────
     $orderTotal = 0.0;
-    foreach ($resolvedItems as $resolvedItem) {
-        $orderTotal += (float) $resolvedItem['line_total'];
+    foreach ($resolvedItems as $ri) {
+        $orderTotal += (float) $ri['line_total'];
     }
-    file_put_contents(__DIR__.'/checkout-debug.txt',
-date('Y-m-d H:i:s')." BEFORE_VOUCHER\n",
-FILE_APPEND
-);
+    dbg('SUBTOTAL', (string) $orderTotal);
+
+    // ── Ensure meta tables ──────────────────────────────────
+    dbg('META_TABLES_START');
     ensureVoucherUsageTablePdo($pdo);
-    file_put_contents(__DIR__.'/checkout-debug.txt',
-date('Y-m-d H:i:s')." AFTER_VOUCHER_TABLES\n",
-FILE_APPEND
-);
     ensureVoucherClaimTablePdo($pdo);
-    file_put_contents(__DIR__.'/checkout-debug.txt',
-date('Y-m-d H:i:s')." AFTER_VOUCHER_PROCESS\n",
-FILE_APPEND
-);
     ensureOrderPaymentMetaTablePdo($pdo);
     ensureOrderVoucherMetaTablePdo($pdo);
-    $voucherUserKey = currentVoucherUserKeyCheckout();
-    $voucherUsed = null;
-    $discountAmount = 0.0;
+    dbg('META_TABLES_OK');
+
+    // ── Voucher ─────────────────────────────────────────────
+    $voucherUserKey  = currentVoucherUserKeyCheckout();
+    $voucherUsed     = null;
+    $discountAmount  = 0.0;
 
     if (is_array($voucherPayload)) {
         $voucherCode = strtoupper(trim((string) ($voucherPayload['code'] ?? '')));
+        dbg('VOUCHER_TRY', $voucherCode);
+
         if ($voucherCode !== '') {
             $voucherStmt = $pdo->prepare(
                 "SELECT id_voucher, ma_voucher, ten_voucher, kieu_giam, gia_tri_giam, tien_toi_thieu, so_luong_toi_da, so_luong_da_su_dung
@@ -845,58 +709,65 @@ FILE_APPEND
             $voucherRow = $voucherStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
             if ($voucherRow === null) {
+                dbg('VOUCHER_NOT_FOUND', $voucherCode);
                 respondCheckout(false, 'Voucher không hợp lệ hoặc đã hết hạn.');
             }
 
             $voucherId = (int) ($voucherRow['id_voucher'] ?? 0);
+            dbg('VOUCHER_FOUND', "id={$voucherId} code={$voucherRow['ma_voucher']}");
+
             if ($voucherId <= 0) {
                 respondCheckout(false, 'Voucher không hợp lệ.');
             }
 
-            $claimCheckStmt = $pdo->prepare(
+            // Claim check
+            $claimCheck = $pdo->prepare(
                 'SELECT id FROM voucher_nguoi_dung_da_nhan WHERE user_key = :user_key AND (id_voucher = :id_voucher OR UPPER(ma_voucher) = :ma_voucher) LIMIT 1'
             );
-            $claimCheckStmt->execute([
-                ':user_key' => $voucherUserKey,
+            $claimCheck->execute([
+                ':user_key'   => $voucherUserKey,
                 ':id_voucher' => $voucherId,
                 ':ma_voucher' => strtoupper((string) ($voucherRow['ma_voucher'] ?? $voucherCode)),
             ]);
-            if ($claimCheckStmt->fetchColumn() === false) {
+            if ($claimCheck->fetchColumn() === false) {
+                dbg('VOUCHER_NOT_CLAIMED', "user={$voucherUserKey} voucher={$voucherId}");
                 respondCheckout(false, 'Bạn chưa nhận voucher này. Vui lòng nhận voucher trong mục Quản lý tài khoản trước.');
             }
 
-            $usedCheckStmt = $pdo->prepare(
+            // Usage check
+            $usedCheck = $pdo->prepare(
                 'SELECT id FROM voucher_nguoi_dung_da_dung WHERE user_key = :user_key AND (id_voucher = :id_voucher OR UPPER(ma_voucher) = :ma_voucher) LIMIT 1'
             );
-            $usedCheckStmt->execute([
-                ':user_key' => $voucherUserKey,
+            $usedCheck->execute([
+                ':user_key'   => $voucherUserKey,
                 ':id_voucher' => $voucherId,
                 ':ma_voucher' => strtoupper((string) ($voucherRow['ma_voucher'] ?? $voucherCode)),
             ]);
-            $alreadyUsed = $usedCheckStmt->fetchColumn() !== false;
-            if ($alreadyUsed) {
+            if ($usedCheck->fetchColumn() !== false) {
+                dbg('VOUCHER_ALREADY_USED', "user={$voucherUserKey} voucher={$voucherId}");
                 respondCheckout(false, 'Voucher này bạn đã dùng rồi.');
             }
 
-            $maxQty = (int) ($voucherRow['so_luong_toi_da'] ?? 0);
-            $usedQty = (int) ($voucherRow['so_luong_da_su_dung'] ?? 0);
+            $maxQty  = (int)   ($voucherRow['so_luong_toi_da']    ?? 0);
+            $usedQty = (int)   ($voucherRow['so_luong_da_su_dung'] ?? 0);
+            $minOrder = max(0, (float) ($voucherRow['tien_toi_thieu'] ?? 0));
+            dbg('VOUCHER_LIMITS', "maxQty={$maxQty} usedQty={$usedQty} minOrder={$minOrder} orderTotal={$orderTotal}");
+
             if ($maxQty > 0 && $usedQty >= $maxQty) {
                 respondCheckout(false, 'Voucher đã hết lượt sử dụng.');
             }
-
-            $minOrder = max(0, (float) ($voucherRow['tien_toi_thieu'] ?? 0));
             if ($orderTotal < $minOrder) {
                 respondCheckout(false, 'Đơn hàng chưa đạt mức tối thiểu để dùng voucher này.');
             }
 
-            $type = strtolower((string) ($voucherRow['kieu_giam'] ?? 'fixed'));
+            $type  = strtolower((string) ($voucherRow['kieu_giam'] ?? 'fixed'));
             $value = max(0, (float) ($voucherRow['gia_tri_giam'] ?? 0));
-            if ($type === 'percent') {
-                $discountAmount = round(($orderTotal * min(100, $value)) / 100);
-            } else {
-                $discountAmount = $value;
-            }
+            $discountAmount = $type === 'percent'
+                ? round(($orderTotal * min(100, $value)) / 100)
+                : $value;
             $discountAmount = min($discountAmount, $orderTotal);
+
+            dbg('VOUCHER_DISCOUNT', "type={$type} value={$value} discount={$discountAmount}");
 
             $voucherUsed = [
                 'id_voucher' => $voucherId,
@@ -907,356 +778,254 @@ FILE_APPEND
     }
 
     $finalOrderTotal = max(0, $orderTotal - $discountAmount);
-    file_put_contents(__DIR__.'/checkout-debug.txt',
-date('Y-m-d H:i:s')." AFTER_VOUCHER_PROCESS\n",
-FILE_APPEND
-);
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." BEGIN_TRANSACTION\n",
-        FILE_APPEND
-    );
+    dbg('FINAL_TOTAL', "subtotal={$orderTotal} discount={$discountAmount} final={$finalOrderTotal}");
 
+    // ── Transaction ─────────────────────────────────────────
+    dbg('TRANSACTION_BEGIN');
     $pdo->beginTransaction();
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." TRANSACTION_OK\n",
-        FILE_APPEND
-    );
+    dbg('TRANSACTION_OK');
 
     try {
+        // Decrease stock
         if ($hangIdCol !== null && $hangStockCol !== null && count($requestedQtyByProduct) > 0) {
-            $decreaseStockStmt = $pdo->prepare(
-                "UPDATE hanghoa
-                 SET `{$hangStockCol}` = `{$hangStockCol}` - :qty
-                 WHERE `{$hangIdCol}` = :product_id
-                 AND `{$hangStockCol}` >= :qty"
+            dbg('STOCK_DECREASE_START', 'products=' . count($requestedQtyByProduct));
+            $decreaseStmt = $pdo->prepare(
+                "UPDATE hanghoa SET `{$hangStockCol}` = `{$hangStockCol}` - :qty
+                 WHERE `{$hangIdCol}` = :product_id AND `{$hangStockCol}` >= :qty"
             );
-
             foreach ($requestedQtyByProduct as $productId => $buyQty) {
-                $decreaseStockStmt->execute([
-                    ':qty' => (int) $buyQty,
-                    ':product_id' => (string) $productId,
-                ]);
-
-                if ($decreaseStockStmt->rowCount() <= 0) {
+                $decreaseStmt->execute([':qty' => (int) $buyQty, ':product_id' => (string) $productId]);
+                $affected = $decreaseStmt->rowCount();
+                dbg('STOCK_DECREASE', "product={$productId} qty={$buyQty} affected={$affected}");
+                if ($affected <= 0) {
                     throw new RuntimeException('Tồn kho sản phẩm ' . $productId . ' không đủ để trừ sau khi chốt đơn.');
                 }
             }
+            dbg('STOCK_DECREASE_OK');
         }
-         file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." BEFORE_GENERATE_ORDER\n",
-            FILE_APPEND
-        );
+
+        // Generate order ID
+        dbg('ORDER_ID_GENERATE_START');
         $newOrderId = generateNextCode($pdo, 'phieuxuat', $orderIdCol, 'PX', 2);
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." BEFORE_BUILD_ORDER\n",
-            FILE_APPEND
-        );
-        file_put_contents(
-            __DIR__.'/checkout-debug.txt',
-            date('Y-m-d H:i:s')." ORDER_ID=".$newOrderId."\n",
-            FILE_APPEND
-        );
+        dbg('ORDER_ID_GENERATED', $newOrderId);
 
         $orderDateTime = date('Y-m-d H:i:s');
 
-        $insertColumns = [$orderIdCol];
+        // Build INSERT phieuxuat
+        $insertColumns      = [$orderIdCol];
         $insertPlaceholders = [':order_id'];
-        $insertParams = [':order_id' => $newOrderId];
+        $insertParams       = [':order_id' => $newOrderId];
 
         if ($orderCustomerCol !== null && $customerId !== null) {
-            $insertColumns[] = $orderCustomerCol;
-            $insertPlaceholders[] = ':customer_id';
+            $insertColumns[]        = $orderCustomerCol;
+            $insertPlaceholders[]   = ':customer_id';
             $insertParams[':customer_id'] = $customerId;
         }
-
         if ($orderStaffCol !== null && $staffId !== null && $staffId !== '') {
-            $insertColumns[] = $orderStaffCol;
+            $insertColumns[]      = $orderStaffCol;
             $insertPlaceholders[] = ':staff_id';
             $insertParams[':staff_id'] = $staffId;
         }
-
         if ($orderDateCol !== null) {
-            $insertColumns[] = $orderDateCol;
+            $insertColumns[]      = $orderDateCol;
             $insertPlaceholders[] = ':order_date';
             $insertParams[':order_date'] = $orderDateTime;
         }
-
         if ($orderStatusCol !== null) {
-            $insertColumns[] = $orderStatusCol;
+            $insertColumns[]      = $orderStatusCol;
             $insertPlaceholders[] = ':order_status';
             $insertParams[':order_status'] = $orderStatusLabel;
         }
-
         if ($orderSignCol !== null) {
-            $insertColumns[] = $orderSignCol;
+            $insertColumns[]      = $orderSignCol;
             $insertPlaceholders[] = ':order_sign';
             $insertParams[':order_sign'] = $orderStatusCol !== null
                 ? ($paymentMethod === 'qr' ? 'CHO_THANH_TOAN_QR' : 'PX')
                 : 'CHO_DUYET';
         }
-
         if ($orderTotalCol !== null) {
-            $insertColumns[] = $orderTotalCol;
+            $insertColumns[]      = $orderTotalCol;
             $insertPlaceholders[] = ':order_total';
             $insertParams[':order_total'] = $finalOrderTotal;
         }
-
         if ($orderPaymentMethodCol !== null) {
-            $insertColumns[] = $orderPaymentMethodCol;
+            $insertColumns[]      = $orderPaymentMethodCol;
             $insertPlaceholders[] = ':payment_method';
             $insertParams[':payment_method'] = $paymentMethodLabel;
         }
-
         if ($orderPaymentStatusCol !== null) {
-            $insertColumns[] = $orderPaymentStatusCol;
+            $insertColumns[]      = $orderPaymentStatusCol;
             $insertPlaceholders[] = ':payment_status';
             $insertParams[':payment_status'] = $paymentStatusLabel;
         }
 
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_INSERT_PX\n",
-    FILE_APPEND
-);
+        $sqlInsertPx =
+            'INSERT INTO phieuxuat (' .
+            implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) .
+            ') VALUES (' .
+            implode(', ', $insertPlaceholders) .
+            ')';
 
-$sqlInsertPx =
-    'INSERT INTO phieuxuat (' .
-    implode(', ', array_map(static fn($c) => "`{$c}`", $insertColumns)) .
-    ') VALUES (' .
-    implode(', ', $insertPlaceholders) .
-    ')';
+        dbg('INSERT_PX_SQL', $sqlInsertPx);
 
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." SQL=".$sqlInsertPx."\n",
-    FILE_APPEND
-);
-
-$insertOrderStmt = $pdo->prepare($sqlInsertPx);
-
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." PREPARE_PX_OK\n",
-    FILE_APPEND
-);
-
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." EXECUTE_PX_OK\n",
-    FILE_APPEND
-);
         try {
-    $insertOrderStmt->execute($insertParams);
-} catch (PDOException $e) {
-    file_put_contents(__DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')." PX_ERROR=".$e->getMessage()."\n",
-        FILE_APPEND
-    );
-    throw $e;
-}
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." PX_INSERT_DONE\n",
-    FILE_APPEND
-);
-        foreach ($resolvedItems as $resolvedItem) {
-            $detailColumns = [$detailOrderIdCol, $detailProductCol];
+            $pdo->prepare($sqlInsertPx)->execute($insertParams);
+            dbg('INSERT_PX_OK', $newOrderId);
+        } catch (PDOException $e) {
+            dbg('INSERT_PX_ERROR', $e->getMessage());
+            throw $e;
+        }
+
+        // Insert details
+        dbg('INSERT_DETAILS_START', 'count=' . count($resolvedItems));
+        foreach ($resolvedItems as $idx => $ri) {
+            $detailColumns      = [$detailOrderIdCol, $detailProductCol];
             $detailPlaceholders = [':order_id', ':product_id'];
-            $detailParams = [
-                ':order_id' => $newOrderId,
-                ':product_id' => $resolvedItem['product_id'],
-            ];
+            $detailParams       = [':order_id' => $newOrderId, ':product_id' => $ri['product_id']];
 
             if ($detailPriceCol !== null) {
-                $detailColumns[] = $detailPriceCol;
+                $detailColumns[]      = $detailPriceCol;
                 $detailPlaceholders[] = ':price';
-                $detailParams[':price'] = $resolvedItem['price'];
+                $detailParams[':price'] = $ri['price'];
             }
-
             if ($detailQtyCol !== null) {
-                $detailColumns[] = $detailQtyCol;
+                $detailColumns[]      = $detailQtyCol;
                 $detailPlaceholders[] = ':qty';
-                $detailParams[':qty'] = $resolvedItem['qty'];
+                $detailParams[':qty'] = $ri['qty'];
             }
-
             if ($detailTotalCol !== null) {
-                $detailColumns[] = $detailTotalCol;
+                $detailColumns[]      = $detailTotalCol;
                 $detailPlaceholders[] = ':line_total';
-                $detailParams[':line_total'] = $resolvedItem['line_total'];
+                $detailParams[':line_total'] = $ri['line_total'];
             }
-            file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_DETAIL_PREPARE\n",
-    FILE_APPEND
-);
-            $insertDetailStmt = $pdo->prepare(
-                'INSERT INTO chitietphieuxuat (' . implode(', ', array_map(static fn($c) => "`{$c}`", $detailColumns)) . ') VALUES (' . implode(', ', $detailPlaceholders) . ')'
-            );
-            file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." DETAIL_EXECUTE_START\n",
-    FILE_APPEND
-);
 
-$insertDetailStmt->execute($detailParams);
+            $sqlDetail =
+                'INSERT INTO chitietphieuxuat (' .
+                implode(', ', array_map(static fn($c) => "`{$c}`", $detailColumns)) .
+                ') VALUES (' .
+                implode(', ', $detailPlaceholders) .
+                ')';
 
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." DETAIL_EXECUTE_OK\n",
-    FILE_APPEND
-);
+            dbg('INSERT_DETAIL_' . $idx, "product={$ri['product_id']} qty={$ri['qty']}");
+            try {
+                $pdo->prepare($sqlDetail)->execute($detailParams);
+                dbg('INSERT_DETAIL_OK_' . $idx, $ri['product_id']);
+            } catch (PDOException $e) {
+                dbg('INSERT_DETAIL_ERROR_' . $idx, $e->getMessage());
+                throw $e;
+            }
         }
+        dbg('INSERT_DETAILS_DONE');
 
+        // Voucher usage
         if (is_array($voucherUsed)) {
-            $insertUsedStmt = $pdo->prepare(
-                'INSERT INTO voucher_nguoi_dung_da_dung (user_key, id_voucher, ma_voucher, ma_don_hang) VALUES (:user_key, :id_voucher, :ma_voucher, :ma_don_hang)'
-            );
-            $insertUsedStmt->execute([
-                ':user_key' => $voucherUserKey,
-                ':id_voucher' => (int) $voucherUsed['id_voucher'],
-                ':ma_voucher' => (string) $voucherUsed['ma_voucher'],
-                ':ma_don_hang' => $newOrderId,
-            ]);
-
-            $incStmt = $pdo->prepare('UPDATE voucher SET so_luong_da_su_dung = so_luong_da_su_dung + 1 WHERE id_voucher = :id_voucher');
-            $incStmt->execute([
-                ':id_voucher' => (int) $voucherUsed['id_voucher'],
-            ]);
-        }
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_PAYMENT_MAP\n",
-    FILE_APPEND
-);
-        $upsertPaymentMetaStmt = $pdo->prepare(
-            "INSERT INTO phieuxuat_thanhtoan_map (ma_don_hang, phuong_thuc_thanh_toan, trang_thai_thanh_toan)
-             VALUES (:ma_don_hang, :phuong_thuc_thanh_toan, :trang_thai_thanh_toan)
-             ON DUPLICATE KEY UPDATE
-                phuong_thuc_thanh_toan = VALUES(phuong_thuc_thanh_toan),
-                trang_thai_thanh_toan = VALUES(trang_thai_thanh_toan)"
-        );
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_PAYMENT_MAP\n",
-    FILE_APPEND
-);
-        $upsertPaymentMetaStmt->execute([
-            ':ma_don_hang' => $newOrderId,
-            ':phuong_thuc_thanh_toan' => $paymentMethodLabel,
-            ':trang_thai_thanh_toan' => $paymentStatusLabel,
-        ]);
-        
-        $upsertPaymentMetaStmt->execute([...]);
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." AFTER_PAYMENT_MAP\n",
-    FILE_APPEND
-);
-
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." PAYMENT_MAP_OK\n",
-    FILE_APPEND
-);
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_VOUCHER_MAP\n",
-    FILE_APPEND
-);
-        $voucherCodeForMap = is_array($voucherUsed)
-            ? trim((string) ($voucherUsed['ma_voucher'] ?? ''))
-            : '';
-        if ($voucherCodeForMap === '') {
-            $voucherCodeForMap = null;
+            dbg('VOUCHER_USAGE_INSERT', "voucher={$voucherUsed['id_voucher']} order={$newOrderId}");
+            $pdo->prepare('INSERT INTO voucher_nguoi_dung_da_dung (user_key, id_voucher, ma_voucher, ma_don_hang) VALUES (:user_key, :id_voucher, :ma_voucher, :ma_don_hang)')
+                ->execute([
+                    ':user_key'    => $voucherUserKey,
+                    ':id_voucher'  => (int)    $voucherUsed['id_voucher'],
+                    ':ma_voucher'  => (string) $voucherUsed['ma_voucher'],
+                    ':ma_don_hang' => $newOrderId,
+                ]);
+            $pdo->prepare('UPDATE voucher SET so_luong_da_su_dung = so_luong_da_su_dung + 1 WHERE id_voucher = :id_voucher')
+                ->execute([':id_voucher' => (int) $voucherUsed['id_voucher']]);
+            dbg('VOUCHER_USAGE_OK');
         }
 
-        $upsertVoucherMetaStmt = $pdo->prepare(
-            "INSERT INTO phieuxuat_voucher_map (ma_don_hang, ma_voucher, tong_tam_tinh, so_tien_giam, tong_thanh_toan)
-             VALUES (:ma_don_hang, :ma_voucher, :tong_tam_tinh, :so_tien_giam, :tong_thanh_toan)
-             ON DUPLICATE KEY UPDATE
-                ma_voucher = VALUES(ma_voucher),
-                tong_tam_tinh = VALUES(tong_tam_tinh),
-                so_tien_giam = VALUES(so_tien_giam),
-                tong_thanh_toan = VALUES(tong_thanh_toan)"
-        );
-        $upsertVoucherMetaStmt->execute([
-            ':ma_don_hang' => $newOrderId,
-            ':ma_voucher' => $voucherCodeForMap,
-            ':tong_tam_tinh' => $orderTotal,
-            ':so_tien_giam' => $discountAmount,
-            ':tong_thanh_toan' => $finalOrderTotal,
-        ]);
+        // Payment meta
+        dbg('PAYMENT_MAP_INSERT', "order={$newOrderId}");
+        try {
+            $pdo->prepare(
+                "INSERT INTO phieuxuat_thanhtoan_map (ma_don_hang, phuong_thuc_thanh_toan, trang_thai_thanh_toan)
+                 VALUES (:ma_don_hang, :phuong_thuc_thanh_toan, :trang_thai_thanh_toan)
+                 ON DUPLICATE KEY UPDATE
+                    phuong_thuc_thanh_toan = VALUES(phuong_thuc_thanh_toan),
+                    trang_thai_thanh_toan  = VALUES(trang_thai_thanh_toan)"
+            )->execute([
+                ':ma_don_hang'            => $newOrderId,
+                ':phuong_thuc_thanh_toan' => $paymentMethodLabel,
+                ':trang_thai_thanh_toan'  => $paymentStatusLabel,
+            ]);
+            dbg('PAYMENT_MAP_OK');
+        } catch (PDOException $e) {
+            dbg('PAYMENT_MAP_ERROR', $e->getMessage());
+            throw $e;
+        }
 
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." VOUCHER_MAP_OK\n",
-    FILE_APPEND
-);
-        file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." BEFORE_COMMIT\n",
-    FILE_APPEND
-);
+        // Voucher meta
+        $voucherCodeForMap = is_array($voucherUsed) ? trim((string) ($voucherUsed['ma_voucher'] ?? '')) : '';
+        if ($voucherCodeForMap === '') { $voucherCodeForMap = null; }
+
+        dbg('VOUCHER_MAP_INSERT', "order={$newOrderId} voucher=" . ($voucherCodeForMap ?? 'null'));
+        try {
+            $pdo->prepare(
+                "INSERT INTO phieuxuat_voucher_map (ma_don_hang, ma_voucher, tong_tam_tinh, so_tien_giam, tong_thanh_toan)
+                 VALUES (:ma_don_hang, :ma_voucher, :tong_tam_tinh, :so_tien_giam, :tong_thanh_toan)
+                 ON DUPLICATE KEY UPDATE
+                    ma_voucher      = VALUES(ma_voucher),
+                    tong_tam_tinh   = VALUES(tong_tam_tinh),
+                    so_tien_giam    = VALUES(so_tien_giam),
+                    tong_thanh_toan = VALUES(tong_thanh_toan)"
+            )->execute([
+                ':ma_don_hang'    => $newOrderId,
+                ':ma_voucher'     => $voucherCodeForMap,
+                ':tong_tam_tinh'  => $orderTotal,
+                ':so_tien_giam'   => $discountAmount,
+                ':tong_thanh_toan'=> $finalOrderTotal,
+            ]);
+            dbg('VOUCHER_MAP_OK');
+        } catch (PDOException $e) {
+            dbg('VOUCHER_MAP_ERROR', $e->getMessage());
+            throw $e;
+        }
+
+        // Commit
+        dbg('COMMIT_START');
         $pdo->commit();
+        dbg('COMMIT_OK', $newOrderId);
 
-file_put_contents(
-    __DIR__.'/checkout-debug.txt',
-    date('Y-m-d H:i:s')." COMMIT_OK\n",
-    FILE_APPEND
-);
-
-        // Xóa toàn bộ giỏ hàng active sau khi đặt đơn thành công
+        // Clear cart
         $sessionCartCustomer = trim((string) ($_SESSION['ma_khach_hang'] ?? ''));
         if ($sessionCartCustomer !== '') {
-            $clearCartStmt = $pdo->prepare(
-                "DELETE gct
-                 FROM gio_hang_chi_tiet gct
-                 INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang
-                 WHERE gh.ma_khach_hang = :ma_khach_hang
-                 AND gh.trang_thai = 'active'"
-            );
-            $clearCartStmt->execute([
-                ':ma_khach_hang' => $sessionCartCustomer,
-            ]);
+            dbg('CLEAR_CART_START', $sessionCartCustomer);
+            try {
+                $pdo->prepare(
+                    "DELETE gct FROM gio_hang_chi_tiet gct
+                     INNER JOIN gio_hang gh ON gh.id_gio_hang = gct.id_gio_hang
+                     WHERE gh.ma_khach_hang = :ma_khach_hang AND gh.trang_thai = 'active'"
+                )->execute([':ma_khach_hang' => $sessionCartCustomer]);
+                dbg('CLEAR_CART_OK');
+            } catch (Throwable $cartErr) {
+                dbg('CLEAR_CART_ERROR', $cartErr->getMessage());
+                // Non-fatal — order đã commit, chỉ log
+            }
         }
 
+        dbg('RESPONSE_SUCCESS', $newOrderId);
         respondCheckout(true, 'Đặt hàng thành công.', [
-            'order_id' => $newOrderId,
-            'subtotal' => $orderTotal,
-            'discount_amount' => $discountAmount,
-            'final_total' => $finalOrderTotal,
-            'voucher_used' => $voucherUsed,
-            'payment_method' => $paymentMethod,
-            'payment_method_label' => $paymentMethodLabel,
-            'invalid_items' => $invalidItems,
+            'order_id'            => $newOrderId,
+            'subtotal'            => $orderTotal,
+            'discount_amount'     => $discountAmount,
+            'final_total'         => $finalOrderTotal,
+            'voucher_used'        => $voucherUsed,
+            'payment_method'      => $paymentMethod,
+            'payment_method_label'=> $paymentMethodLabel,
+            'invalid_items'       => $invalidItems,
         ]);
+
     } catch (Throwable $txError) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
+            dbg('ROLLBACK', $txError->getMessage());
         }
         throw $txError;
     }
+
 } catch (Throwable $e) {
-
-    file_put_contents(
-        __DIR__.'/checkout-debug.txt',
-        date('Y-m-d H:i:s')
-        ." ERROR=".$e->getMessage()
-        ." FILE=".$e->getFile()
-        ." LINE=".$e->getLine()
-        ."\n",
-        FILE_APPEND
+    dbg('FATAL_ERROR',
+        'msg='  . $e->getMessage() .
+        ' file=' . basename($e->getFile()) .
+        ' line=' . $e->getLine()
     );
-
-    respondCheckout(
-        false,
-        'Không thể tạo đơn hàng: '.$e->getMessage(),
-        [],
-        500
-    );
+    respondCheckout(false, 'Không thể tạo đơn hàng: ' . $e->getMessage(), [], 500);
 }
