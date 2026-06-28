@@ -288,7 +288,7 @@ function normalizeOrderStatus(string $rawStatus): array {
         return ['key' => 'pending', 'label' => 'Chờ duyệt', 'class' => 'status-pending', 'progress' => 'Đơn đang chờ shop duyệt.'];
     }
 
-    if (in_array($status, ['da_duyet', 'đã duyệt', 'approved', 'dd', 'px'], true)) {
+    if (in_array($status, ['da_duyet', 'đã duyệt', 'approved', 'dd'], true)) {
         return ['key' => 'approved', 'label' => 'Đã duyệt', 'class' => 'status-approved', 'progress' => 'Shop đã xác nhận đơn hàng.'];
     }
 
@@ -326,7 +326,7 @@ function orderStatusPriority(string $statusKey): int {
 }
 
 function resolveStatusMetaFromOrderRow(array $orderRow): array {
-    $statusCandidates = ['trangthai', 'trang_thai', 'status', 'kyhieupx', 'ky_hieu_px', 'kyhieu', 'ky_hieu'];
+    $statusCandidates = ['trangthai', 'trang_thai', 'status'];
     $bestMeta = normalizeOrderStatus('');
     $bestScore = orderStatusPriority((string) ($bestMeta['key'] ?? 'other'));
 
